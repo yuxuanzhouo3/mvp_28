@@ -1,6 +1,6 @@
 # Model Selection Platform
 
-**Copyright © 2024 Yuxuan Zhou. All rights reserved.**
+**Copyright © 2025 Yuxuan Zhou. All rights reserved.**
 
 A fullstack application for model selection and download functionality. This MVP focuses on making one model work first and then expanding to support multiple models in future versions.
 

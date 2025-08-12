@@ -59,6 +59,8 @@ declare global {
 import type React from "react"
 
 import { useState, useEffect, useRef } from "react"
+import { apiService } from "../lib/api"
+import PaymentModal from "@/components/PaymentModal"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
@@ -97,12 +99,12 @@ import {
   MessageSquare,
   ChevronRight,
   Plus,
+  X,
   Folder,
   FolderOpen,
   Trash2,
   Edit3,
   Check,
-  X,
   ChevronLeft,
   Menu,
   Zap,
@@ -225,79 +227,103 @@ const mornGPTCategories = [
   { id: "z", name: "AI Protection", icon: ShieldCheck, description: "AI safety and security", color: "bg-slate-500" },
 ]
 
-const externalModels = [
-  { name: "GPT-3.5 Turbo", provider: "OpenAI", description: "Fast and efficient for most tasks", type: "free" },
-  { name: "Claude 3 Haiku", provider: "Anthropic", description: "Quick responses with good reasoning", type: "free" },
-  { name: "Gemini Flash", provider: "Google", description: "Multimodal capabilities", type: "free" },
-  { name: "Llama 3.1 8B", provider: "Meta", description: "Open source and customizable", type: "free" },
-  { name: "Mistral 7B", provider: "Mistral AI", description: "Efficient European model", type: "free" },
-  { name: "Phi-3 Mini", provider: "Microsoft", description: "Compact but powerful", type: "free" },
-  { name: "CodeLlama", provider: "Meta", description: "Specialized for coding tasks", type: "free" },
-  { name: "Llama 3.1 70B", provider: "Meta", description: "High-performance open source model", type: "free" },
-  { name: "Gemini 1.5 Flash", provider: "Google", description: "Fast multimodal processing", type: "free" },
-  {
-    name: "GPT-4o Mini",
-    provider: "OpenAI",
-    price: "$0.15/1M tokens",
-    description: "Affordable GPT-4 level performance",
-    type: "popular",
-  },
-  {
-    name: "Claude 3.5 Sonnet",
-    provider: "Anthropic",
-    price: "$3/1M tokens",
-    description: "Best reasoning and analysis",
-    type: "popular",
-  },
-  {
-    name: "Gemini 1.5 Pro",
-    provider: "Google",
-    price: "$1.25/1M tokens",
-    description: "Large context window",
-    type: "popular",
-  },
-  {
-    name: "GPT-4 Turbo",
-    provider: "OpenAI",
-    price: "$10/1M tokens",
-    description: "Most capable OpenAI model",
-    type: "popular",
-  },
-  {
-    name: "Claude 3 Opus",
-    provider: "Anthropic",
-    price: "$15/1M tokens",
-    description: "Highest quality responses",
-    type: "popular",
-  },
-  {
-    name: "GPT-4o",
-    provider: "OpenAI",
-    price: "$5/1M tokens",
-    description: "Latest multimodal model",
-    type: "premium",
-  },
-  {
-    name: "Claude 3.5 Haiku",
-    provider: "Anthropic",
-    price: "$0.25/1M tokens",
-    description: "Fast and cost-effective",
-    type: "premium",
-  },
-  {
-    name: "Gemini 1.5 Flash",
-    provider: "Google",
-    price: "$0.75/1M tokens",
-    description: "Fast multimodal processing",
-    type: "premium",
-  },
-  {
-    name: "GPT-4 Turbo 128K",
-    provider: "OpenAI",
-    price: "$12/1M tokens",
-    description: "Extended context window",
-    type: "premium",
-  },
+// List of unique APIs (17 total)
+const externalAPIs = [
+  { id: "openai", name: "OpenAI", description: "GPT models and advanced AI", icon: "🤖", models: 4 },
+  { id: "anthropic", name: "Anthropic", description: "Claude models with reasoning", icon: "🧠", models: 3 },
+  { id: "google", name: "Google", description: "Gemini multimodal models", icon: "🔍", models: 2 },
+  { id: "groq", name: "Groq", description: "Ultra-fast inference", icon: "⚡", models: 2 },
+  { id: "mistral", name: "Mistral", description: "European AI models", icon: "🇪🇺", models: 2 },
+  { id: "together", name: "Together AI", description: "Open source models", icon: "🔓", models: 2 },
+  { id: "ai21", name: "AI21", description: "Jurassic language models", icon: "🦕", models: 2 },
+  { id: "openrouter", name: "OpenRouter", description: "Model routing platform", icon: "🛣️", models: 2 },
+  { id: "deepinfra", name: "DeepInfra", description: "Cloud inference platform", icon: "☁️", models: 2 },
+  { id: "fireworks", name: "Fireworks AI", description: "Fast model deployment", icon: "🎆", models: 2 },
+  { id: "replicate", name: "Replicate", description: "Cloud model hosting", icon: "🔄", models: 2 },
+  { id: "cohere", name: "Cohere", description: "Text generation models", icon: "📝", models: 2 },
+  { id: "huggingface", name: "HuggingFace", description: "Open source AI hub", icon: "🤗", models: 2 },
+  { id: "stability", name: "Stability AI", description: "Image generation models", icon: "🎨", models: 2 },
+  { id: "assemblyai", name: "AssemblyAI", description: "Audio processing", icon: "🎵", models: 2 },
+  { id: "gladia", name: "Gladia", description: "Multilingual audio", icon: "🌍", models: 2 },
+  { id: "playht", name: "Play.ht", description: "Text-to-speech models", icon: "🔊", models: 2 },
+  { id: "elevenlabs", name: "ElevenLabs", description: "Voice synthesis", icon: "🎤", models: 2 }
+]
+
+const externalModels: ExternalModel[] = [
+  // OpenAI models (4 models with 1 API key)
+  { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo", provider: "OpenAI", description: "Fast and efficient for most tasks", category: "general", type: "free", price: "Free" },
+  { id: "gpt-4o-mini", name: "GPT-4o Mini", provider: "OpenAI", description: "Affordable GPT-4 level performance", category: "general", type: "free", price: "Free" },
+  { id: "gpt-4o", name: "GPT-4o", provider: "OpenAI", description: "Latest multimodal model", category: "general", type: "free", price: "Free" },
+  { id: "gpt-4-turbo-128k", name: "GPT-4 Turbo 128K", provider: "OpenAI", description: "Extended context window", category: "general", type: "free", price: "Free" },
+  
+  // Anthropic models (3 models with 1 API key)
+  { id: "claude-3-haiku", name: "Claude 3 Haiku", provider: "Anthropic", description: "Quick responses with good reasoning", category: "general", type: "free", price: "Free" },
+  { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet", provider: "Anthropic", description: "Best reasoning and analysis", category: "general", type: "free", price: "Free" },
+  { id: "claude-3-opus", name: "Claude 3 Opus", provider: "Anthropic", description: "Highest quality responses", category: "general", type: "free", price: "Free" },
+  
+  // Google models (2 models with 1 API key)
+  { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", provider: "Google", description: "Fast multimodal processing", category: "multimodal", type: "free", price: "Free" },
+  { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", provider: "Google", description: "Large context window", category: "multimodal", type: "free", price: "Free" },
+  
+  // Groq models (2 models with 1 API key)
+  { id: "groq-llama3-8b", name: "Groq Llama3 8B", provider: "Groq", description: "Ultra-low latency Llama3 8B", category: "general", type: "free", price: "Free" },
+  { id: "groq-mixtral-8x7b", name: "Groq Mixtral 8x7B", provider: "Groq", description: "Fast Mixtral via Groq", category: "general", type: "free", price: "Free" },
+  
+  // Mistral models (2 models with 1 API key)
+  { id: "mistral-small", name: "Mistral Small", provider: "Mistral", description: "Mistral API small model", category: "general", type: "free", price: "Free" },
+  { id: "mistral-7b", name: "Mistral 7B", provider: "Mistral", description: "Efficient European model", category: "general", type: "free", price: "Free" },
+  
+  // Together AI models (2 models with 1 API key)
+  { id: "together-llama3-8b", name: "Together Llama3 8B", provider: "Together", description: "Open-source Llama on Together", category: "general", type: "free", price: "Free" },
+  { id: "together-mixtral-8x7b", name: "Together Mixtral 8x7B", provider: "Together", description: "High-performance Mixtral model", category: "general", type: "free", price: "Free" },
+  
+  // AI21 models (2 models with 1 API key)
+  { id: "ai21-j2-mid", name: "AI21 J2 Mid", provider: "AI21", description: "AI21 Jurassic-2 Mid", category: "general", type: "free", price: "Free" },
+  { id: "ai21-j2-ultra", name: "AI21 J2 Ultra", provider: "AI21", description: "AI21 Jurassic-2 Ultra", category: "general", type: "free", price: "Free" },
+  
+  // OpenRouter models (2 models with 1 API key)
+  { id: "openrouter-auto", name: "OpenRouter Auto", provider: "OpenRouter", description: "Smart router across many LLMs", category: "general", type: "free", price: "Free" },
+  { id: "openrouter-gpt4", name: "OpenRouter GPT-4", provider: "OpenRouter", description: "Direct GPT-4 access", category: "general", type: "free", price: "Free" },
+  
+  // DeepInfra models (2 models with 1 API key)
+  { id: "deepinfra-phi3", name: "DeepInfra Phi-3 Mini", provider: "DeepInfra", description: "Phi-3 via DeepInfra", category: "general", type: "free", price: "Free" },
+  { id: "deepinfra-llama3", name: "DeepInfra Llama3 8B", provider: "DeepInfra", description: "Llama3 via DeepInfra", category: "general", type: "free", price: "Free" },
+  
+  // Fireworks AI models (2 models with 1 API key)
+  { id: "fireworks-llama-8b", name: "Fireworks Llama 3.1 8B", provider: "Fireworks", description: "Llama via Fireworks AI", category: "general", type: "free", price: "Free" },
+  { id: "fireworks-mixtral", name: "Fireworks Mixtral 8x7B", provider: "Fireworks", description: "Mixtral via Fireworks AI", category: "general", type: "free", price: "Free" },
+  
+  // Replicate models (2 models with 1 API key)
+  { id: "replicate-llama", name: "Replicate Llama", provider: "Replicate", description: "Cloud-hosted Llama model", category: "general", type: "free", price: "Free" },
+  { id: "replicate-mixtral", name: "Replicate Mixtral", provider: "Replicate", description: "Cloud-hosted Mixtral model", category: "general", type: "free", price: "Free" },
+  
+  // Cohere models (2 models with 1 API key)
+  { id: "cohere-command", name: "Cohere Command", provider: "Cohere", description: "Free text generation model", category: "general", type: "free", price: "Free" },
+  { id: "cohere-command-r", name: "Cohere Command R+", provider: "Cohere", description: "Advanced text generation", category: "general", type: "free", price: "Free" },
+  
+  // HuggingFace models (2 models with 1 API key)
+  { id: "huggingface-whisper", name: "HuggingFace Whisper", provider: "HuggingFace", description: "Open source speech recognition", category: "stt", type: "free", price: "Free" },
+  { id: "huggingface-diffusion", name: "HuggingFace Diffusion", provider: "HuggingFace", description: "Open source image generation", category: "image", type: "free", price: "Free" },
+  
+  // Stability AI models (2 models with 1 API key)
+  { id: "stability-sdxl", name: "Stability SDXL", provider: "Stability", description: "High-quality image generation", category: "image", type: "free", price: "Free" },
+  { id: "stability-sdxl-turbo", name: "Stability SDXL Turbo", provider: "Stability", description: "Fast image generation", category: "image", type: "free", price: "Free" },
+  
+  // AssemblyAI models (2 models with 1 API key)
+  { id: "assemblyai-transcribe", name: "AssemblyAI Transcribe", provider: "AssemblyAI", description: "High-accuracy speech recognition", category: "stt", type: "free", price: "Free" },
+  { id: "assemblyai-sentiment", name: "AssemblyAI Sentiment", provider: "AssemblyAI", description: "Audio sentiment analysis", category: "stt", type: "free", price: "Free" },
+  
+  // Gladia models (2 models with 1 API key)
+  { id: "gladia-speech", name: "Gladia Speech-to-Text", provider: "Gladia", description: "Multilingual speech recognition", category: "stt", type: "free", price: "Free" },
+  { id: "gladia-audio", name: "Gladia Audio Analysis", provider: "Gladia", description: "Audio content analysis", category: "multimodal", type: "free", price: "Free" },
+  
+  // Play.ht models (2 models with 1 API key)
+  { id: "playht-tts", name: "Play.ht TTS", provider: "Play.ht", description: "High-fidelity text-to-speech", category: "tts", type: "free", price: "Free" },
+  { id: "playht-voice", name: "Play.ht Voice Cloning", provider: "Play.ht", description: "Custom voice generation", category: "tts", type: "free", price: "Free" },
+  
+  // ElevenLabs models (2 models with 1 API key)
+  { id: "elevenlabs-tts", name: "ElevenLabs TTS", provider: "ElevenLabs", description: "Natural text-to-speech", category: "tts", type: "free", price: "Free" },
+  { id: "elevenlabs-voice", name: "ElevenLabs Voice Lab", provider: "ElevenLabs", description: "Advanced voice synthesis", category: "tts", type: "free", price: "Free" }
 ]
 
 const specializedProducts = [
@@ -434,10 +460,21 @@ interface BookmarkFolder {
   createdAt: Date
 }
 
+interface ExternalModel {
+  id: string
+  name: string
+  provider: string
+  description: string
+  category: string
+  type: "free" | "premium" | "popular"
+  price: string
+}
+
 export default function MornGPTHomepage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("")
   const [selectedModel, setSelectedModel] = useState<string>("")
   const [selectedModelType, setSelectedModelType] = useState<string>("general")
+  const [selectedAPI, setSelectedAPI] = useState<string>("")
   const [prompt, setPrompt] = useState<string>("")
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false)
   const [isPromptHistoryOpen, setIsPromptHistoryOpen] = useState(false)
@@ -456,6 +493,52 @@ export default function MornGPTHomepage() {
       isModelLocked: false,
     },
   ])
+
+  // --- External Models Modal UI (Direct Model Selection) ---
+  const [showModelSelectorModal, setShowModelSelectorModal] = useState(false)
+  const [selectedApi, setSelectedApi] = useState<string | null>(null)
+  const [showModelModal, setShowModelModal] = useState(false)
+  const [modalModel, setModalModel] = useState<ExternalModel | null>(null)
+  const [modalModelResponse, setModalModelResponse] = useState("")
+  const [modalModelLoading, setModalModelLoading] = useState(false)
+  const [modalModelError, setModalModelError] = useState("")
+
+  // When an API is clicked, show the models for that API in a modal for direct selection
+  const handleApiClick = (apiId: string) => {
+    setSelectedApi(apiId)
+    setShowModelSelectorModal(true)
+  }
+
+  // When a model is selected, show the model modal
+  const handleModelSelect = (model: ExternalModel) => {
+    setShowModelSelectorModal(false)
+    openModelModal(model)
+  }
+
+  // Show all external models in a grid/modal
+  const openModelModal = (model: ExternalModel) => {
+    setModalModel(model)
+    setModalModelResponse("")
+    setModalModelError("")
+    setShowModelModal(true)
+  }
+
+  const testExternalModel = async (model: ExternalModel) => {
+    setModalModelLoading(true)
+    setModalModelResponse("")
+    setModalModelError("")
+    try {
+      const result = await apiService.sendMessage(model.id, "Hello, test message!")
+      if (result.success && result.data) {
+        setModalModelResponse(result.data.response)
+      } else {
+        setModalModelError(result.error || "API error")
+      }
+    } catch (err: any) {
+      setModalModelError(err.message || "Unknown error")
+    }
+    setModalModelLoading(false)
+  }
   const [currentChatId, setCurrentChatId] = useState("1")
   const [expandedFolders, setExpandedFolders] = useState<string[]>(["general"])
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
@@ -485,6 +568,16 @@ export default function MornGPTHomepage() {
   ]
   const [searchQuery, setSearchQuery] = useState<string>("")
   const [editingChatId, setEditingChatId] = useState<string>("")
+  
+  // Payment modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [paymentError, setPaymentError] = useState<{
+    currentUsage: number
+    limit: number
+    modelName: string
+  } | null>(null)
+
+
   const [editingTitle, setEditingTitle] = useState<string>("")
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(224) // 56 * 4 = 224px (w-56)
@@ -838,10 +931,10 @@ export default function MornGPTHomepage() {
     }
     if (selectedModelType === "external" && selectedModel) {
       const model = externalModels.find((m) => m.name === selectedModel)
-      if (model?.type === "free") {
-        return `${model?.name} (Free)`
+      if (model) {
+        return `${model.name} (Free)`
       }
-      return `${model?.name} (${model?.price})`
+      return selectedModel // Fallback to show the selected model name
     }
     return "General"
   }
@@ -1223,6 +1316,28 @@ export default function MornGPTHomepage() {
     setShowPaymentDialog(true)
   }
 
+  const handlePaymentModalUpgrade = () => {
+    setShowPaymentModal(false)
+    setPaymentError(null)
+    // Redirect to upgrade page or show upgrade options
+    setShowUpgradeDialog(true)
+  }
+
+  const handlePaymentModalClose = () => {
+    setShowPaymentModal(false)
+    setPaymentError(null)
+  }
+
+  // Test function to simulate token limit exceeded
+  const testTokenLimit = () => {
+    setPaymentError({
+      currentUsage: 950,
+      limit: 1000,
+      modelName: 'GPT-3.5 Turbo'
+    });
+    setShowPaymentModal(true);
+  }
+
   const handlePayment = (e: React.FormEvent) => {
     e.preventDefault()
     if (appUser && selectedPlan) {
@@ -1493,36 +1608,69 @@ export default function MornGPTHomepage() {
       }
     }
 
-    setTimeout(async () => {
+    try {
       let aiMessage: Message
 
       if (selectedCategory === "h") {
         aiMessage = await simulateMultiGPTResponse(userMessage.content)
       } else {
-        // Generate more specific responses based on the selected model/category
-        let specificResponse = ""
+        // Use real API calls for external models
+        let modelId = "llama3.1-8b" // default model
         
-        if (selectedModelType === "morngpt" && selectedCategory) {
-          const category = mornGPTCategories.find(c => c.id === selectedCategory)
-          if (category) {
-            specificResponse = `As your ${category.name} AI assistant, I'm here to help you with ${category.description.toLowerCase()}. Your question: "${userMessage.content}" is exactly the type of inquiry I'm designed to handle. Let me provide you with specialized guidance in this area.`
-          }
-        } else if (selectedModelType === "external" && selectedModel) {
-          const model = externalModels.find(m => m.name === selectedModel)
+        // Map selected model to backend model ID
+        console.log('Selected model type:', selectedModelType, 'Selected model:', selectedModel);
+        if (selectedModelType === "external" && selectedModel) {
+          // Find the model in externalModels array and use its ID
+          console.log('Looking for model with id:', selectedModel);
+          console.log('Available models:', externalModels.map(m => ({ name: m.name, id: m.id })));
+          const model = externalModels.find(m => m.id === selectedModel);
+          console.log('Found model:', model);
           if (model) {
-            specificResponse = `Using ${model.name} (${model.provider}), I'll help you with: "${userMessage.content}". ${model.description}. This is a simulated response demonstrating the ${model.name} capabilities.`
+            modelId = model.id;
           }
-        } else {
-          // General model response
-          specificResponse = `I understand you're asking about: "${userMessage.content}". As ${currentModel}, I'm here to help you with this request. This is a simulated response to demonstrate the chat functionality.`
         }
+        console.log('Final modelId for API call:', modelId);
+
+        // Make real API call
+        console.log('Making API call with modelId:', modelId, 'message:', userMessage.content);
+        const result = await apiService.sendMessage(userMessage.content, modelId)
+        console.log('API result:', result);
         
-        aiMessage = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: specificResponse,
-          timestamp: new Date(),
-          model: currentModel,
+        if (result.success && result.data) {
+          console.log('Using real API response');
+          aiMessage = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: result.data.response,
+            timestamp: new Date(),
+            model: currentModel,
+          }
+        } else if (result.error === 'PAYMENT_REQUIRED' || result.message?.includes('Token limit exceeded')) {
+          // Handle payment required error
+          console.log('Payment required error:', result);
+          setPaymentError({
+            currentUsage: result.currentUsage || 0,
+            limit: result.limit || 1000,
+            modelName: currentModel
+          });
+          setShowPaymentModal(true);
+          
+          // Remove the user message since payment is required
+          setMessages((prev) => prev.slice(0, -1));
+          setIsLoading(false);
+          return;
+        } else {
+          // Fallback to simulated response if API fails
+          console.log('API failed, using fallback response. Error:', result.error);
+          const fallbackResponse = `I understand you're asking about: "${userMessage.content}". As ${currentModel}, I'm here to help you with this request. (API temporarily unavailable, using fallback response)`
+          
+          aiMessage = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: fallbackResponse,
+            timestamp: new Date(),
+            model: currentModel,
+          }
         }
       }
 
@@ -1530,17 +1678,17 @@ export default function MornGPTHomepage() {
       setIsLoading(false)
 
       if (appUser) {
-      setChatSessions((prev) =>
-        prev.map((session) =>
-          session.id === currentChatId
-            ? {
-                ...session,
-                messages: [...session.messages, aiMessage],
-                lastUpdated: new Date(),
-              }
-            : session,
-        ),
-      )
+        setChatSessions((prev) =>
+          prev.map((session) =>
+            session.id === currentChatId
+              ? {
+                  ...session,
+                  messages: [...session.messages, aiMessage],
+                  lastUpdated: new Date(),
+                }
+              : session,
+          ),
+        )
       } else {
         setGuestChatSessions((prev) =>
           prev.map((session) =>
@@ -1554,7 +1702,48 @@ export default function MornGPTHomepage() {
           ),
         )
       }
-    }, 1500)
+    } catch (error) {
+      console.error('Error getting AI response:', error)
+      
+      // Fallback response on error
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: `I apologize, but I'm having trouble connecting to the AI service right now. Please try again in a moment. (Error: ${error instanceof Error ? error.message : 'Unknown error'})`,
+        timestamp: new Date(),
+        model: currentModel,
+      }
+      
+      setMessages((prev) => [...prev, errorMessage])
+      setIsLoading(false)
+      
+      // Update chat sessions with error message
+      if (appUser) {
+        setChatSessions((prev) =>
+          prev.map((session) =>
+            session.id === currentChatId
+              ? {
+                  ...session,
+                  messages: [...session.messages, errorMessage],
+                  lastUpdated: new Date(),
+                }
+              : session,
+          ),
+        )
+      } else {
+        setGuestChatSessions((prev) =>
+          prev.map((session) =>
+            session.id === currentChatId
+              ? {
+                  ...session,
+                  messages: [...session.messages, errorMessage],
+                  lastUpdated: new Date(),
+                }
+              : session,
+          ),
+        )
+      }
+    }
   }
 
     const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -2131,7 +2320,7 @@ export default function MornGPTHomepage() {
         : modelType === "morngpt" && category
           ? `${mornGPTCategories.find((c) => c.id === category)?.name} (${category.toUpperCase()}1)`
           : modelType === "external" && model
-            ? `${externalModels.find((m) => m.name === model)?.name}`
+            ? model
             : "General"
 
     const newChat: ChatSession = {
@@ -2186,7 +2375,9 @@ export default function MornGPTHomepage() {
       if (chat.modelType === "morngpt") {
         setSelectedCategory(chat.category)
       } else if (chat.modelType === "external") {
-        setSelectedModel(chat.model.split(" (")[0])
+        // Extract the model name from the chat model (remove price info)
+        const modelName = chat.model.split(" (")[0]
+        setSelectedModel(modelName)
       }
 
       // Auto-collapse all folders except the chat's category
@@ -4586,10 +4777,22 @@ export default function MornGPTHomepage() {
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent
-                            className="w-[1000px] p-0 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]"
+                            className="w-[850px] p-0 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl"
                             align="end"
                           >
-                            <Tabs value={selectedModelType} onValueChange={setSelectedModelType} className="w-full">
+                            <div className="p-4">
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Select Model</h3>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </div>
+                              
+                              <Tabs value={selectedModelType} onValueChange={setSelectedModelType} className="w-full">
                               <TabsList className="grid w-full grid-cols-3 bg-gray-100 dark:bg-[#565869]">
                                 <TabsTrigger value="general" className="text-xs text-gray-900 dark:text-[#ececf1]">
                                   <MessageSquare className="w-3 h-3 mr-1" />
@@ -4605,50 +4808,54 @@ export default function MornGPTHomepage() {
                                 </TabsTrigger>
                               </TabsList>
 
-                              <TabsContent value="general" className="p-4">
-                                <div
-                                  className="text-center cursor-pointer p-4 rounded-lg border border-gray-200 dark:border-[#565869] bg-gray-50 dark:bg-[#565869] hover:bg-gray-100 dark:hover:bg-[#444654]"
-                                  onClick={() => handleModelChange("general")}
-                                >
-                                  <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-500 dark:text-gray-400" />
-                                  <h3 className="font-medium text-gray-900 dark:text-[#ececf1] mb-1">General Model</h3>
-                                  <p className="text-sm text-gray-600 dark:text-gray-300">
-                                    Auto select AI assistant for general conversations
-                                  </p>
+                              <TabsContent value="general" className="p-2">
+                                <div className="h-32 flex items-center justify-center">
+                                  <div
+                                    className="w-full h-full cursor-pointer p-2 rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-[#565869] hover:bg-gray-100 dark:hover:bg-[#444654] transition-all duration-200 hover:shadow-sm flex flex-col items-center justify-center"
+                                    onClick={() => handleModelChange("general")}
+                                  >
+                                    <MessageSquare className="w-4 h-4 mx-auto text-gray-500 dark:text-gray-400 mb-1" />
+                                    <h3 className="text-xs font-semibold text-gray-900 dark:text-[#ececf1] mb-1">General Model</h3>
+                                    <p className="text-[8px] text-gray-600 dark:text-gray-400 text-center">
+                                      Auto select AI assistant for general conversations
+                                    </p>
+                                  </div>
                                 </div>
                               </TabsContent>
 
                               <TabsContent value="morngpt" className="p-2">
-                                <div className="grid grid-cols-3 gap-1">
+                                <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
                                   {mornGPTCategories.map((category) => {
                                     const IconComponent = category.icon
                                     return (
                                       <div
                                         key={category.id}
-                                        className={`p-1.5 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-[#565869] border ${
+                                        className={`p-1.5 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm border ${
                                           selectedCategory === category.id
-                                            ? "bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700"
-                                            : "border-gray-200 dark:border-[#565869]"
+                                            ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
+                                            : "border-gray-100 dark:border-gray-700"
                                         }`}
                                         onClick={() => handleModelChange("morngpt", category.id)}
                                       >
-                                        <div className="flex items-center space-x-1.5">
-                                          <div className={`p-0.5 rounded ${category.color} text-white`}>
-                                            <IconComponent className="w-2.5 h-2.5" />
-                                          </div>
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center space-x-1">
-                                              <p className="text-[10px] font-medium truncate text-gray-900 dark:text-[#ececf1]">
-                                                {category.name}
-                                              </p>
-                                              <Badge variant="secondary" className="text-[8px] px-0.5 py-0 h-3">
-                                                {category.id.toUpperCase()}1
-                                              </Badge>
+                                        <div className="flex flex-col space-y-1">
+                                          <div className="flex items-center space-x-1.5">
+                                            <div className={`p-0.5 rounded ${category.color} text-white shadow-sm`}>
+                                              <IconComponent className="w-2 h-2" />
                                             </div>
-                                            <p className="text-[8px] text-gray-600 dark:text-gray-400 mt-0.5 line-clamp-1">
-                                              {category.description}
-                                            </p>
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center justify-between">
+                                                <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
+                                                  {category.name}
+                                                </p>
+                                                <Badge variant="secondary" className="text-[2px] px-0.5 py-0 h-2">
+                                                  {category.id.toUpperCase()}1
+                                                </Badge>
+                                              </div>
+                                            </div>
                                           </div>
+                                                                                     <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
+                                             {category.description}
+                                           </p>
                                         </div>
                                       </div>
                                     )
@@ -4657,50 +4864,79 @@ export default function MornGPTHomepage() {
                               </TabsContent>
 
                               <TabsContent value="external" className="p-2">
-                                <div className="grid grid-cols-3 gap-1">
-                                  {externalModels.map((model, index) => (
-                                    <div
-                                      key={index}
-                                      className={`p-1.5 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-[#565869] ${
-                                        selectedModel === model.name
-                                          ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700"
-                                          : "border-0"
-                                      }`}
-                                      onClick={() => {
-                                        if (model.type === 'premium' || model.type === 'popular') {
-                                          setShowUpgradeDialog(true);
-                                          setSelectedPaidModel(model);
-                                        } else {
-                                          handleModelChange("external", undefined, model.name);
-                                        }
-                                      }}
-                                    >
-                                      <div className="flex items-center space-x-1.5">
-                                        <div className="p-0.5 rounded bg-blue-500 text-white">
-                                          <MessageSquare className="w-2.5 h-2.5" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center space-x-1">
-                                            <p className="text-[10px] font-medium truncate text-gray-900 dark:text-[#ececf1]">
-                                              {model.name}
+                                <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
+                                  {externalAPIs.map((api, index) => {
+                                    const apiModels = externalModels.filter(model => {
+                                      const modelProvider = model.provider.toLowerCase();
+                                      const apiName = api.name.toLowerCase();
+                                      return modelProvider === apiName || 
+                                             (apiName === "fireworks ai" && modelProvider === "fireworks") ||
+                                             (apiName === "together ai" && modelProvider === "together") ||
+                                             (apiName === "stability ai" && modelProvider === "stability");
+                                    });
+                                    return (
+                                      <div
+                                        key={index}
+                                        className="relative group"
+                                      >
+                                        <div
+                                          className={`p-1 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm ${
+                                            selectedAPI === api.id
+                                              ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
+                                              : "border border-gray-100 dark:border-gray-700"
+                                          }`}
+                                          onClick={() => setSelectedAPI(api.id)}
+                                        >
+                                          <div className="flex flex-col space-y-1">
+                                            <div className="flex items-center space-x-1.5">
+                                              <div className="p-0.5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-sm text-[8px]">
+                                                {api.icon}
+                                              </div>
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between">
+                                                  <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
+                                                    {api.name}
+                                                  </p>
+                                                  <Badge variant="secondary" className="text-[2px] px-0.5 py-0 h-2 ml-1">
+                                                    {api.models}
+                                                  </Badge>
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
+                                              {api.description}
                                             </p>
-                                            <Badge 
-                                              variant={model.type === 'premium' || model.type === 'popular' ? 'destructive' : 'secondary'} 
-                                              className="text-[8px] px-0.5 py-0 h-3"
-                                            >
-                                              {model.type === 'premium' || model.type === 'popular' ? '$' : model.type}
-                                            </Badge>
                                           </div>
-                                          <p className="text-[8px] text-gray-600 dark:text-gray-400 mt-0.5 line-clamp-1">
-                                            {model.description}
-                                          </p>
+                                        </div>
+                                        
+                                        {/* Hover dropdown with individual models */}
+                                        <div className={`absolute z-50 w-48 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl transition-all duration-300 top-full left-0 mt-1 opacity-0 invisible pointer-events-none group-hover:opacity-100 group-hover:visible group-hover:pointer-events-auto delay-100`}>
+                                          <div className="p-2">
+                                            <div className="flex items-center justify-between mb-2 pb-1 border-b border-gray-100 dark:border-gray-700">
+                                              <h4 className="text-[7px] font-semibold text-gray-900 dark:text-[#ececf1]">{api.name} ({apiModels.length})</h4>
+                                            </div>
+                                            <div className="max-h-32 overflow-y-auto space-y-1">
+                                              {apiModels.map((model) => (
+                                                <div
+                                                  key={model.id}
+                                                  className="px-2 py-1 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-[#565869] transition-colors duration-150"
+                                                  onClick={() => handleModelChange("external", undefined, model.id)}
+                                                >
+                                                  <p className="text-[6px] text-gray-900 dark:text-[#ececf1] truncate leading-tight">
+                                                    {model.name}
+                                                  </p>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
                                         </div>
                                       </div>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </TabsContent>
                             </Tabs>
+                            </div>
                           </PopoverContent>
                         </Popover>
 
@@ -5446,6 +5682,10 @@ export default function MornGPTHomepage() {
                     <div className="flex items-center space-x-1 bg-gray-50 dark:bg-gray-700 rounded-lg px-2 py-1 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer h-7" onClick={exportHotkeys}>
                       <Download className="w-3 h-3 text-gray-600 dark:text-gray-400" />
                       <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Export</span>
+                    </div>
+                    <div className="flex items-center space-x-1 bg-red-50 dark:bg-red-900/20 rounded-lg px-2 py-1 border border-red-200 dark:border-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors cursor-pointer h-7" onClick={testTokenLimit}>
+                      <AlertTriangle className="w-3 h-3 text-red-600 dark:text-red-400" />
+                      <span className="text-xs font-medium text-red-700 dark:text-red-300">Test Limits</span>
                     </div>
                     <div className="flex items-center space-x-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-2 py-1 border border-gray-200 dark:border-gray-600 h-7">
                       <div className="flex items-center justify-center w-5 h-5 rounded-full bg-gray-500">
@@ -7954,6 +8194,16 @@ export default function MornGPTHomepage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Payment Modal for Token Limits */}
+        <PaymentModal
+          isOpen={showPaymentModal}
+          onClose={handlePaymentModalClose}
+          onUpgrade={handlePaymentModalUpgrade}
+          currentUsage={paymentError?.currentUsage}
+          limit={paymentError?.limit}
+          modelName={paymentError?.modelName}
+        />
       </div>
     </div>
   )

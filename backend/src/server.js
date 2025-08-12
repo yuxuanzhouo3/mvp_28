@@ -14,6 +14,14 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config();
 
+// Debug: Check if environment variables are loaded
+console.log('Environment variables loaded:');
+console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'SET' : 'NOT SET');
+console.log('OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET');
+console.log('GROQ_API_KEY:', process.env.GROQ_API_KEY ? 'SET' : 'NOT SET');
+console.log('ANTHROPIC_API_KEY:', process.env.ANTHROPIC_API_KEY ? 'SET' : 'NOT SET');
+console.log('COHERE_API_KEY:', process.env.COHERE_API_KEY ? 'SET' : 'NOT SET');
+
 // Import routes
 const authRoutes = require('./routes/auth');
 const modelRoutes = require('./routes/models');
@@ -23,8 +31,7 @@ const userRoutes = require('./routes/users');
 const downloadRoutes = require('./routes/downloads');
 
 // Import middleware
-const errorHandler = require('./middleware/errorHandler');
-const authMiddleware = require('./middleware/auth');
+const { authMiddleware } = require('./middleware/auth');
 const logger = require('./utils/logger');
 
 // Import database initialization
@@ -46,12 +53,28 @@ app.use(helmet({
 }));
 
 // CORS configuration
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+const allowedOriginsEnv = process.env.CORS_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000';
+const allowedOrigins = allowedOriginsEnv
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow non-browser requests (no origin) and allow all origins in non-production for easy local/LAN testing
+    if (!origin || process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
+};
+app.use(cors(corsOptions));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -89,7 +112,16 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/models', modelRoutes);
-app.use('/api/chat', authMiddleware, chatRoutes);
+
+// Chat routes - allow guest access for local testing
+app.use('/api/chat', (req, res, next) => {
+  // For local development, allow unauthenticated access to send endpoint
+  if (req.path === '/send' && process.env.NODE_ENV === 'development') {
+    req.user = { userId: 'guest', email: 'guest@local.dev', tier: 'free' };
+  }
+  next();
+}, chatRoutes);
+
 app.use('/api/files', authMiddleware, fileRoutes);
 app.use('/api/users', authMiddleware, userRoutes);
 app.use('/api/downloads', authMiddleware, downloadRoutes);
@@ -119,9 +151,6 @@ app.use('*', (req, res) => {
   });
 });
 
-// Error handling middleware
-app.use(errorHandler);
-
 // Graceful shutdown
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully');
@@ -150,7 +179,7 @@ async function startServer() {
     await initializeDatabase();
     logger.info('Database initialized successfully');
     
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       logger.info(`🚀 MornGPT Backend Server running on port ${PORT}`);
       logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`🔗 Health check: http://localhost:${PORT}/health`);

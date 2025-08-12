@@ -54,7 +54,7 @@ class AuthController {
           soundEnabled: true,
           autoSave: true,
           sendHotkey: 'enter',
-          shortcutsEnabled: true,
+          shortcutsEnabled: false,
           adsEnabled: true
         }
       };
@@ -179,7 +179,7 @@ class AuthController {
             soundEnabled: true,
             autoSave: true,
             sendHotkey: 'enter',
-            shortcutsEnabled: true,
+            shortcutsEnabled: false,
             adsEnabled: true
           }
         };

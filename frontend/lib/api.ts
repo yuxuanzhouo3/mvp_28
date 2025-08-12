@@ -3,7 +3,27 @@
  * Handles communication with the MornGPT backend
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+// Mobile-friendly API base URL detection
+const getApiBaseUrl = () => {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined') {
+    // Server-side rendering - use default
+    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  }
+  
+  // Check if we're in a mobile environment
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  if (isMobile) {
+    // Use relative URL for mobile to avoid CORS issues
+    return '';
+  }
+  
+  // Desktop environment
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export interface Model {
   id: string;
@@ -100,7 +120,8 @@ class ApiService {
     message: string,
     modelId: string,
     chatId?: string,
-    token?: string
+    token?: string,
+    language?: string
   ): Promise<ApiResponse<{ response: string; chatId: string; usage?: any }>> {
     // Use guest endpoint for local testing
     const endpoint = token ? '/api/chat/send' : '/api/chat/send-guest';
@@ -109,6 +130,11 @@ class ApiService {
     };
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // Add language header for Chinese support
+    if (language === 'zh') {
+      headers['Accept-Language'] = 'zh-CN,zh;q=0.9';
     }
 
     return this.request<{ response: string; chatId: string; usage?: any }>(
@@ -120,9 +146,102 @@ class ApiService {
           modelId,
           message,
           chatId,
+          language,
         }),
       }
     );
+  }
+
+  // Send streaming chat message
+  async sendMessageStream(
+    message: string,
+    modelId: string,
+    chatId?: string,
+    token?: string,
+    language?: string,
+    onChunk?: (chunk: string) => void,
+    onEnd?: () => void,
+    onError?: (error: string) => void,
+    signal?: AbortSignal
+  ): Promise<void> {
+    try {
+      // Use guest endpoint for local testing
+      const endpoint = token ? '/api/chat/stream' : '/api/chat/stream-guest';
+      const url = `${this.baseUrl}${endpoint}`;
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      // Add language header for Chinese support
+      if (language === 'zh') {
+        headers['Accept-Language'] = 'zh-CN,zh;q=0.9';
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          modelId,
+          message,
+          chatId,
+          language,
+        }),
+        signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body reader available');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.trim() === '') continue;
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              onEnd?.();
+              return;
+            }
+            
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.chunk) {
+                onChunk?.(parsed.chunk);
+              }
+            } catch (e) {
+              console.warn('Failed to parse SSE data:', data);
+            }
+          }
+        }
+      }
+
+      onEnd?.();
+    } catch (error) {
+      console.error('Streaming error:', error);
+      onError?.(error instanceof Error ? error.message : 'Unknown error');
+    }
   }
 
   // Get chat sessions

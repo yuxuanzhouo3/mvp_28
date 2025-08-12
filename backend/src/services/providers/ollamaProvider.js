@@ -95,9 +95,19 @@ class OllamaProvider {
       }
 
       // Prepare request payload
+      // Check if we need to add system prompt for Chinese
+      const isChinese = /[\u4e00-\u9fff]/.test(prompt);
+      const systemPrompt = options.systemPrompt || '';
+      
+      // Construct the full prompt with system message if needed
+      let fullPrompt = prompt;
+      if (systemPrompt && isChinese) {
+        fullPrompt = `${systemPrompt}\n\nUser: ${prompt}\n\nAssistant:`;
+      }
+      
       const payload = {
         model: modelId,
-        prompt: prompt,
+        prompt: fullPrompt,
         stream: false,
         options: {
           temperature: options.temperature || 0.7,
@@ -157,9 +167,19 @@ class OllamaProvider {
         throw new Error(`Model ${modelId} is not available`);
       }
 
+      // Check if we need to add system prompt for Chinese
+      const isChinese = /[\u4e00-\u9fff]/.test(prompt);
+      const systemPrompt = options.systemPrompt || '';
+      
+      // Construct the full prompt with system message if needed
+      let fullPrompt = prompt;
+      if (systemPrompt && isChinese) {
+        fullPrompt = `${systemPrompt}\n\nUser: ${prompt}\n\nAssistant:`;
+      }
+      
       const payload = {
         model: modelId,
-        prompt: prompt,
+        prompt: fullPrompt,
         stream: true,
         options: {
           temperature: options.temperature || 0.7,

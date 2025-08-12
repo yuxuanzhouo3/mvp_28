@@ -56,15 +56,14 @@ declare global {
   }
 }
 
-import type React from "react"
-
-import { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import { apiService } from "../lib/api"
 import PaymentModal from "@/components/PaymentModal"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { ResizableTextarea } from "@/components/ui/resizable-textarea"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -163,6 +162,7 @@ import {
   Camera,
   Video,
   VideoOff,
+  Square,
 } from "lucide-react"
 
 const mornGPTCategories = [
@@ -323,7 +323,12 @@ const externalModels: ExternalModel[] = [
   
   // ElevenLabs models (2 models with 1 API key)
   { id: "elevenlabs-tts", name: "ElevenLabs TTS", provider: "ElevenLabs", description: "Natural text-to-speech", category: "tts", type: "free", price: "Free" },
-  { id: "elevenlabs-voice", name: "ElevenLabs Voice Lab", provider: "ElevenLabs", description: "Advanced voice synthesis", category: "tts", type: "free", price: "Free" }
+  { id: "elevenlabs-voice", name: "ElevenLabs Voice Lab", provider: "ElevenLabs", description: "Advanced voice synthesis", category: "tts", type: "free", price: "Free" },
+  
+  // Chinese language models
+  { id: "chinese-gpt", name: "Chinese GPT", provider: "OpenAI", description: "Chinese language optimized", category: "chinese", type: "free", price: "Free" },
+  { id: "chinese-claude", name: "Chinese Claude", provider: "Anthropic", description: "Chinese conversation model", category: "chinese", type: "free", price: "Free" },
+  { id: "chinese-llama", name: "Chinese Llama", provider: "Meta", description: "Chinese Llama model", category: "chinese", type: "free", price: "Free" }
 ]
 
 const specializedProducts = [
@@ -405,6 +410,7 @@ interface Message {
   timestamp: Date
   model?: string
   isMultiGPT?: boolean
+  isStreaming?: boolean
   subTasks?: Array<{
     task: string
     model: string
@@ -474,6 +480,8 @@ export default function MornGPTHomepage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("")
   const [selectedModel, setSelectedModel] = useState<string>("")
   const [selectedModelType, setSelectedModelType] = useState<string>("general")
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("en") // en, zh
+  const [shortcutsEnabled, setShortcutsEnabled] = useState<boolean>(false) // Default to disabled
   const [selectedAPI, setSelectedAPI] = useState<string>("")
   const [prompt, setPrompt] = useState<string>("")
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false)
@@ -481,6 +489,8 @@ export default function MornGPTHomepage() {
   const [isAskGPTOpen, setIsAskGPTOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [streamingController, setStreamingController] = useState<AbortController | null>(null)
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([
     {
       id: "1",
@@ -567,6 +577,29 @@ export default function MornGPTHomepage() {
     'text/html'
   ]
   const [searchQuery, setSearchQuery] = useState<string>("")
+
+  // Language detection functions
+  const containsChinese = (text: string) => {
+    return /[\u4e00-\u9fff]/.test(text);
+  };
+
+  const detectLanguage = (text: string) => {
+    if (containsChinese(text)) {
+      return 'zh';
+    }
+    return 'en';
+  };
+
+  const autoDetectLanguage = (text: string) => {
+    const detectedLang = detectLanguage(text);
+    if (detectedLang !== selectedLanguage) {
+      setSelectedLanguage(detectedLang);
+      // Show a subtle notification that language was auto-detected
+      const langName = detectedLang === 'zh' ? 'Chinese' : 'English';
+      console.log(`Language auto-detected: ${langName}`);
+    }
+    return detectedLang;
+  };
   const [editingChatId, setEditingChatId] = useState<string>("")
   
   // Payment modal state
@@ -581,6 +614,9 @@ export default function MornGPTHomepage() {
   const [editingTitle, setEditingTitle] = useState<string>("")
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(224) // 56 * 4 = 224px (w-56)
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false)
+  const [startX, setStartX] = useState(0)
+  const [startWidth, setStartWidth] = useState(0)
   const [appUser, setAppUser] = useState<AppUser | null>(null)
   const [showAuthDialog, setShowAuthDialog] = useState(false)
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
@@ -605,6 +641,8 @@ export default function MornGPTHomepage() {
   
   // Ref for the textarea to enable reliable scrolling
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [textareaHeight, setTextareaHeight] = useState(96) // Default height
+  const [selectedText, setSelectedText] = useState("")
   const [autoRenewEnabled, setAutoRenewEnabled] = useState(true)
   const [nextBillingDate, setNextBillingDate] = useState("2024-12-25")
   const [paymentMethod, setPaymentMethod] = useState({
@@ -736,7 +774,7 @@ export default function MornGPTHomepage() {
         setGuestChatSessions([])
         setMessages([])
         setCurrentChatId("")
-        alert("Your guest session has expired due to inactivity. Your conversations have been cleared.")
+        alert(getLocalizedText('guestSessionExpired'))
       }, 3 * 60 * 60 * 1000) // 3 hours
 
       setGuestSessionTimeout(timeout)
@@ -818,11 +856,11 @@ export default function MornGPTHomepage() {
           window.history.replaceState({}, '', newUrl)
           
           // Show success message
-          alert(`Shared conversation loaded: "${parsedData.title}" by ${parsedData.createdBy}`)
+          alert(getLocalizedText('sharedConversationLoaded').replace('{title}', parsedData.title).replace('{author}', parsedData.createdBy))
         }
       } catch (error) {
         console.error('Error loading shared conversation:', error)
-        alert('Error loading shared conversation. The link may be invalid or expired.')
+        alert(getLocalizedText('errorLoadingShared'))
       }
     }
 
@@ -1489,8 +1527,35 @@ export default function MornGPTHomepage() {
     }
   }
 
+  const stopStreaming = () => {
+    if (streamingController) {
+      streamingController.abort();
+      setStreamingController(null);
+    }
+    setIsStreaming(false);
+    setIsLoading(false);
+    
+    // Update the streaming message to show it was stopped
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.isStreaming
+          ? { ...msg, isStreaming: false, content: msg.content + (selectedLanguage === 'zh' ? '\n\n[已停止]' : '\n\n[Stopped]') }
+          : msg
+      )
+    );
+  };
+
   const handleSubmit = async () => {
     if (!prompt.trim() && uploadedFiles.length === 0) return
+    
+    // Auto-detect language from user input
+    const detectedLanguage = autoDetectLanguage(prompt);
+    
+    // Prevent duplicate submissions
+    if (isLoading) {
+      console.log('Already loading, skipping duplicate call');
+      return;
+    }
     
     // Handle non-logged-in users
     if (!appUser) {
@@ -1502,7 +1567,7 @@ export default function MornGPTHomepage() {
         setGuestChatSessions([])
         setMessages([])
         setCurrentChatId("")
-        alert("Your guest session has expired due to inactivity. Your conversations have been cleared.")
+        alert(getLocalizedText('guestSessionExpired'))
       }, 3 * 60 * 60 * 1000) // 3 hours
       setGuestSessionTimeout(newTimeout)
     }
@@ -1513,7 +1578,7 @@ export default function MornGPTHomepage() {
       const fileList = uploadedFiles.map(file => 
         `${getFileIcon(file.type)} ${file.name} (${formatFileSize(file.size)})`
       ).join('\n')
-      messageContent = `${prompt}\n\n📎 **Attached Files:**\n${fileList}`
+      messageContent = `${prompt}\n\n📎 **${getLocalizedText('attachedFiles')}:**\n${fileList}`
     }
 
     const userMessage: Message = {
@@ -1526,7 +1591,7 @@ export default function MornGPTHomepage() {
     setMessages((prev) => [...prev, userMessage])
     setPrompt("")
     setUploadedFiles([]) // Clear uploaded files after sending
-    setIsLoading(true)
+    // Note: setIsLoading(true) is now handled in the streaming logic to prevent duplicates
 
     const currentModel = getSelectedModelDisplay()
     const currentChat = appUser ? chatSessions.find((c) => c.id === currentChatId) : guestChatSessions.find((c) => c.id === currentChatId)
@@ -1608,11 +1673,118 @@ export default function MornGPTHomepage() {
       }
     }
 
+    // Prevent duplicate streaming calls
+    if (isLoading) {
+      console.log('Already loading, skipping duplicate call');
+      return;
+    }
+    
+    setIsLoading(true);
+    
     try {
-      let aiMessage: Message
-
       if (selectedCategory === "h") {
-        aiMessage = await simulateMultiGPTResponse(userMessage.content)
+        // MultiGPT response - also use streaming for consistency
+        const aiMessageId = (Date.now() + 1).toString();
+        // Don't add initial message - wait for real content
+        let messageCreated = false;
+        setIsStreaming(true);
+        
+        // Simulate streaming for MultiGPT
+        const multiGPTResponse = await simulateMultiGPTResponse(userMessage.content);
+        let streamedContent = '';
+        const words = multiGPTResponse.content.split(' ');
+        
+        // Create message on first word (skip thinking)
+        if (words.length > 0) {
+          const initialMessage: Message = {
+            id: aiMessageId,
+            role: "assistant" as const,
+            content: words[0],
+            timestamp: new Date(),
+            model: currentModel,
+            isStreaming: true,
+            isMultiGPT: true,
+          };
+          setMessages((prev) => [...prev, initialMessage]);
+          streamedContent = words[0];
+        }
+        
+        for (let i = 1; i < words.length; i++) {
+          streamedContent += ' ' + words[i];
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === aiMessageId
+                ? { ...msg, content: streamedContent }
+                : msg
+            )
+          );
+          
+          // Auto-scroll
+          setTimeout(() => {
+            if (scrollAreaRef.current) {
+              scrollAreaRef.current.scrollTo({
+                top: scrollAreaRef.current.scrollHeight,
+                behavior: 'smooth'
+              });
+            }
+          }, 10);
+          
+          // Delay between words
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        
+        // Final update
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === aiMessageId
+              ? { ...msg, isStreaming: false, content: streamedContent }
+              : msg
+          )
+        );
+        
+        // Update chat sessions
+        const finalMessage = {
+          id: aiMessageId,
+          role: "assistant" as const,
+          content: streamedContent,
+          timestamp: new Date(),
+          model: currentModel,
+          isStreaming: false,
+          isMultiGPT: true,
+        };
+        
+        if (appUser) {
+          setChatSessions((prev) =>
+            prev.map((session) =>
+              session.id === currentChatId
+                ? {
+                    ...session,
+                    messages: session.messages.map((msg) =>
+                      msg.id === aiMessageId ? finalMessage : msg
+                    ),
+                    lastUpdated: new Date(),
+                  }
+                : session,
+            ),
+          )
+        } else {
+          setGuestChatSessions((prev) =>
+            prev.map((session) =>
+              session.id === currentChatId
+                ? {
+                    ...session,
+                    messages: session.messages.map((msg) =>
+                      msg.id === aiMessageId ? finalMessage : msg
+                    ),
+                    lastUpdated: new Date(),
+                  }
+                : session,
+            ),
+          )
+        }
+        
+        setIsLoading(false);
+        setIsStreaming(false);
       } else {
         // Use real API calls for external models
         let modelId = "llama3.1-8b" // default model
@@ -1631,117 +1803,222 @@ export default function MornGPTHomepage() {
         }
         console.log('Final modelId for API call:', modelId);
 
-        // Make real API call
-        console.log('Making API call with modelId:', modelId, 'message:', userMessage.content);
-        const result = await apiService.sendMessage(userMessage.content, modelId)
-        console.log('API result:', result);
+        // Create message ID for tracking
+        const aiMessageId = (Date.now() + 1).toString();
+        let streamedContent = '';
+        let isStreamingComplete = false;
+        let messageCreated = false;
         
-        if (result.success && result.data) {
-          console.log('Using real API response');
-          aiMessage = {
-            id: (Date.now() + 1).toString(),
-            role: "assistant",
-            content: result.data.response,
-            timestamp: new Date(),
-            model: currentModel,
-          }
-        } else if (result.error === 'PAYMENT_REQUIRED' || result.message?.includes('Token limit exceeded')) {
-          // Handle payment required error
-          console.log('Payment required error:', result);
-          setPaymentError({
-            currentUsage: result.currentUsage || 0,
-            limit: result.limit || 1000,
-            modelName: currentModel
-          });
-          setShowPaymentModal(true);
+        // Make streaming API call
+        console.log('Making streaming API call with modelId:', modelId, 'message:', userMessage.content, 'language:', detectedLanguage);
+        
+        // Create abort controller for stopping streaming
+        const controller = new AbortController();
+        setStreamingController(controller);
+        setIsStreaming(true);
+        
+        try {
+          await apiService.sendMessageStream(
+            userMessage.content,
+            modelId,
+            undefined,
+            undefined,
+            detectedLanguage,
+            // onChunk callback
+            (chunk: string) => {
+              // Create the message only when we get the first real content (skip thinking messages)
+              if (!messageCreated && chunk.trim() && !chunk.includes('思考中') && !chunk.includes('Thinking')) {
+                messageCreated = true;
+                const initialMessage: Message = {
+                  id: aiMessageId,
+                  role: "assistant" as const,
+                  content: chunk,
+                  timestamp: new Date(),
+                  model: currentModel,
+                  isStreaming: true,
+                };
+                setMessages((prev) => [...prev, initialMessage]);
+                streamedContent = chunk;
+              } else if (messageCreated) {
+                streamedContent += chunk;
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === aiMessageId
+                      ? { ...msg, content: streamedContent, isStreaming: true }
+                      : msg
+                  )
+                );
+              }
+              
+              // Auto-scroll to bottom for smooth experience
+              setTimeout(() => {
+                if (scrollAreaRef.current) {
+                  scrollAreaRef.current.scrollTo({
+                    top: scrollAreaRef.current.scrollHeight,
+                    behavior: 'smooth'
+                  });
+                }
+              }, 10);
+            },
+            // onEnd callback
+            () => {
+              isStreamingComplete = true;
+              setIsLoading(false);
+              setIsStreaming(false);
+              setStreamingController(null);
+              // Remove streaming indicator when complete and update final message
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === aiMessageId
+                    ? { ...msg, isStreaming: false, content: streamedContent }
+                    : msg
+                )
+              );
+              
+              // Update chat sessions with the final AI message
+              const finalMessage = {
+                id: aiMessageId,
+                role: "assistant" as const,
+                content: streamedContent,
+                timestamp: new Date(),
+                model: currentModel,
+                isStreaming: false,
+              };
+              
+              if (appUser) {
+                setChatSessions((prev) =>
+                  prev.map((session) =>
+                    session.id === currentChatId
+                      ? {
+                          ...session,
+                          messages: session.messages.map((msg) =>
+                            msg.id === aiMessageId ? finalMessage : msg
+                          ),
+                          lastUpdated: new Date(),
+                        }
+                      : session,
+                  ),
+                )
+              } else {
+                setGuestChatSessions((prev) =>
+                  prev.map((session) =>
+                    session.id === currentChatId
+                      ? {
+                          ...session,
+                          messages: session.messages.map((msg) =>
+                            msg.id === aiMessageId ? finalMessage : msg
+                          ),
+                          lastUpdated: new Date(),
+                        }
+                      : session,
+                  ),
+                )
+              }
+            },
+            // onError callback
+            (error: string) => {
+              console.error('Streaming error:', error);
+              const errorContent = selectedLanguage === 'zh' 
+                ? `抱歉，发生了错误：${error}`
+                : `Sorry, an error occurred: ${error}`;
+              
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === aiMessageId
+                    ? { ...msg, content: errorContent, isStreaming: false }
+                    : msg
+                )
+              );
+              setIsLoading(false);
+              setIsStreaming(false);
+              setStreamingController(null);
+            },
+            // signal for aborting
+            controller.signal
+          );
           
-          // Remove the user message since payment is required
-          setMessages((prev) => prev.slice(0, -1));
+          // Wait for streaming to complete
+          while (!isStreamingComplete) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
+        } catch (error) {
+          console.error('Streaming API call failed:', error);
+          const errorContent = selectedLanguage === 'zh' 
+            ? `抱歉，连接失败。请稍后重试。`
+            : `Sorry, connection failed. Please try again later.`;
+          
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === aiMessageId
+                ? { ...msg, content: errorContent, isStreaming: false }
+                : msg
+            )
+          );
           setIsLoading(false);
-          return;
-        } else {
-          // Fallback to simulated response if API fails
-          console.log('API failed, using fallback response. Error:', result.error);
-          const fallbackResponse = `I understand you're asking about: "${userMessage.content}". As ${currentModel}, I'm here to help you with this request. (API temporarily unavailable, using fallback response)`
-          
-          aiMessage = {
-            id: (Date.now() + 1).toString(),
-            role: "assistant",
-            content: fallbackResponse,
-            timestamp: new Date(),
-            model: currentModel,
-          }
         }
       }
 
-      setMessages((prev) => [...prev, aiMessage])
-      setIsLoading(false)
-
-      if (appUser) {
-        setChatSessions((prev) =>
-          prev.map((session) =>
-            session.id === currentChatId
-              ? {
-                  ...session,
-                  messages: [...session.messages, aiMessage],
-                  lastUpdated: new Date(),
-                }
-              : session,
-          ),
-        )
-      } else {
-        setGuestChatSessions((prev) =>
-          prev.map((session) =>
-            session.id === currentChatId
-              ? {
-                  ...session,
-                  messages: [...session.messages, aiMessage],
-                  lastUpdated: new Date(),
-                }
-              : session,
-          ),
-        )
-      }
+      // Note: Messages and chat sessions are already updated during streaming in the onEnd callback
     } catch (error) {
       console.error('Error getting AI response:', error)
       
-      // Fallback response on error
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: `I apologize, but I'm having trouble connecting to the AI service right now. Please try again in a moment. (Error: ${error instanceof Error ? error.message : 'Unknown error'})`,
-        timestamp: new Date(),
-        model: currentModel,
+      // Only create fallback message if we're not in streaming mode
+      if (!isStreaming) {
+        // Fallback response on error
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: selectedLanguage === 'zh' 
+            ? `抱歉，我现在无法连接到AI服务。请稍后再试。（错误：${error instanceof Error ? error.message : '未知错误'}）`
+            : `I apologize, but I'm having trouble connecting to the AI service right now. Please try again in a moment. (Error: ${error instanceof Error ? error.message : 'Unknown error'})`,
+          timestamp: new Date(),
+          model: currentModel,
+        }
+        
+        setMessages((prev) => [...prev, errorMessage])
       }
-      
-      setMessages((prev) => [...prev, errorMessage])
       setIsLoading(false)
+      setIsStreaming(false)
+      setStreamingController(null)
       
-      // Update chat sessions with error message
-      if (appUser) {
-        setChatSessions((prev) =>
-          prev.map((session) =>
-            session.id === currentChatId
-              ? {
-                  ...session,
-                  messages: [...session.messages, errorMessage],
-                  lastUpdated: new Date(),
-                }
-              : session,
-          ),
-        )
-      } else {
-        setGuestChatSessions((prev) =>
-          prev.map((session) =>
-            session.id === currentChatId
-              ? {
-                  ...session,
-                  messages: [...session.messages, errorMessage],
-                  lastUpdated: new Date(),
-                }
-              : session,
-          ),
-        )
+      // Update chat sessions with error message (only if not in streaming mode)
+      if (!isStreaming) {
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: selectedLanguage === 'zh' 
+            ? `抱歉，我现在无法连接到AI服务。请稍后再试。（错误：${error instanceof Error ? error.message : '未知错误'}）`
+            : `I apologize, but I'm having trouble connecting to the AI service right now. Please try again in a moment. (Error: ${error instanceof Error ? error.message : 'Unknown error'})`,
+          timestamp: new Date(),
+          model: currentModel,
+        }
+        
+        if (appUser) {
+          setChatSessions((prev) =>
+            prev.map((session) =>
+              session.id === currentChatId
+                ? {
+                    ...session,
+                    messages: [...session.messages, errorMessage],
+                    lastUpdated: new Date(),
+                  }
+                : session,
+            ),
+          )
+        } else {
+          setGuestChatSessions((prev) =>
+            prev.map((session) =>
+              session.id === currentChatId
+                ? {
+                    ...session,
+                    messages: [...session.messages, errorMessage],
+                    lastUpdated: new Date(),
+                  }
+                : session,
+            ),
+          )
+        }
       }
     }
   }
@@ -2275,6 +2552,262 @@ export default function MornGPTHomepage() {
     return remaining > 0 ? `${remaining} trials left` : "No trials left"
   }
 
+  // Get localized text based on selected language
+  const getLocalizedText = (key: string) => {
+    const texts = {
+      en: {
+        placeholder: "Start a conversation with MornGPT...",
+        thinking: "Thinking...",
+        deepThinking: "Deep thinking in progress...",
+        newChat: "New Chat",
+        searchChats: "Search chats...",
+        general: "General",
+        guestUser: "Guest User",
+        login: "Login",
+        signOut: "Sign Out",
+        setting: "Setting",
+        share: "Share",
+        copy: "Copy",
+        delete: "Delete",
+        deepThinkingBtn: "Deep Thinking",
+        creativeIdeasBtn: "Creative Ideas",
+        analyzeBtn: "Analyze",
+        problemSolveBtn: "Problem Solve",
+        uploadFiles: "Upload files",
+        send: "Send",
+        poweredBy: "Powered by",
+        noChatSelected: "No chat selected",
+        noConversationToShare: "No conversation to share",
+        signUpToShare: "Sign up to share conversations",
+        shareConversation: "Share conversation",
+        guestSessionExpired: "Your guest session has expired due to inactivity. Your conversations have been cleared.",
+        textCopied: "Text copied to clipboard",
+        textDeleted: "Text deleted",
+        characters: "chars",
+        dragToResize: "Drag to resize",
+        shortcutsActive: "Shortcuts Active",
+        shortcutsDisabled: "Shortcuts Disabled",
+        enabled: "Enabled",
+        disabled: "Disabled",
+        // Sidebar translations
+        newChatInGeneral: "New Chat in General",
+        multiGPTDeepThinking: "Multi-GPT Deep Thinking",
+        poweredByModel: "由 {model} 提供支持",
+        // Header translations
+        mornGPT: "MornGPT",
+        // Context menu translations
+        rename: "Rename",
+        deleteChat: "Delete Chat",
+        exportChat: "Export Chat",
+        // Settings translations
+        settings: "Settings",
+        shortcuts: "Shortcuts",
+        theme: "Theme",
+        language: "Language",
+        notifications: "Notifications",
+        sound: "Sound",
+        autoSave: "Auto Save",
+        // Error messages
+        errorLoadingShared: "Error loading shared conversation. The link may be invalid or expired.",
+        sharedConversationLoaded: "Shared conversation loaded: \"{title}\" by {author}",
+        // File upload
+        attachedFiles: "Attached Files",
+        maximumFilesReached: "Maximum {count} files reached. Remove some files first.",
+        uploading: "Uploading...",
+        uploadFilesMax: "Upload files (max {count}, {size}MB total)",
+        // Model selection translations
+        selectModel: "Select Model",
+        external: "External",
+        mornGPT: "MornGPT",
+        // Tips translations
+        beSpecific: "Be specific about your goals",
+        chooseSpecialized: "Choose specialized MornGPT models",
+        uploadFilesWith: "Upload files with",
+        useCtrlEnter: "Use Ctrl/Cmd + Enter"
+      },
+      zh: {
+        placeholder: "开始与 MornGPT 对话...",
+        thinking: "思考中...",
+        deepThinking: "深度思考进行中...",
+        newChat: "新对话",
+        searchChats: "搜索对话...",
+        general: "通用",
+        guestUser: "访客用户",
+        login: "登录",
+        signOut: "退出登录",
+        setting: "设置",
+        share: "分享",
+        copy: "复制",
+        delete: "删除",
+        deepThinkingBtn: "深度思考",
+        creativeIdeasBtn: "创意想法",
+        analyzeBtn: "分析",
+        problemSolveBtn: "问题解决",
+        uploadFiles: "上传文件",
+        send: "发送",
+        poweredBy: "由",
+        noChatSelected: "未选择对话",
+        noConversationToShare: "没有可分享的对话",
+        signUpToShare: "注册以分享对话",
+        shareConversation: "分享对话",
+        guestSessionExpired: "由于不活动，您的访客会话已过期。您的对话已被清除。",
+        textCopied: "文本已复制到剪贴板",
+        textDeleted: "文本已删除",
+        characters: "字符",
+        dragToResize: "拖拽调整大小",
+        shortcutsActive: "快捷键已启用",
+        shortcutsDisabled: "快捷键已禁用",
+        enabled: "已启用",
+        disabled: "已禁用",
+        // Sidebar translations
+        newChatInGeneral: "在通用中新建对话",
+        multiGPTDeepThinking: "多GPT深度思考",
+        poweredByModel: "由 {model} 提供支持",
+        // Header translations
+        mornGPT: "MornGPT",
+        // Context menu translations
+        rename: "重命名",
+        deleteChat: "删除对话",
+        exportChat: "导出对话",
+        // Settings translations
+        settings: "设置",
+        shortcuts: "快捷键",
+        theme: "主题",
+        language: "语言",
+        notifications: "通知",
+        sound: "声音",
+        autoSave: "自动保存",
+        // Error messages
+        errorLoadingShared: "加载共享对话时出错。链接可能无效或已过期。",
+        sharedConversationLoaded: "已加载共享对话：\"{title}\" 由 {author} 创建",
+        // File upload
+        attachedFiles: "附件文件",
+        maximumFilesReached: "已达到最大文件数量 {count}。请先删除一些文件。",
+        uploading: "上传中...",
+        uploadFilesMax: "上传文件（最多 {count} 个，总计 {size}MB）",
+        // Model selection translations
+        selectModel: "选择模型",
+        external: "外部",
+        mornGPT: "MornGPT",
+        // Tips translations
+        beSpecific: "明确您的目标",
+        chooseSpecialized: "选择专门的 MornGPT 模型",
+        uploadFilesWith: "上传文件",
+        useCtrlEnter: "使用 Ctrl/Cmd + Enter"
+      }
+    };
+    return texts[selectedLanguage as keyof typeof texts]?.[key as keyof typeof texts.en] || texts.en[key as keyof typeof texts.en];
+  };
+
+  // Handle text selection in textarea
+  const handleTextSelection = () => {
+    if (textareaRef.current) {
+      const selection = textareaRef.current.value.substring(
+        textareaRef.current.selectionStart,
+        textareaRef.current.selectionEnd
+      )
+      setSelectedText(selection)
+    }
+  }
+
+  // Copy selected text
+  const copySelectedText = () => {
+    if (selectedText) {
+      navigator.clipboard.writeText(selectedText)
+      // Show toast notification
+      const toast = document.createElement('div')
+      toast.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 transform transition-all duration-300 translate-x-full'
+      toast.textContent = `${getLocalizedText('textCopied')}: ${selectedText.length} ${getLocalizedText('characters')}`
+      document.body.appendChild(toast)
+      
+      // Animate in
+      setTimeout(() => {
+        toast.classList.remove('translate-x-full')
+      }, 100)
+      
+      // Remove after 3 seconds
+      setTimeout(() => {
+        toast.classList.add('translate-x-full')
+        setTimeout(() => {
+          document.body.removeChild(toast)
+        }, 300)
+      }, 3000)
+    }
+  }
+
+  // Delete selected text
+  const deleteSelectedText = () => {
+    if (textareaRef.current && selectedText) {
+      const start = textareaRef.current.selectionStart
+      const end = textareaRef.current.selectionEnd
+      const newValue = prompt.substring(0, start) + prompt.substring(end)
+      setPrompt(newValue)
+      setSelectedText("")
+      
+      // Set cursor position after deletion
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.setSelectionRange(start, start)
+          textareaRef.current.focus()
+        }
+      }, 0)
+      
+      // Show toast notification
+      const toast = document.createElement('div')
+      toast.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 transform transition-all duration-300 translate-x-full'
+      toast.textContent = `${getLocalizedText('textDeleted')}: ${selectedText.length} ${getLocalizedText('characters')}`
+      document.body.appendChild(toast)
+      
+      // Animate in
+      setTimeout(() => {
+        toast.classList.remove('translate-x-full')
+      }, 100)
+      
+      // Remove after 3 seconds
+      setTimeout(() => {
+        toast.classList.add('translate-x-full')
+        setTimeout(() => {
+          document.body.removeChild(toast)
+        }, 300)
+      }, 3000)
+    }
+  }
+
+  // Sidebar resize functionality
+  const handleSidebarResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizingSidebar(true)
+    setStartX(e.clientX)
+    setStartWidth(sidebarWidth)
+    document.body.style.cursor = 'ew-resize'
+    document.body.style.userSelect = 'none'
+  }
+
+  const handleSidebarResizeMove = React.useCallback((e: MouseEvent) => {
+    if (!isResizingSidebar) return
+
+    const deltaX = e.clientX - startX
+    const newWidth = Math.max(200, Math.min(400, startWidth + deltaX))
+    setSidebarWidth(newWidth)
+  }, [isResizingSidebar, startX, startWidth])
+
+  const handleSidebarResizeEnd = React.useCallback(() => {
+    setIsResizingSidebar(false)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+  }, [])
+
+  React.useEffect(() => {
+    if (isResizingSidebar) {
+      document.addEventListener('mousemove', handleSidebarResizeMove)
+      document.addEventListener('mouseup', handleSidebarResizeEnd)
+      return () => {
+        document.removeEventListener('mousemove', handleSidebarResizeMove)
+        document.removeEventListener('mouseup', handleSidebarResizeEnd)
+      }
+    }
+  }, [isResizingSidebar, handleSidebarResizeMove, handleSidebarResizeEnd])
+
   // Auto-scroll to input area when voice recording starts
   const scrollToInputArea = () => {
     // Immediate scroll to bottom
@@ -2720,7 +3253,7 @@ export default function MornGPTHomepage() {
     })
     
     // Only handle shortcuts if they're enabled and user is logged in
-    if (!appUser?.settings?.shortcutsEnabled || !appUser) {
+    if (!shortcutsEnabled || !appUser) {
       console.log("Shortcuts disabled or no user")
       return
     }
@@ -3532,9 +4065,17 @@ export default function MornGPTHomepage() {
         {/* Left Sidebar - Chat History */}
         <div
           ref={sidebarRef}
-          className={`${sidebarCollapsed ? "w-0 opacity-0 pointer-events-none" : ""} bg-white dark:bg-[#40414f] border-r border-gray-200 dark:border-[#565869] flex flex-col transition-all duration-300 ${sidebarCollapsed ? "ml-12" : ""} relative h-screen`}
+          className={`${sidebarCollapsed ? "w-0 opacity-0 pointer-events-none" : ""} bg-white dark:bg-[#40414f] border-r border-gray-200 dark:border-[#565869] flex flex-col transition-all duration-300 ${sidebarCollapsed ? "ml-12" : ""} relative h-screen md:block hidden`}
           style={{ width: sidebarCollapsed ? 0 : sidebarWidth }}
         >
+          {/* Resize handle */}
+          {!sidebarCollapsed && (
+            <div
+              className="absolute right-0 top-0 w-1 h-full bg-gray-300 dark:bg-gray-600 cursor-ew-resize hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors duration-200 z-10"
+              onMouseDown={handleSidebarResizeStart}
+              title="Drag to resize sidebar"
+            />
+          )}
           {!sidebarCollapsed && (
             <>
               <div className="p-3 border-b border-gray-200 dark:border-[#565869] space-y-2">
@@ -3544,7 +4085,7 @@ export default function MornGPTHomepage() {
                     className="flex-1 flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>New Chat</span>
+                    <span>{getLocalizedText('newChat')}</span>
                   </Button>
                   <Button
                     variant="ghost"
@@ -3558,7 +4099,7 @@ export default function MornGPTHomepage() {
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" />
                   <Input
-                    placeholder="Search chats..."
+                    placeholder={getLocalizedText('searchChats')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10 h-8 text-sm bg-white dark:bg-[#565869] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869]"
@@ -3584,7 +4125,7 @@ export default function MornGPTHomepage() {
                           ) : (
                             <Folder className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
                           )}
-                          <span className="text-xs font-medium text-gray-900 dark:text-[#ececf1]">General</span>
+                          <span className="text-xs font-medium text-gray-900 dark:text-[#ececf1]">{getLocalizedText('general')}</span>
                           <ChevronRight
                             className={`w-2.5 h-2.5 text-gray-400 transition-transform ${
                               expandedFolders.includes("general") ? "rotate-90" : ""
@@ -3598,7 +4139,7 @@ export default function MornGPTHomepage() {
                           className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
                         >
                           <Plus className="w-4 h-4 mr-2" />
-                          New Chat in General
+                          {getLocalizedText('newChatInGeneral')}
                         </ContextMenuItem>
                       </ContextMenuContent>
                     </ContextMenu>
@@ -3898,19 +4439,30 @@ export default function MornGPTHomepage() {
         </div>
 
         {/* Main Content */}
-        <div className={`flex-1 flex flex-col ${sidebarCollapsed ? "ml-12" : ""} h-screen`}>
-          {/* Header - Fixed height */}
-          <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#565869] flex-shrink-0">
+        <div className={`flex-1 flex flex-col ${sidebarCollapsed ? "ml-12" : ""} h-screen md:ml-0`}>
+                      {/* Header - Fixed height */}
+            <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#565869] flex-shrink-0">
+              {/* Mobile Menu Button */}
+              <div className="md:hidden p-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                >
+                  <Menu className="w-4 h-4" />
+                </Button>
+              </div>
             <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between items-center h-16">
                 <div className="flex items-center space-x-4">
-                  <h1 className="text-2xl font-bold text-gray-900 dark:text-[#ececf1]">MornGPT</h1>
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-[#ececf1]">{getLocalizedText('mornGPT')}</h1>
                   {currentChat && (
                     <span className="text-sm text-gray-500 dark:text-gray-400">- {currentChat.title}</span>
                   )}
                                      {!appUser && (
                      <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700" title="Data will not be saved unless you login">
-                       Guest User
+                       {getLocalizedText('guestUser')}
                      </Badge>
                   )}
                 </div>
@@ -3929,7 +4481,7 @@ export default function MornGPTHomepage() {
                      }}
                      disabled={!currentChat || (appUser ? messages.length === 0 : guestChatSessions.find(c => c.id === currentChatId)?.messages.length === 0)}
                      className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed"
-                     title={!appUser ? "Sign up to share conversations" : !currentChat ? "No chat selected" : (appUser ? messages.length === 0 : guestChatSessions.find(c => c.id === currentChatId)?.messages.length === 0) ? "No conversation to share" : "Share conversation"}
+                     title={!appUser ? getLocalizedText('signUpToShare') : !currentChat ? getLocalizedText('noChatSelected') : (appUser ? messages.length === 0 : guestChatSessions.find(c => c.id === currentChatId)?.messages.length === 0) ? getLocalizedText('noConversationToShare') : getLocalizedText('shareConversation')}
                    >
                     {isGeneratingLink ? (
                       <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
@@ -3937,6 +4489,22 @@ export default function MornGPTHomepage() {
                       <Upload className="w-4 h-4" />
                     )}
                   </Button>
+                  {/* Language Selector */}
+                  <div className="flex items-center space-x-1">
+                    <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+                      <SelectTrigger className="h-8 w-16 text-xs bg-white dark:bg-[#40414f] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869]">
+                        <span>{selectedLanguage === 'en' ? 'EN' : '中'}</span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="en">English</SelectItem>
+                        <SelectItem value="zh">中文</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {prompt && detectLanguage(prompt) !== selectedLanguage && (
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" title="Language will be auto-detected from your input"></div>
+                    )}
+                  </div>
+                  
                   <Button
                     variant="ghost"
                     size="sm"
@@ -3971,7 +4539,7 @@ export default function MornGPTHomepage() {
                                 onClick={() => setShowSettingsDialog(true)}
                             >
                                 <Settings className="w-4 h-4 mr-2" />
-                                Setting
+                                {getLocalizedText('setting')}
                             </Button>
                             )}
 
@@ -3982,7 +4550,7 @@ export default function MornGPTHomepage() {
                               onClick={confirmLogout}
                             >
                               <LogOut className="w-4 h-4 mr-2" />
-                              Sign Out
+                              {getLocalizedText('signOut')}
                             </Button>
                           </div>
                         </PopoverContent>
@@ -3996,7 +4564,7 @@ export default function MornGPTHomepage() {
                       className="bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869]"
                     >
                       <LogIn className="w-4 h-4 mr-2" />
-                      Login
+                      {getLocalizedText('login')}
                     </Button>
                   )}
                 </div>
@@ -4013,14 +4581,14 @@ export default function MornGPTHomepage() {
                   <p className="text-xl text-gray-600 dark:text-gray-300 mb-8">Advanced AI models at your fingertips</p>
 
                   {/* Compact Tips */}
-                  <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 max-w-4xl mx-auto">
-                    <div className="flex items-center justify-center space-x-6 text-xs text-blue-800 dark:text-blue-200">
-                      <span>• Be specific about your goals</span>
-                      <span>• Choose specialized MornGPT models</span>
-                      <span>• Upload files with 📎</span>
-                      <span>• Use Ctrl/Cmd + Enter</span>
-                    </div>
-                  </div>
+                                     <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 max-w-4xl mx-auto">
+                     <div className="flex items-center justify-center space-x-6 text-xs text-blue-800 dark:text-blue-200">
+                       <span>• {getLocalizedText('beSpecific')}</span>
+                       <span>• {getLocalizedText('chooseSpecialized')}</span>
+                       <span>• {getLocalizedText('uploadFilesWith')} 📎</span>
+                       <span>• {getLocalizedText('useCtrlEnter')}</span>
+                     </div>
+                   </div>
 
 
                 </div>
@@ -4047,13 +4615,18 @@ export default function MornGPTHomepage() {
                           {message.isMultiGPT && (
                             <div className="flex items-center space-x-2 mb-3 text-indigo-600 dark:text-indigo-400">
                               <Zap className="w-4 h-4" />
-                              <span className="text-sm font-medium">Multi-GPT Deep Thinking</span>
+                              <span className="text-sm font-medium">{getLocalizedText('multiGPTDeepThinking')}</span>
                             </div>
                           )}
-                          <p className="whitespace-pre-wrap">{message.content}</p>
+                          <p className="whitespace-pre-wrap">
+                            {message.content}
+                            {message.isStreaming && (
+                              <span className="inline-block w-0.5 h-4 bg-gray-900 dark:bg-[#ececf1] ml-1 animate-pulse"></span>
+                            )}
+                          </p>
                           {message.model && message.role === "assistant" && (
                             <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                              Powered by {message.model}
+                              {getLocalizedText('poweredBy')} {message.model}
                             </div>
                           )}
 
@@ -4122,7 +4695,7 @@ export default function MornGPTHomepage() {
                         <div className="bg-white dark:bg-[#444654] border border-gray-200 dark:border-[#565869] text-gray-900 dark:text-[#ececf1] p-4 rounded-lg">
                           <div className="flex items-center space-x-2">
                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900 dark:border-[#ececf1]"></div>
-                            <span>{selectedCategory === "h" ? "Deep thinking in progress..." : "Thinking..."}</span>
+                            <span>{selectedCategory === "h" ? getLocalizedText('deepThinking') : getLocalizedText('thinking')}</span>
                           </div>
                         </div>
                       </div>
@@ -4150,24 +4723,82 @@ export default function MornGPTHomepage() {
           <div className="border-t border-gray-200 dark:border-[#565869] bg-white dark:bg-[#40414f] flex-shrink-0 p-6 sticky bottom-0">
             <div className="max-w-4xl mx-auto">
                              {/* Input Container Box with Modern Styling */}
-               <div className="border border-gray-200 dark:border-[#565869] rounded-2xl p-4 bg-white dark:bg-[#40414f] shadow-lg">
+               <div className="border border-gray-200 dark:border-[#565869] rounded-2xl p-4 bg-white dark:bg-[#40414f] shadow-lg relative">
                   <div className="flex flex-col space-y-4">
                     {/* Main Input Field */}
                    <div className="relative">
-                    <Textarea
+                    <ResizableTextarea
                       ref={textareaRef}
-                      placeholder="Start a conversation with MornGPT..."
+                      placeholder={getLocalizedText('placeholder')}
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
-                      className="min-h-24 max-h-[24rem] resize-none pr-4 text-sm py-3 px-3 text-gray-900 dark:text-[#ececf1] bg-transparent border-0 focus:ring-0 focus:border-0 focus:outline-none outline-none rounded-xl selection:bg-white dark:selection:bg-[#40414f] selection:text-gray-900 dark:selection:text-[#ececf1] [&::selection]:bg-white dark:[&::selection]:bg-[#40414f]"
+                      onSelect={handleTextSelection}
+                      onResize={setTextareaHeight}
+                      minHeight={96}
+                      maxHeight={384}
+                      defaultHeight={96}
+                      className="pr-4"
                       onKeyDown={(e) => {
                         const currentHotkey = appUser?.settings?.sendHotkey || "enter"
                         if (checkHotkeyMatch(e, currentHotkey)) {
                           e.preventDefault()
-                          handleSubmit()
+                          if (!isLoading) {
+                            handleSubmit()
+                          }
+                        }
+                        
+                        // Text selection shortcuts
+                        if (e.ctrlKey || e.metaKey) {
+                          if (e.key === 'c' && selectedText) {
+                            e.preventDefault()
+                            copySelectedText()
+                          } else if (e.key === 'x' && selectedText) {
+                            e.preventDefault()
+                            copySelectedText()
+                            deleteSelectedText()
+                          } else if (e.key === 'a') {
+                            e.preventDefault()
+                            if (textareaRef.current) {
+                              textareaRef.current.select()
+                              handleTextSelection()
+                            }
+                          }
+                        }
+                        
+                        // Delete key for selected text
+                        if (e.key === 'Delete' && selectedText) {
+                          e.preventDefault()
+                          deleteSelectedText()
                         }
                       }}
                     />
+                    
+                    {/* Text Selection Controls */}
+                    {selectedText && (
+                      <div className="absolute top-2 right-2 flex items-center space-x-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-1 z-10">
+                        <button
+                          onClick={copySelectedText}
+                          className="p-1 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors"
+                          title="Copy selected text"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={deleteSelectedText}
+                          className="p-1 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 rounded transition-colors"
+                          title="Delete selected text"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 px-1">
+                          {selectedText.length} chars
+                        </span>
+                      </div>
+                    )}
                   </div>
                 
                 {/* Action Buttons Section */}
@@ -4183,7 +4814,7 @@ export default function MornGPTHomepage() {
                          className="h-7 flex items-center justify-center space-x-0.5 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-[#565869] hover:text-gray-900 dark:hover:text-[#ececf1] bg-white dark:bg-[#40414f] hover:bg-gray-50 dark:hover:bg-[#565869] rounded px-1 transition-all duration-200"
                        >
                          <Brain className="w-3 h-3" />
-                         <span className="text-xs font-medium">Deep Thinking</span>
+                         <span className="text-xs font-medium">{getLocalizedText('deepThinkingBtn')}</span>
                        </Button>
                        <Button
                          variant="outline"
@@ -4192,7 +4823,7 @@ export default function MornGPTHomepage() {
                          className="h-7 flex items-center justify-center space-x-0.5 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-[#565869] hover:text-gray-900 dark:hover:text-[#ececf1] bg-white dark:bg-[#40414f] hover:bg-gray-50 dark:hover:bg-[#565869] rounded px-1 transition-all duration-200"
                        >
                          <Lightbulb className="w-3 h-3" />
-                         <span className="text-xs font-medium">Creative Ideas</span>
+                         <span className="text-xs font-medium">{getLocalizedText('creativeIdeasBtn')}</span>
                        </Button>
                        <Button
                          variant="outline"
@@ -4201,7 +4832,7 @@ export default function MornGPTHomepage() {
                          className="h-7 flex items-center justify-center space-x-0.5 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-[#565869] hover:text-gray-900 dark:hover:text-[#ececf1] bg-white dark:bg-[#40414f] hover:bg-gray-50 dark:hover:bg-[#565869] rounded px-1 transition-all duration-200"
                        >
                          <Target className="w-3 h-3" />
-                         <span className="text-xs font-medium">Analyze</span>
+                         <span className="text-xs font-medium">{getLocalizedText('analyzeBtn')}</span>
                        </Button>
                        <Button
                          variant="outline"
@@ -4210,7 +4841,7 @@ export default function MornGPTHomepage() {
                          className="h-7 flex items-center justify-center space-x-0.5 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-[#565869] hover:text-gray-900 dark:hover:text-[#ececf1] bg-white dark:bg-[#40414f] hover:bg-gray-50 dark:hover:bg-[#565869] rounded px-1 transition-all duration-200"
                        >
                          <Zap className="w-3 h-3" />
-                         <span className="text-xs font-medium">Problem Solve</span>
+                         <span className="text-xs font-medium">{getLocalizedText('problemSolveBtn')}</span>
                        </Button>
                      </div>
 
@@ -4234,10 +4865,10 @@ export default function MornGPTHomepage() {
                           }`}
                           title={
                             uploadedFiles.length >= MAX_FILES 
-                              ? `Maximum ${MAX_FILES} files reached. Remove some files first.` 
+                              ? getLocalizedText('maximumFilesReached').replace('{count}', MAX_FILES.toString())
                               : isUploading 
-                                ? 'Uploading...' 
-                                : `Upload files (max ${MAX_FILES}, ${MAX_TOTAL_SIZE / (1024 * 1024)}MB total)`
+                                ? getLocalizedText('uploading')
+                                : getLocalizedText('uploadFilesMax').replace('{count}', MAX_FILES.toString()).replace('{size}', (MAX_TOTAL_SIZE / (1024 * 1024)).toString())
                             }
                           type="button"
                             disabled={isUploading}
@@ -4767,7 +5398,7 @@ export default function MornGPTHomepage() {
                               variant="outline"
                               className="h-7 px-2 text-xs border-gray-300 dark:border-[#565869] hover:border-gray-400 dark:hover:border-gray-500 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] rounded-md transition-all duration-200"
                               disabled={isModelLocked}
-                              title="Select Model"
+                                                             title={getLocalizedText('selectModel')}
                             >
                               <div className="flex items-center space-x-1">
                                 {getModelIcon()}
@@ -4782,7 +5413,7 @@ export default function MornGPTHomepage() {
                           >
                             <div className="p-4">
                               <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Select Model</h3>
+                                                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{getLocalizedText('selectModel')}</h3>
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -4794,18 +5425,18 @@ export default function MornGPTHomepage() {
                               
                               <Tabs value={selectedModelType} onValueChange={setSelectedModelType} className="w-full">
                               <TabsList className="grid w-full grid-cols-3 bg-gray-100 dark:bg-[#565869]">
-                                <TabsTrigger value="general" className="text-xs text-gray-900 dark:text-[#ececf1]">
-                                  <MessageSquare className="w-3 h-3 mr-1" />
-                                  General
-                                </TabsTrigger>
-                                <TabsTrigger value="morngpt" className="text-xs text-gray-900 dark:text-[#ececf1]">
-                                  <Sparkles className="w-3 h-3 mr-1" />
-                                  MornGPT
-                                </TabsTrigger>
-                                <TabsTrigger value="external" className="text-xs text-gray-900 dark:text-[#ececf1]">
-                                  <Globe className="w-3 h-3 mr-1" />
-                                  External
-                                </TabsTrigger>
+                                                                 <TabsTrigger value="general" className="text-xs text-gray-900 dark:text-[#ececf1]">
+                                   <MessageSquare className="w-3 h-3 mr-1" />
+                                   {getLocalizedText('general')}
+                                 </TabsTrigger>
+                                 <TabsTrigger value="morngpt" className="text-xs text-gray-900 dark:text-[#ececf1]">
+                                   <Sparkles className="w-3 h-3 mr-1" />
+                                   {getLocalizedText('mornGPT')}
+                                 </TabsTrigger>
+                                 <TabsTrigger value="external" className="text-xs text-gray-900 dark:text-[#ececf1]">
+                                   <Globe className="w-3 h-3 mr-1" />
+                                   {getLocalizedText('external')}
+                                 </TabsTrigger>
                               </TabsList>
 
                               <TabsContent value="general" className="p-2">
@@ -4823,45 +5454,45 @@ export default function MornGPTHomepage() {
                                 </div>
                               </TabsContent>
 
-                              <TabsContent value="morngpt" className="p-2">
-                                <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
-                                  {mornGPTCategories.map((category) => {
-                                    const IconComponent = category.icon
-                                    return (
-                                      <div
-                                        key={category.id}
-                                        className={`p-1.5 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm border ${
-                                          selectedCategory === category.id
-                                            ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
-                                            : "border-gray-100 dark:border-gray-700"
-                                        }`}
-                                        onClick={() => handleModelChange("morngpt", category.id)}
-                                      >
-                                        <div className="flex flex-col space-y-1">
-                                          <div className="flex items-center space-x-1.5">
-                                            <div className={`p-0.5 rounded ${category.color} text-white shadow-sm`}>
-                                              <IconComponent className="w-2 h-2" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                              <div className="flex items-center justify-between">
-                                                <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
-                                                  {category.name}
-                                                </p>
-                                                <Badge variant="secondary" className="text-[2px] px-0.5 py-0 h-2">
-                                                  {category.id.toUpperCase()}1
-                                                </Badge>
-                                              </div>
-                                            </div>
-                                          </div>
-                                                                                     <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
+                                                             <TabsContent value="morngpt" className="p-2">
+                                 <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
+                                   {mornGPTCategories.map((category) => {
+                                     const IconComponent = category.icon
+                                     return (
+                                       <div
+                                         key={category.id}
+                                         className={`p-1.5 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm border ${
+                                           selectedCategory === category.id
+                                             ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
+                                             : "border-gray-100 dark:border-gray-700"
+                                         }`}
+                                         onClick={() => handleModelChange("morngpt", category.id)}
+                                       >
+                                         <div className="flex flex-col space-y-1">
+                                           <div className="flex items-center space-x-1.5">
+                                             <div className={`p-0.5 rounded ${category.color} text-white shadow-sm`}>
+                                               <IconComponent className="w-2 h-2" />
+                                             </div>
+                                             <div className="flex-1 min-w-0">
+                                               <div className="flex items-center justify-between">
+                                                 <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
+                                                   {category.name}
+                                                 </p>
+                                                 <Badge variant="secondary" className="text-[2px] px-0.5 py-0 h-2">
+                                                   {category.id.toUpperCase()}1
+                                                 </Badge>
+                                               </div>
+                                             </div>
+                                           </div>
+                                           <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
                                              {category.description}
                                            </p>
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </TabsContent>
+                                         </div>
+                                       </div>
+                                     )
+                                   })}
+                                 </div>
+                               </TabsContent>
 
                               <TabsContent value="external" className="p-2">
                                 <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
@@ -4942,33 +5573,40 @@ export default function MornGPTHomepage() {
 
                         <Button
                           size="sm"
-                          onClick={handleSubmit}
-                          disabled={!prompt.trim() || isLoading}
-                          className="h-7 w-7 bg-blue-600 hover:bg-blue-700 text-white rounded-full flex items-center justify-center shadow-sm transition-all duration-200"
+                          onClick={isStreaming ? stopStreaming : handleSubmit}
+                          disabled={isStreaming ? false : (!prompt.trim() || isLoading)}
+                          className={`h-8 w-8 ${
+                            isStreaming 
+                              ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25' 
+                              : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/25'
+                          } text-white rounded-full flex items-center justify-center transition-all duration-300 transform hover:scale-105 active:scale-95`}
+                          title={isStreaming ? (selectedLanguage === 'zh' ? '停止生成' : 'Stop Generation') : (selectedLanguage === 'zh' ? '发送消息' : 'Send Message')}
                         >
-                          <Send className="w-3 h-3" />
+                          {isStreaming ? (
+                            <Square className="w-3 h-3" />
+                          ) : (
+                            <Send className="w-3.5 h-3.5" />
+                          )}
                         </Button>
+                                      </div>
                   </div>
-                  
-
                 </div>
-              </div>
 
-              {/* Upload Error Display */}
-              {uploadError && (
-                <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
-                  <p className="text-xs text-red-600 dark:text-red-400">{uploadError}</p>
-                </div>
-              )}
+                {/* Upload Error Display */}
+                {uploadError && (
+                  <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+                    <p className="text-xs text-red-600 dark:text-red-400">{uploadError}</p>
+                  </div>
+                )}
 
-              {/* Voice Error Display */}
-              {voiceError && (
-                <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
-                  <p className="text-xs text-red-600 dark:text-red-400">{voiceError}</p>
-                </div>
-              )}
+                {/* Voice Error Display */}
+                {voiceError && (
+                  <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+                    <p className="text-xs text-red-600 dark:text-red-400">{voiceError}</p>
+                  </div>
+                )}
 
-              {/* Camera Error Display */}
+                {/* Camera Error Display */}
               {cameraError && (
                 <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
                   <p className="text-xs text-red-600 dark:text-red-400">{cameraError}</p>
@@ -5589,7 +6227,7 @@ export default function MornGPTHomepage() {
                         className="w-32 h-7 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869]"
                         onClick={() => setShowShortcutsHelp(true)}
                       >
-                        <span className="text-xs">{appUser?.settings?.shortcutsEnabled ?? false ? "Enabled" : "Disabled"}</span>
+                        <span className="text-xs">{shortcutsEnabled ? "Enabled" : "Disabled"}</span>
                       </Button>
                     </div>
                     <div className="flex items-center justify-between">
@@ -5689,7 +6327,7 @@ export default function MornGPTHomepage() {
                     </div>
                     <div className="flex items-center space-x-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-2 py-1 border border-gray-200 dark:border-gray-600 h-7">
                       <div className="flex items-center justify-center w-5 h-5 rounded-full bg-gray-500">
-                        {(appUser?.settings?.shortcutsEnabled ?? false) ? (
+                        {shortcutsEnabled ? (
                           <Keyboard className="w-3 h-3 text-white" />
                         ) : (
                           <X className="w-3 h-3 text-white" />
@@ -5697,12 +6335,12 @@ export default function MornGPTHomepage() {
                       </div>
                       <div className="flex-1">
                         <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                          {(appUser?.settings?.shortcutsEnabled ?? false) ? 'Shortcuts Active' : 'Shortcuts Disabled'}
+                          {shortcutsEnabled ? 'Shortcuts Active' : 'Shortcuts Disabled'}
                         </span>
                   </div>
                   <Switch 
-                                            checked={appUser?.settings?.shortcutsEnabled ?? false}
-                    onCheckedChange={(checked) => updateUserSettings({ shortcutsEnabled: checked })}
+                                                                  checked={shortcutsEnabled}
+                      onCheckedChange={(checked) => setShortcutsEnabled(checked)}
                         className="data-[state=checked]:bg-gray-600 data-[state=unchecked]:bg-gray-400"
                   />
                     </div>

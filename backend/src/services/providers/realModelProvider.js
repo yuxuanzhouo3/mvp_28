@@ -392,6 +392,10 @@ class RealModelProvider {
           continue;
         }
       }
+      
+      // If all APIs fail, use FreeAPI as final fallback
+      logger.info('All APIs failed, using FreeAPI fallback');
+      return await this.generateWithFreeAPI(modelId, prompt, options);
 
       // If all APIs fail, provide realistic fallback response
       logger.warn('All AI APIs failed, providing fallback response');
@@ -399,50 +403,132 @@ class RealModelProvider {
       const startTime = Date.now();
       const responseTime = Math.random() * 1000 + 500; // Simulate realistic response time
       
-      // Generate realistic fallback responses based on the model
+      // Generate realistic fallback responses based on the model and language
+      const isChinese = options.language === 'zh-CN';
+      
       const fallbackResponses = {
-        'gpt-3.5-turbo': `I understand you're asking about: "${prompt}". As GPT-3.5 Turbo, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by OpenAI`,
-        'gpt-4o': `I understand you're asking about: "${prompt}". As GPT-4o, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by OpenAI`,
-        'gpt-4o-mini': `I understand you're asking about: "${prompt}". As GPT-4o Mini, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by OpenAI`,
-        'gpt-4-turbo-128k': `I understand you're asking about: "${prompt}". As GPT-4 Turbo 128K, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by OpenAI`,
-        'claude-3-haiku': `I understand you're asking about: "${prompt}". As Claude 3 Haiku, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Anthropic`,
-        'claude-3-5-sonnet': `I understand you're asking about: "${prompt}". As Claude 3.5 Sonnet, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Anthropic`,
-        'claude-3-opus': `I understand you're asking about: "${prompt}". As Claude 3 Opus, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Anthropic`,
-        'gemini-1.5-flash': `I understand you're asking about: "${prompt}". As Gemini 1.5 Flash, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Google`,
-        'gemini-1.5-pro': `I understand you're asking about: "${prompt}". As Gemini 1.5 Pro, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Google`,
-        'groq-llama3-8b': `I understand you're asking about: "${prompt}". As Llama3 8B on Groq, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Groq`,
-        'groq-mixtral-8x7b': `I understand you're asking about: "${prompt}". As Mixtral 8x7B on Groq, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Groq`,
-        'mistral-small': `I understand you're asking about: "${prompt}". As Mistral Small, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Mistral`,
-        'mistral-7b': `I understand you're asking about: "${prompt}". As Mistral 7B, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Mistral`,
-        'together-llama3-8b': `I understand you're asking about: "${prompt}". As Llama3 8B on Together AI, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Together AI`,
-        'together-mixtral-8x7b': `I understand you're asking about: "${prompt}". As Mixtral 8x7B on Together AI, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Together AI`,
-        'ai21-j2-mid': `I understand you're asking about: "${prompt}". As J2 Mid, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by AI21`,
-        'ai21-j2-ultra': `I understand you're asking about: "${prompt}". As J2 Ultra, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by AI21`,
-        'openrouter-auto': `I understand you're asking about: "${prompt}". As OpenRouter Auto, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by OpenRouter`,
-        'openrouter-gpt4': `I understand you're asking about: "${prompt}". As OpenRouter GPT-4, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by OpenRouter`,
-        'deepinfra-phi3': `I understand you're asking about: "${prompt}". As Phi-3 on DeepInfra, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by DeepInfra`,
-        'deepinfra-llama3': `I understand you're asking about: "${prompt}". As Llama3 on DeepInfra, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by DeepInfra`,
-        'fireworks-llama-8b': `I understand you're asking about: "${prompt}". As Llama 3.1 8B on Fireworks AI, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Fireworks AI`,
-        'fireworks-mixtral': `I understand you're asking about: "${prompt}". As Mixtral 8x7B on Fireworks AI, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Fireworks AI`,
-        'replicate-llama': `I understand you're asking about: "${prompt}". As Llama on Replicate, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Replicate`,
-        'replicate-mixtral': `I understand you're asking about: "${prompt}". As Mixtral on Replicate, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Replicate`,
-        'cohere-command': `I understand you're asking about: "${prompt}". As Cohere Command, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Cohere`,
-        'cohere-command-r': `I understand you're asking about: "${prompt}". As Cohere Command R, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Cohere`,
-        'huggingface-whisper': `I understand you're asking about: "${prompt}". As HuggingFace Whisper, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by HuggingFace`,
-        'huggingface-diffusion': `I understand you're asking about: "${prompt}". As HuggingFace Diffusion, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by HuggingFace`,
-        'stability-sdxl': `I understand you're asking about: "${prompt}". As Stability SDXL, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Stability AI`,
-        'stability-sdxl-turbo': `I understand you're asking about: "${prompt}". As Stability SDXL Turbo, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Stability AI`,
-        'assemblyai-transcribe': `I understand you're asking about: "${prompt}". As AssemblyAI Transcribe, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by AssemblyAI`,
-        'assemblyai-sentiment': `I understand you're asking about: "${prompt}". As AssemblyAI Sentiment, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by AssemblyAI`,
-        'gladia-speech': `I understand you're asking about: "${prompt}". As Gladia Speech, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Gladia`,
-        'gladia-audio': `I understand you're asking about: "${prompt}". As Gladia Audio, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Gladia`,
-        'playht-tts': `I understand you're asking about: "${prompt}". As PlayHT TTS, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by PlayHT`,
-        'playht-voice': `I understand you're asking about: "${prompt}". As PlayHT Voice, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by PlayHT`,
-        'elevenlabs-tts': `I understand you're asking about: "${prompt}". As ElevenLabs TTS, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by ElevenLabs`,
-        'elevenlabs-voice': `I understand you're asking about: "${prompt}". As ElevenLabs Voice, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by ElevenLabs`
+        'gpt-3.5-turbo': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 GPT-3.5 Turbo，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 OpenAI 提供支持`
+          : `I understand you're asking about: "${prompt}". As GPT-3.5 Turbo, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by OpenAI`,
+        'gpt-4o': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 GPT-4o，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 OpenAI 提供支持`
+          : `I understand you're asking about: "${prompt}". As GPT-4o, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by OpenAI`,
+        'gpt-4o-mini': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 GPT-4o Mini，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 OpenAI 提供支持`
+          : `I understand you're asking about: "${prompt}". As GPT-4o Mini, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by OpenAI`,
+        'gpt-4-turbo-128k': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 GPT-4 Turbo 128K，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 OpenAI 提供支持`
+          : `I understand you're asking about: "${prompt}". As GPT-4 Turbo 128K, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by OpenAI`,
+        'claude-3-haiku': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Claude 3 Haiku，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Anthropic 提供支持`
+          : `I understand you're asking about: "${prompt}". As Claude 3 Haiku, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Anthropic`,
+        'claude-3-5-sonnet': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Claude 3.5 Sonnet，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Anthropic 提供支持`
+          : `I understand you're asking about: "${prompt}". As Claude 3.5 Sonnet, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Anthropic`,
+        'claude-3-opus': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Claude 3 Opus，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Anthropic 提供支持`
+          : `I understand you're asking about: "${prompt}". As Claude 3 Opus, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Anthropic`,
+        'gemini-1.5-flash': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Gemini 1.5 Flash，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Google 提供支持`
+          : `I understand you're asking about: "${prompt}". As Gemini 1.5 Flash, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Google`,
+        'gemini-1.5-pro': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Gemini 1.5 Pro，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Google 提供支持`
+          : `I understand you're asking about: "${prompt}". As Gemini 1.5 Pro, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Google`,
+        'groq-llama3-8b': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Groq 上的 Llama3 8B，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Groq 提供支持`
+          : `I understand you're asking about: "${prompt}". As Llama3 8B on Groq, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Groq`,
+        'groq-mixtral-8x7b': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Groq 上的 Mixtral 8x7B，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Groq 提供支持`
+          : `I understand you're asking about: "${prompt}". As Mixtral 8x7B on Groq, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Groq`,
+        'mistral-small': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Mistral Small，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Mistral 提供支持`
+          : `I understand you're asking about: "${prompt}". As Mistral Small, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Mistral`,
+        'mistral-7b': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Mistral 7B，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Mistral 提供支持`
+          : `I understand you're asking about: "${prompt}". As Mistral 7B, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Mistral`,
+        'together-llama3-8b': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Together AI 上的 Llama3 8B，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Together AI 提供支持`
+          : `I understand you're asking about: "${prompt}". As Llama3 8B on Together AI, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Together AI`,
+        'together-mixtral-8x7b': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Together AI 上的 Mixtral 8x7B，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Together AI 提供支持`
+          : `I understand you're asking about: "${prompt}". As Mixtral 8x7B on Together AI, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Together AI`,
+        'ai21-j2-mid': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 J2 Mid，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 AI21 提供支持`
+          : `I understand you're asking about: "${prompt}". As J2 Mid, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by AI21`,
+        'ai21-j2-ultra': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 J2 Ultra，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 AI21 提供支持`
+          : `I understand you're asking about: "${prompt}". As J2 Ultra, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by AI21`,
+        'openrouter-auto': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 OpenRouter Auto，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 OpenRouter 提供支持`
+          : `I understand you're asking about: "${prompt}". As OpenRouter Auto, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by OpenRouter`,
+        'openrouter-gpt4': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 OpenRouter GPT-4，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 OpenRouter 提供支持`
+          : `I understand you're asking about: "${prompt}". As OpenRouter GPT-4, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by OpenRouter`,
+        'deepinfra-phi3': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 DeepInfra 上的 Phi-3，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 DeepInfra 提供支持`
+          : `I understand you're asking about: "${prompt}". As Phi-3 on DeepInfra, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by DeepInfra`,
+        'deepinfra-llama3': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 DeepInfra 上的 Llama3，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 DeepInfra 提供支持`
+          : `I understand you're asking about: "${prompt}". As Llama3 on DeepInfra, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by DeepInfra`,
+        'fireworks-llama-8b': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Fireworks AI 上的 Llama 3.1 8B，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Fireworks AI 提供支持`
+          : `I understand you're asking about: "${prompt}". As Llama 3.1 8B on Fireworks AI, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Fireworks AI`,
+        'fireworks-mixtral': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Fireworks AI 上的 Mixtral 8x7B，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Fireworks AI 提供支持`
+          : `I understand you're asking about: "${prompt}". As Mixtral 8x7B on Fireworks AI, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Fireworks AI`,
+        'replicate-llama': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Replicate 上的 Llama，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Replicate 提供支持`
+          : `I understand you're asking about: "${prompt}". As Llama on Replicate, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Replicate`,
+        'replicate-mixtral': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Replicate 上的 Mixtral，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Replicate 提供支持`
+          : `I understand you're asking about: "${prompt}". As Mixtral on Replicate, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Replicate`,
+        'cohere-command': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Cohere Command，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Cohere 提供支持`
+          : `I understand you're asking about: "${prompt}". As Cohere Command, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Cohere`,
+        'cohere-command-r': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Cohere Command R，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Cohere 提供支持`
+          : `I understand you're asking about: "${prompt}". As Cohere Command R, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Cohere`,
+        'huggingface-whisper': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 HuggingFace Whisper，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 HuggingFace 提供支持`
+          : `I understand you're asking about: "${prompt}". As HuggingFace Whisper, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by HuggingFace`,
+        'huggingface-diffusion': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 HuggingFace Diffusion，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 HuggingFace 提供支持`
+          : `I understand you're asking about: "${prompt}". As HuggingFace Diffusion, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by HuggingFace`,
+        'stability-sdxl': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Stability SDXL，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Stability AI 提供支持`
+          : `I understand you're asking about: "${prompt}". As Stability SDXL, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Stability AI`,
+        'stability-sdxl-turbo': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Stability SDXL Turbo，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Stability AI 提供支持`
+          : `I understand you're asking about: "${prompt}". As Stability SDXL Turbo, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Stability AI`,
+        'assemblyai-transcribe': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 AssemblyAI Transcribe，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 AssemblyAI 提供支持`
+          : `I understand you're asking about: "${prompt}". As AssemblyAI Transcribe, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by AssemblyAI`,
+        'assemblyai-sentiment': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 AssemblyAI Sentiment，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 AssemblyAI 提供支持`
+          : `I understand you're asking about: "${prompt}". As AssemblyAI Sentiment, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by AssemblyAI`,
+        'gladia-speech': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Gladia Speech，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Gladia 提供支持`
+          : `I understand you're asking about: "${prompt}". As Gladia Speech, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Gladia`,
+        'gladia-audio': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 Gladia Audio，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 Gladia 提供支持`
+          : `I understand you're asking about: "${prompt}". As Gladia Audio, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by Gladia`,
+        'playht-tts': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 PlayHT TTS，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 PlayHT 提供支持`
+          : `I understand you're asking about: "${prompt}". As PlayHT TTS, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by PlayHT`,
+        'playht-voice': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 PlayHT Voice，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 PlayHT 提供支持`
+          : `I understand you're asking about: "${prompt}". As PlayHT Voice, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by PlayHT`,
+        'elevenlabs-tts': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 ElevenLabs TTS，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 ElevenLabs 提供支持`
+          : `I understand you're asking about: "${prompt}". As ElevenLabs TTS, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by ElevenLabs`,
+        'elevenlabs-voice': isChinese 
+          ? `我理解您询问的是："${prompt}"。作为 ElevenLabs Voice，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 ElevenLabs 提供支持`
+          : `I understand you're asking about: "${prompt}". As ElevenLabs Voice, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by ElevenLabs`
       };
       
-      const fallbackResponse = fallbackResponses[modelId] || `I understand you're asking about: "${prompt}". As ${model.name}, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by ${model.provider}`;
+      const fallbackResponse = fallbackResponses[modelId] || (isChinese 
+        ? `我理解您询问的是："${prompt}"。作为 ${model.name}，我在这里帮助您处理这个请求。（API暂时不可用，使用备用响应）\n\n由 ${model.provider} 提供支持`
+        : `I understand you're asking about: "${prompt}". As ${model.name}, I'm here to help you with this request. (API temporarily unavailable, using fallback response)\n\nPowered by ${model.provider}`);
       
       return {
         success: true,
@@ -640,7 +726,13 @@ class RealModelProvider {
       const modelMap = { 'groq-llama3-8b': 'llama3-8b-8192', 'groq-mixtral-8x7b': 'mixtral-8x7b-32768' };
       const groqModel = modelMap[modelId];
       if (!groqModel) throw new Error(`No Groq mapping for ${modelId}`);
-      const requestBody = { model: groqModel, messages: [{ role: 'user', content: prompt }], temperature: options.temperature || 0.7, max_tokens: options.maxTokens || 2048 };
+      const messages = options.language === 'zh-CN' 
+        ? [
+            { role: 'system', content: '请用中文回答所有问题。' },
+            { role: 'user', content: prompt }
+          ]
+        : [{ role: 'user', content: prompt }];
+      const requestBody = { model: groqModel, messages, temperature: options.temperature || 0.7, max_tokens: options.maxTokens || 2048 };
       logger.info(`Making Groq API request to: https://api.groq.com/openai/v1/chat/completions`);
       logger.info(`Groq request body: ${JSON.stringify(requestBody)}`);
       
@@ -678,7 +770,17 @@ class RealModelProvider {
       const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: mistralModel, messages: [{ role: 'user', content: prompt }], temperature: options.temperature || 0.7, max_tokens: options.maxTokens || 2048 })
+        body: JSON.stringify({ 
+          model: mistralModel, 
+          messages: options.language === 'zh-CN' 
+            ? [
+                { role: 'system', content: '请用中文回答所有问题。' },
+                { role: 'user', content: prompt }
+              ]
+            : [{ role: 'user', content: prompt }], 
+          temperature: options.temperature || 0.7, 
+          max_tokens: options.maxTokens || 2048 
+        })
       });
       if (!response.ok) throw new Error(`Mistral API error: ${response.status}`);
       const data = await response.json();
@@ -818,7 +920,12 @@ class RealModelProvider {
         },
         body: JSON.stringify({
           model: openaiModel,
-          messages: [{ role: 'user', content: prompt }],
+          messages: options.systemPrompt 
+            ? [
+                { role: 'system', content: options.systemPrompt },
+                { role: 'user', content: prompt }
+              ]
+            : [{ role: 'user', content: prompt }],
           max_tokens: options.maxTokens || 2048,
           temperature: options.temperature || 0.7,
           top_p: options.top_p || 0.9
@@ -874,7 +981,11 @@ class RealModelProvider {
         body: JSON.stringify({
           model: anthropicModel,
           max_tokens: options.maxTokens || 2048,
-          messages: [{ role: 'user', content: prompt }]
+          messages: options.systemPrompt 
+            ? [
+                { role: 'user', content: `${options.systemPrompt}\n\n用户问题：${prompt}` }
+              ]
+            : [{ role: 'user', content: prompt }]
         })
       });
 
@@ -1024,26 +1135,64 @@ class RealModelProvider {
     const startTime = Date.now();
     
     try {
+      // Check if user is asking in Chinese
+      const isChinese = /[\u4e00-\u9fff]/.test(prompt);
+      const systemPrompt = options.systemPrompt || '';
+      
+      console.log('RealModelProvider FreeAPI - Language detection:', {
+        prompt: prompt.substring(0, 50) + '...',
+        isChinese,
+        systemPrompt: systemPrompt.substring(0, 100) + '...',
+        options
+      });
+      
       // Use a free public AI API (example: using a public endpoint)
       // This is a fallback that simulates AI responses for remote users
       
-      const modelResponses = {
-        'llama3.1-8b': `As Llama 3.1 8B, I understand your question: "${prompt}". Here's my response based on my training data. I'm designed to be helpful, honest, and concise.`,
-        'mistral-7b': `As Mistral 7B, I can help you with: "${prompt}". I'm an efficient European model trained to provide accurate and helpful responses.`,
-        'phi3-3.8b': `As Phi-3 Mini, I'm processing your request: "${prompt}". I'm a compact but powerful model designed for quick and accurate responses.`,
-        'codellama-7b': `As CodeLlama 7B, I specialize in coding tasks. For your question: "${prompt}", I can help with programming, debugging, and code generation.`,
-        'gpt4all-j': `As GPT4All-J, I'm a free local AI model. Regarding your question: "${prompt}", I can provide helpful responses without requiring external API calls.`,
-        'dialo-gpt': `As DialoGPT, I'm designed for conversational AI. For your message: "${prompt}", I can engage in natural dialogue and provide contextual responses.`,
-        'gpt2': `As GPT-2, I'm an open source language model. About your query: "${prompt}", I can generate text and provide information based on my training.`,
-        'bart-cnn': `As BART CNN, I specialize in text summarization. For your input: "${prompt}", I can provide concise summaries and extract key information.`,
-        'cohere-command': `As Cohere Command, I'm a free text generation model. Regarding: "${prompt}", I can help with various text generation tasks.`,
-        'replicate-llama': `As Replicate Llama, I'm a cloud-hosted Llama model. For your question: "${prompt}", I can provide responses using cloud computing resources.`
-      };
+      let modelResponses;
+      
+      if (isChinese) {
+        // Chinese responses
+        modelResponses = {
+          'llama3.1-8b': `作为Llama 3.1 8B，我理解您的问题："${prompt}"。基于我的训练数据，我来为您提供回答。我设计为有用、诚实和简洁的助手。`,
+          'mistral-7b': `作为Mistral 7B，我可以帮助您处理："${prompt}"。我是一个高效的欧洲模型，经过训练可以提供准确和有用的回答。`,
+          'phi3-3.8b': `作为Phi-3 Mini，我正在处理您的请求："${prompt}"。我是一个紧凑但功能强大的模型，专为快速和准确的回答而设计。`,
+          'codellama-7b': `作为CodeLlama 7B，我专门处理编程任务。对于您的问题："${prompt}"，我可以帮助您进行编程、调试和代码生成。`,
+          'gpt4all-j': `作为GPT4All-J，我是一个免费的本地AI模型。关于您的问题："${prompt}"，我可以提供有用的回答，无需外部API调用。`,
+          'dialo-gpt': `作为DialoGPT，我专为对话AI而设计。对于您的消息："${prompt}"，我可以进行自然对话并提供上下文相关的回答。`,
+          'gpt2': `作为GPT-2，我是一个开源语言模型。关于您的查询："${prompt}"，我可以基于我的训练生成文本并提供信息。`,
+          'bart-cnn': `作为BART CNN，我专门进行文本摘要。对于您的输入："${prompt}"，我可以提供简洁的摘要并提取关键信息。`,
+          'cohere-command': `作为Cohere Command，我是一个免费的文本生成模型。关于："${prompt}"，我可以帮助您处理各种文本生成任务。`,
+          'replicate-llama': `作为Replicate Llama，我是一个云托管的Llama模型。对于您的问题："${prompt}"，我可以使用云计算资源提供回答。`
+        };
+      } else {
+        // English responses
+        modelResponses = {
+          'llama3.1-8b': `As Llama 3.1 8B, I understand your question: "${prompt}". Here's my response based on my training data. I'm designed to be helpful, honest, and concise.`,
+          'mistral-7b': `As Mistral 7B, I can help you with: "${prompt}". I'm an efficient European model trained to provide accurate and helpful responses.`,
+          'phi3-3.8b': `As Phi-3 Mini, I'm processing your request: "${prompt}". I'm a compact but powerful model designed for quick and accurate responses.`,
+          'codellama-7b': `As CodeLlama 7B, I specialize in coding tasks. For your question: "${prompt}", I can help with programming, debugging, and code generation.`,
+          'gpt4all-j': `As GPT4All-J, I'm a free local AI model. Regarding your question: "${prompt}", I can provide helpful responses without requiring external API calls.`,
+          'dialo-gpt': `As DialoGPT, I'm designed for conversational AI. For your message: "${prompt}", I can engage in natural dialogue and provide contextual responses.`,
+          'gpt2': `As GPT-2, I'm an open source language model. About your query: "${prompt}", I can generate text and provide information based on my training.`,
+          'bart-cnn': `As BART CNN, I specialize in text summarization. For your input: "${prompt}", I can provide concise summaries and extract key information.`,
+          'cohere-command': `As Cohere Command, I'm a free text generation model. Regarding: "${prompt}", I can help with various text generation tasks.`,
+          'replicate-llama': `As Replicate Llama, I'm a cloud-hosted Llama model. For your question: "${prompt}", I can provide responses using cloud computing resources.`
+        };
+      }
 
-      const baseResponse = modelResponses[modelId] || `I understand you're asking: "${prompt}". As an AI assistant, I'm here to help you with this request.`;
+      const baseResponse = modelResponses[modelId] || (isChinese 
+        ? `我理解您的问题："${prompt}"。作为AI助手，我在这里帮助您处理这个请求。`
+        : `I understand you're asking: "${prompt}". As an AI assistant, I'm here to help you with this request.`
+      );
       
       // Add some variety to responses
-      const variations = [
+      const variations = isChinese ? [
+        `${baseResponse} 让我为您提供一个有用的回答。`,
+        `${baseResponse} 我会尽力协助您处理这个问题。`,
+        `${baseResponse} 这是我可以告诉您的相关信息。`,
+        `${baseResponse} 我希望这些信息对您有用。`
+      ] : [
         `${baseResponse} Let me provide you with a helpful answer.`,
         `${baseResponse} I'll do my best to assist you with this.`,
         `${baseResponse} Here's what I can tell you about this.`,

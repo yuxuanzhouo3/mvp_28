@@ -67,17 +67,42 @@ class FreeModelProvider {
       const responseTime = Math.random() * 2000 + 500; // 500-2500ms
       await new Promise(resolve => setTimeout(resolve, responseTime));
 
-      // Generate simple response based on model
+      // Check if user is asking in Chinese
+      const isChinese = /[\u4e00-\u9fff]/.test(prompt);
+      const systemPrompt = options.systemPrompt || '';
+      
+      console.log('FreeModelProvider - Language detection:', {
+        prompt: prompt.substring(0, 50) + '...',
+        isChinese,
+        systemPrompt: systemPrompt.substring(0, 100) + '...',
+        options
+      });
+      
+      // Generate response based on language and model
       let response = '';
       
-      if (modelId === 'codellama-7b') {
-        response = `As CodeLlama, I can help you with coding tasks. Here's a response to: "${prompt}"\n\nThis is a simulated response from the ${model.name} model. In a real implementation, this would be an actual code generation or analysis response.`;
-      } else if (modelId === 'mistral-7b') {
-        response = `As Mistral 7B, I can help you with various tasks. Here's my response to: "${prompt}"\n\nThis is a simulated response from the ${model.name} model. Mistral is known for its efficiency and European training data.`;
-      } else if (modelId === 'phi3-3.8b') {
-        response = `As Phi-3 Mini, I can assist you with your request. Here's my response to: "${prompt}"\n\nThis is a simulated response from the ${model.name} model. Phi-3 is designed to be compact yet powerful for various tasks.`;
+      if (isChinese) {
+        // Chinese responses
+        if (modelId === 'codellama-7b') {
+          response = `作为CodeLlama，我可以帮助您处理编程任务。对于您的问题："${prompt}"\n\n这是来自${model.name}模型的模拟回复。在实际实现中，这将是一个真正的代码生成或分析回复。`;
+        } else if (modelId === 'mistral-7b') {
+          response = `作为Mistral 7B，我可以帮助您处理各种任务。对于您的问题："${prompt}"\n\n这是来自${model.name}模型的模拟回复。Mistral以其效率和欧洲训练数据而闻名。`;
+        } else if (modelId === 'phi3-3.8b') {
+          response = `作为Phi-3 Mini，我可以协助您处理您的请求。对于您的问题："${prompt}"\n\n这是来自${model.name}模型的模拟回复。Phi-3设计为紧凑但功能强大，适用于各种任务。`;
+        } else {
+          response = `作为Llama 3.1 8B，我可以帮助您回答问题。对于您的问题："${prompt}"\n\n这是来自${model.name}模型的模拟回复。Llama 3.1是一个开源模型，可以处理广泛的任务。`;
+        }
       } else {
-        response = `As Llama 3.1 8B, I can help you with your question. Here's my response to: "${prompt}"\n\nThis is a simulated response from the ${model.name} model. Llama 3.1 is an open-source model that can handle a wide range of tasks.`;
+        // English responses
+        if (modelId === 'codellama-7b') {
+          response = `As CodeLlama, I can help you with coding tasks. Here's a response to: "${prompt}"\n\nThis is a simulated response from the ${model.name} model. In a real implementation, this would be an actual code generation or analysis response.`;
+        } else if (modelId === 'mistral-7b') {
+          response = `As Mistral 7B, I can help you with various tasks. Here's my response to: "${prompt}"\n\nThis is a simulated response from the ${model.name} model. Mistral is known for its efficiency and European training data.`;
+        } else if (modelId === 'phi3-3.8b') {
+          response = `As Phi-3 Mini, I can assist you with your request. Here's my response to: "${prompt}"\n\nThis is a simulated response from the ${model.name} model. Phi-3 is designed to be compact yet powerful for various tasks.`;
+        } else {
+          response = `As Llama 3.1 8B, I can help you with your question. Here's my response to: "${prompt}"\n\nThis is a simulated response from the ${model.name} model. Llama 3.1 is an open-source model that can handle a wide range of tasks.`;
+        }
       }
 
       // Add some context about the user's tier

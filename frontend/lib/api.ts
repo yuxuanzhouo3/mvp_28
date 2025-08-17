@@ -11,16 +11,17 @@ const getApiBaseUrl = () => {
     return process.env.NEXT_PUBLIC_API_URL || 'https://mornhub.net';
   }
   
-  // Check if we're in a mobile environment
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  // Use the same domain as the current page to avoid CORS issues
+  const currentOrigin = window.location.origin;
+  const isLocalhost = currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1');
   
-  if (isMobile) {
-    // Use production domain for mobile
-    return 'https://mornhub.net';
+  if (isLocalhost) {
+    // Local development - use localhost
+    return 'http://localhost:5000';
   }
   
-  // Desktop environment - use production domain
-  return process.env.NEXT_PUBLIC_API_URL || 'https://mornhub.net';
+  // Production - use the same domain as the current page
+  return currentOrigin;
 };
 
 const API_BASE_URL = getApiBaseUrl();

@@ -65,14 +65,27 @@ const corsOptions = {
     if (!origin || process.env.NODE_ENV !== 'production') {
       return callback(null, true);
     }
-    if (allowedOrigins.includes(origin)) {
+    
+    // Allow both www and non-www versions of the domain
+    const allowedDomains = [
+      'https://mornhub.net',
+      'https://www.mornhub.net',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ];
+    
+    const isAllowed = allowedDomains.some(domain => origin.startsWith(domain));
+    if (isAllowed) {
       return callback(null, true);
     }
+    
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 app.use(cors(corsOptions));
 

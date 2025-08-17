@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ApiService } from '../../lib/api';
+import { apiService } from '../../lib/api';
 
 export default function TestMobilePage() {
   const [result, setResult] = useState<string>('');
@@ -12,7 +12,6 @@ export default function TestMobilePage() {
     setResult('Testing...');
     
     try {
-      const apiService = new ApiService();
       console.log('API Base URL:', apiService['baseUrl']);
       console.log('Production URL: https://mornhub.net');
       

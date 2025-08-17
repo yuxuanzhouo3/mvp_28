@@ -53,7 +53,7 @@ app.use(helmet({
 }));
 
 // CORS configuration
-const allowedOriginsEnv = process.env.CORS_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000';
+const allowedOriginsEnv = process.env.CORS_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000,https://mornhub.net,https://www.mornhub.net';
 const allowedOrigins = allowedOriginsEnv
   .split(',')
   .map((origin) => origin.trim())

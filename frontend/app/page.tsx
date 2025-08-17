@@ -7,12 +7,6 @@
  * Unauthorized copying, distribution, or use is strictly prohibited.
  */
 
-// Mobile detection utility
-const isMobileDevice = () => {
-  if (typeof window === 'undefined') return false;
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-};
-
 // Speech Recognition types
 interface SpeechRecognition extends EventTarget {
   continuous: boolean
@@ -483,12 +477,6 @@ interface ExternalModel {
 }
 
 export default function MornGPTHomepage() {
-  const [isMobile, setIsMobile] = useState(false);
-  
-  useEffect(() => {
-    setIsMobile(isMobileDevice());
-  }, []);
-  
   const [selectedCategory, setSelectedCategory] = useState<string>("")
   const [selectedModel, setSelectedModel] = useState<string>("")
   const [selectedModelType, setSelectedModelType] = useState<string>("general")

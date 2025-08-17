@@ -8,19 +8,19 @@ const getApiBaseUrl = () => {
   // Check if we're in a browser environment
   if (typeof window === 'undefined') {
     // Server-side rendering - use default
-    return process.env.NEXT_PUBLIC_API_URL || 'http://192.168.31.9:5000';
+    return process.env.NEXT_PUBLIC_API_URL || 'https://mornhub.net';
   }
   
   // Check if we're in a mobile environment
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
-  // Always use IP address for network access (both mobile and desktop)
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.31.9:5000';
+  if (isMobile) {
+    // Use production domain for mobile
+    return 'https://mornhub.net';
+  }
   
-  console.log('Device type:', isMobile ? 'Mobile' : 'Desktop');
-  console.log('API URL:', apiUrl);
-  
-  return apiUrl;
+  // Desktop environment - use production domain
+  return process.env.NEXT_PUBLIC_API_URL || 'https://mornhub.net';
 };
 
 const API_BASE_URL = getApiBaseUrl();

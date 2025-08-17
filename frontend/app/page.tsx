@@ -4944,6 +4944,21 @@ export default function MornGPTHomepage() {
                           )}
                         </Button>
 
+                        {/* Dark Mode Toggle Button */}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={toggleTheme}
+                          className={`h-7 w-7 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
+                            isDarkMode 
+                              ? 'text-yellow-600 dark:text-yellow-400' 
+                              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869]'
+                          }`}
+                          title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+                        >
+                          {isDarkMode ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
+                        </Button>
+
                         {/* Ask GPT Button */}
                         <Popover open={isAskGPTOpen} onOpenChange={setIsAskGPTOpen}>
                             <PopoverTrigger asChild>

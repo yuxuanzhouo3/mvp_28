@@ -2153,7 +2153,7 @@ export default function MornGPTHomepage() {
         setRecognition(recognition)
         return recognition
       } else {
-        setVoiceError("Speech recognition is not supported in this browser")
+        setVoiceError("Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.")
         setTimeout(() => setVoiceError(""), 5000)
         return null
       }
@@ -2163,6 +2163,14 @@ export default function MornGPTHomepage() {
 
   const startVoiceRecording = () => {
     setVoiceError("")
+    
+    // Check if we're on HTTPS (required for speech recognition)
+    if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+      setVoiceError("Speech recognition requires HTTPS. Please use the secure version of this site.")
+      setTimeout(() => setVoiceError(""), 5000)
+      return
+    }
+    
     if (!recognition) {
       const newRecognition = initializeSpeechRecognition()
       if (newRecognition) {

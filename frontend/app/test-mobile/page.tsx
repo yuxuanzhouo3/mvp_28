@@ -12,6 +12,7 @@ export default function TestMobilePage() {
     setResult('Testing...');
     
     try {
+      console.log('Current Origin:', window.location.origin);
       console.log('API Base URL:', apiService['baseUrl']);
       console.log('Production URL: https://mornhub.net');
       
@@ -46,6 +47,7 @@ export default function TestMobilePage() {
       <h1 className="text-2xl font-bold mb-4">Mobile API Test</h1>
       
       <div className="mb-4">
+        <p className="text-sm text-gray-600 mb-2">Current Origin: {typeof window !== 'undefined' ? window.location.origin : 'Server-side'}</p>
         <p className="text-sm text-gray-600 mb-2">User Agent: {navigator.userAgent}</p>
         <p className="text-sm text-gray-600 mb-2">Is Mobile: {/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? 'Yes' : 'No'}</p>
       </div>

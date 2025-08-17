@@ -15,12 +15,35 @@ const getApiBaseUrl = () => {
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
   if (isMobile) {
-    // Use relative URL for mobile to avoid CORS issues
-    return '';
+    // For mobile, we need to use the actual backend URL
+    // Check if we're accessing via localhost or IP address
+    const hostname = window.location.hostname;
+    const port = window.location.port;
+    
+    console.log('Mobile device detected:', {
+      hostname,
+      port,
+      userAgent: navigator.userAgent,
+      isMobile
+    });
+    
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      // Local development - use localhost:5000
+      const apiUrl = 'http://localhost:5000';
+      console.log('Using localhost API URL:', apiUrl);
+      return apiUrl;
+    } else {
+      // Production or remote access - use the same hostname with port 5000
+      const apiUrl = `http://${hostname}:5000`;
+      console.log('Using remote API URL:', apiUrl);
+      return apiUrl;
+    }
   }
   
-  // Desktop environment
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  // Desktop environment - use relative URL since we have API proxy
+  const apiUrl = '';
+  console.log('Desktop environment, using relative API URL (proxy)');
+  return apiUrl;
 };
 
 const API_BASE_URL = getApiBaseUrl();

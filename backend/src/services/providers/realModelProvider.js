@@ -324,21 +324,21 @@ class RealModelProvider {
       let apis;
       if (isOpenAIModel) {
         apis = [
-          { name: 'OpenAI', method: this.generateWithOpenAI },
-          { name: 'HuggingFace', method: this.generateWithHuggingFace },
-          { name: 'Anthropic', method: this.generateWithAnthropic },
-          { name: 'Cohere', method: this.generateWithCohere },
-          { name: 'Replicate', method: this.generateWithReplicate },
-          { name: 'Groq', method: this.generateWithGroq },
-          { name: 'Google', method: this.generateWithGoogle },
-          { name: 'Mistral', method: this.generateWithMistral },
-          { name: 'Together', method: this.generateWithTogether },
-          { name: 'OpenRouter', method: this.generateWithOpenRouter },
-          { name: 'Fireworks', method: this.generateWithFireworks },
-          { name: 'DeepInfra', method: this.generateWithDeepInfra },
-          { name: 'AI21', method: this.generateWithAI21 },
-          { name: 'Ollama', method: this.generateWithOllama },
-          { name: 'FreeAPI', method: this.generateWithFreeAPI }
+            { name: 'OpenAI', method: this.generateWithOpenAI },
+            { name: 'HuggingFace', method: this.generateWithHuggingFace },
+            { name: 'Anthropic', method: this.generateWithAnthropic },
+            { name: 'Cohere', method: this.generateWithCohere },
+            { name: 'Replicate', method: this.generateWithReplicate },
+            { name: 'Groq', method: this.generateWithGroq },
+            { name: 'Google', method: this.generateWithGoogle },
+            { name: 'Mistral', method: this.generateWithMistral },
+            { name: 'Together', method: this.generateWithTogether },
+            { name: 'OpenRouter', method: this.generateWithOpenRouter },
+            { name: 'Fireworks', method: this.generateWithFireworks },
+            { name: 'DeepInfra', method: this.generateWithDeepInfra },
+            { name: 'AI21', method: this.generateWithAI21 },
+            { name: 'Ollama', method: this.generateWithOllama },
+            { name: 'FreeAPI', method: this.generateWithFreeAPI }
         ];
       } else if (isMistralModel) {
         apis = [
@@ -360,22 +360,22 @@ class RealModelProvider {
         ];
       } else {
         apis = [
-          { name: 'HuggingFace', method: this.generateWithHuggingFace },
-          { name: 'OpenAI', method: this.generateWithOpenAI },
-          { name: 'Anthropic', method: this.generateWithAnthropic },
-          { name: 'Cohere', method: this.generateWithCohere },
-          { name: 'Replicate', method: this.generateWithReplicate },
-          { name: 'Groq', method: this.generateWithGroq },
-          { name: 'Google', method: this.generateWithGoogle },
-          { name: 'Mistral', method: this.generateWithMistral },
-          { name: 'Together', method: this.generateWithTogether },
-          { name: 'OpenRouter', method: this.generateWithOpenRouter },
-          { name: 'Fireworks', method: this.generateWithFireworks },
-          { name: 'DeepInfra', method: this.generateWithDeepInfra },
-          { name: 'AI21', method: this.generateWithAI21 },
-          { name: 'Ollama', method: this.generateWithOllama },
-          { name: 'FreeAPI', method: this.generateWithFreeAPI }
-        ];
+            { name: 'HuggingFace', method: this.generateWithHuggingFace },
+            { name: 'OpenAI', method: this.generateWithOpenAI },
+            { name: 'Anthropic', method: this.generateWithAnthropic },
+            { name: 'Cohere', method: this.generateWithCohere },
+            { name: 'Replicate', method: this.generateWithReplicate },
+            { name: 'Groq', method: this.generateWithGroq },
+            { name: 'Google', method: this.generateWithGoogle },
+            { name: 'Mistral', method: this.generateWithMistral },
+            { name: 'Together', method: this.generateWithTogether },
+            { name: 'OpenRouter', method: this.generateWithOpenRouter },
+            { name: 'Fireworks', method: this.generateWithFireworks },
+            { name: 'DeepInfra', method: this.generateWithDeepInfra },
+            { name: 'AI21', method: this.generateWithAI21 },
+            { name: 'Ollama', method: this.generateWithOllama },
+            { name: 'FreeAPI', method: this.generateWithFreeAPI }
+          ];
       }
 
       for (const api of apis) {
@@ -392,10 +392,6 @@ class RealModelProvider {
           continue;
         }
       }
-      
-      // If all APIs fail, use FreeAPI as final fallback
-      logger.info('All APIs failed, using FreeAPI fallback');
-      return await this.generateWithFreeAPI(modelId, prompt, options);
 
       // If all APIs fail, provide realistic fallback response
       logger.warn('All AI APIs failed, providing fallback response');
@@ -920,15 +916,16 @@ class RealModelProvider {
         },
         body: JSON.stringify({
           model: openaiModel,
-          messages: options.systemPrompt 
-            ? [
-                { role: 'system', content: options.systemPrompt },
-                { role: 'user', content: prompt }
-              ]
-            : [{ role: 'user', content: prompt }],
+          messages: [{ role: 'user', content: prompt }],
           max_tokens: options.maxTokens || 2048,
           temperature: options.temperature || 0.7,
-          top_p: options.top_p || 0.9
+          top_p: options.top_p || 0.9,
+          ...(options.language === 'zh-CN' && {
+            messages: [
+              { role: 'system', content: '请用中文回答所有问题。' },
+              { role: 'user', content: prompt }
+            ]
+          })
         })
       });
 
@@ -981,9 +978,9 @@ class RealModelProvider {
         body: JSON.stringify({
           model: anthropicModel,
           max_tokens: options.maxTokens || 2048,
-          messages: options.systemPrompt 
+          messages: options.language === 'zh-CN' 
             ? [
-                { role: 'user', content: `${options.systemPrompt}\n\n用户问题：${prompt}` }
+                { role: 'user', content: `请用中文回答以下问题：${prompt}` }
               ]
             : [{ role: 'user', content: prompt }]
         })
@@ -1135,64 +1132,26 @@ class RealModelProvider {
     const startTime = Date.now();
     
     try {
-      // Check if user is asking in Chinese
-      const isChinese = /[\u4e00-\u9fff]/.test(prompt);
-      const systemPrompt = options.systemPrompt || '';
-      
-      console.log('RealModelProvider FreeAPI - Language detection:', {
-        prompt: prompt.substring(0, 50) + '...',
-        isChinese,
-        systemPrompt: systemPrompt.substring(0, 100) + '...',
-        options
-      });
-      
       // Use a free public AI API (example: using a public endpoint)
       // This is a fallback that simulates AI responses for remote users
       
-      let modelResponses;
-      
-      if (isChinese) {
-        // Chinese responses
-        modelResponses = {
-          'llama3.1-8b': `作为Llama 3.1 8B，我理解您的问题："${prompt}"。基于我的训练数据，我来为您提供回答。我设计为有用、诚实和简洁的助手。`,
-          'mistral-7b': `作为Mistral 7B，我可以帮助您处理："${prompt}"。我是一个高效的欧洲模型，经过训练可以提供准确和有用的回答。`,
-          'phi3-3.8b': `作为Phi-3 Mini，我正在处理您的请求："${prompt}"。我是一个紧凑但功能强大的模型，专为快速和准确的回答而设计。`,
-          'codellama-7b': `作为CodeLlama 7B，我专门处理编程任务。对于您的问题："${prompt}"，我可以帮助您进行编程、调试和代码生成。`,
-          'gpt4all-j': `作为GPT4All-J，我是一个免费的本地AI模型。关于您的问题："${prompt}"，我可以提供有用的回答，无需外部API调用。`,
-          'dialo-gpt': `作为DialoGPT，我专为对话AI而设计。对于您的消息："${prompt}"，我可以进行自然对话并提供上下文相关的回答。`,
-          'gpt2': `作为GPT-2，我是一个开源语言模型。关于您的查询："${prompt}"，我可以基于我的训练生成文本并提供信息。`,
-          'bart-cnn': `作为BART CNN，我专门进行文本摘要。对于您的输入："${prompt}"，我可以提供简洁的摘要并提取关键信息。`,
-          'cohere-command': `作为Cohere Command，我是一个免费的文本生成模型。关于："${prompt}"，我可以帮助您处理各种文本生成任务。`,
-          'replicate-llama': `作为Replicate Llama，我是一个云托管的Llama模型。对于您的问题："${prompt}"，我可以使用云计算资源提供回答。`
-        };
-      } else {
-        // English responses
-        modelResponses = {
-          'llama3.1-8b': `As Llama 3.1 8B, I understand your question: "${prompt}". Here's my response based on my training data. I'm designed to be helpful, honest, and concise.`,
-          'mistral-7b': `As Mistral 7B, I can help you with: "${prompt}". I'm an efficient European model trained to provide accurate and helpful responses.`,
-          'phi3-3.8b': `As Phi-3 Mini, I'm processing your request: "${prompt}". I'm a compact but powerful model designed for quick and accurate responses.`,
-          'codellama-7b': `As CodeLlama 7B, I specialize in coding tasks. For your question: "${prompt}", I can help with programming, debugging, and code generation.`,
-          'gpt4all-j': `As GPT4All-J, I'm a free local AI model. Regarding your question: "${prompt}", I can provide helpful responses without requiring external API calls.`,
-          'dialo-gpt': `As DialoGPT, I'm designed for conversational AI. For your message: "${prompt}", I can engage in natural dialogue and provide contextual responses.`,
-          'gpt2': `As GPT-2, I'm an open source language model. About your query: "${prompt}", I can generate text and provide information based on my training.`,
-          'bart-cnn': `As BART CNN, I specialize in text summarization. For your input: "${prompt}", I can provide concise summaries and extract key information.`,
-          'cohere-command': `As Cohere Command, I'm a free text generation model. Regarding: "${prompt}", I can help with various text generation tasks.`,
-          'replicate-llama': `As Replicate Llama, I'm a cloud-hosted Llama model. For your question: "${prompt}", I can provide responses using cloud computing resources.`
-        };
-      }
+      const modelResponses = {
+        'llama3.1-8b': `As Llama 3.1 8B, I understand your question: "${prompt}". Here's my response based on my training data. I'm designed to be helpful, honest, and concise.`,
+        'mistral-7b': `As Mistral 7B, I can help you with: "${prompt}". I'm an efficient European model trained to provide accurate and helpful responses.`,
+        'phi3-3.8b': `As Phi-3 Mini, I'm processing your request: "${prompt}". I'm a compact but powerful model designed for quick and accurate responses.`,
+        'codellama-7b': `As CodeLlama 7B, I specialize in coding tasks. For your question: "${prompt}", I can help with programming, debugging, and code generation.`,
+        'gpt4all-j': `As GPT4All-J, I'm a free local AI model. Regarding your question: "${prompt}", I can provide helpful responses without requiring external API calls.`,
+        'dialo-gpt': `As DialoGPT, I'm designed for conversational AI. For your message: "${prompt}", I can engage in natural dialogue and provide contextual responses.`,
+        'gpt2': `As GPT-2, I'm an open source language model. About your query: "${prompt}", I can generate text and provide information based on my training.`,
+        'bart-cnn': `As BART CNN, I specialize in text summarization. For your input: "${prompt}", I can provide concise summaries and extract key information.`,
+        'cohere-command': `As Cohere Command, I'm a free text generation model. Regarding: "${prompt}", I can help with various text generation tasks.`,
+        'replicate-llama': `As Replicate Llama, I'm a cloud-hosted Llama model. For your question: "${prompt}", I can provide responses using cloud computing resources.`
+      };
 
-      const baseResponse = modelResponses[modelId] || (isChinese 
-        ? `我理解您的问题："${prompt}"。作为AI助手，我在这里帮助您处理这个请求。`
-        : `I understand you're asking: "${prompt}". As an AI assistant, I'm here to help you with this request.`
-      );
+      const baseResponse = modelResponses[modelId] || `I understand you're asking: "${prompt}". As an AI assistant, I'm here to help you with this request.`;
       
       // Add some variety to responses
-      const variations = isChinese ? [
-        `${baseResponse} 让我为您提供一个有用的回答。`,
-        `${baseResponse} 我会尽力协助您处理这个问题。`,
-        `${baseResponse} 这是我可以告诉您的相关信息。`,
-        `${baseResponse} 我希望这些信息对您有用。`
-      ] : [
+      const variations = [
         `${baseResponse} Let me provide you with a helpful answer.`,
         `${baseResponse} I'll do my best to assist you with this.`,
         `${baseResponse} Here's what I can tell you about this.`,
@@ -1237,6 +1196,154 @@ class RealModelProvider {
 
   async getAvailableModels() {
     return Object.values(this.models);
+  }
+
+  // Streaming text generation
+  async generateTextStream(modelId, prompt, options = {}, userId = null, userTier = 'free') {
+    const { EventEmitter } = require('events');
+    const stream = new EventEmitter();
+    
+    try {
+      // Check if model exists
+      if (!this.models[modelId]) {
+        throw new Error(`Model ${modelId} not found`);
+      }
+
+      // Get model info
+      const model = this.models[modelId];
+      const provider = model.provider;
+
+      // Determine which API to use based on model
+      const isOpenAIModel = modelId.startsWith('openai-') || modelId.startsWith('gpt-');
+      const isMistralModel = modelId.startsWith('mistral-');
+      const isGroqModel = modelId.startsWith('groq-');
+      const isAnthropicModel = modelId.startsWith('claude-');
+      const isCohereModel = modelId.startsWith('cohere-');
+
+      let apis;
+      if (isOpenAIModel) {
+        apis = [
+          { name: 'OpenAI', method: this.generateWithOpenAI },
+          { name: 'HuggingFace', method: this.generateWithHuggingFace },
+          { name: 'Groq', method: this.generateWithGroq },
+          { name: 'Anthropic', method: this.generateWithAnthropic },
+          { name: 'Cohere', method: this.generateWithCohere },
+          { name: 'FreeAPI', method: this.generateWithFreeAPI }
+        ];
+      } else if (isMistralModel) {
+        apis = [
+          { name: 'Mistral', method: this.generateWithMistral },
+          { name: 'HuggingFace', method: this.generateWithHuggingFace },
+          { name: 'Groq', method: this.generateWithGroq },
+          { name: 'OpenAI', method: this.generateWithOpenAI },
+          { name: 'Anthropic', method: this.generateWithAnthropic },
+          { name: 'Cohere', method: this.generateWithCohere },
+          { name: 'FreeAPI', method: this.generateWithFreeAPI }
+        ];
+      } else if (isGroqModel) {
+        apis = [
+          { name: 'Groq', method: this.generateWithGroq },
+          { name: 'HuggingFace', method: this.generateWithHuggingFace },
+          { name: 'OpenAI', method: this.generateWithOpenAI },
+          { name: 'Mistral', method: this.generateWithMistral },
+          { name: 'Anthropic', method: this.generateWithAnthropic },
+          { name: 'Cohere', method: this.generateWithCohere },
+          { name: 'FreeAPI', method: this.generateWithFreeAPI }
+        ];
+      } else {
+        apis = [
+          { name: 'HuggingFace', method: this.generateWithHuggingFace },
+          { name: 'Groq', method: this.generateWithGroq },
+          { name: 'OpenAI', method: this.generateWithOpenAI },
+          { name: 'Mistral', method: this.generateWithMistral },
+          { name: 'Anthropic', method: this.generateWithAnthropic },
+          { name: 'Cohere', method: this.generateWithCohere },
+          { name: 'FreeAPI', method: this.generateWithFreeAPI }
+        ];
+      }
+
+      // Start streaming immediately with a short delay (max 1 second)
+      const initialDelay = Math.min(1000, Math.random() * 500 + 200); // 200-700ms, max 1s
+      
+      setTimeout(() => {
+        // Try each API until one works
+        const tryApis = async () => {
+          for (const api of apis) {
+            try {
+              logger.info(`Trying ${api.name} for model ${modelId}`);
+              
+              // Start the API call but don't wait for it
+              const apiPromise = api.method.call(this, modelId, prompt, options);
+              
+              // Set a timeout for the API call
+              const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('API timeout')), 5000); // 5 second timeout
+              });
+              
+              // Race between API response and timeout
+              const response = await Promise.race([apiPromise, timeoutPromise]);
+              
+              if (response && response.success) {
+                // Stream the response in chunks
+                const text = response.text;
+                const chunkSize = 2; // Smaller chunks for faster streaming
+                let index = 0;
+                
+                const sendChunk = () => {
+                  if (index < text.length) {
+                    const chunk = text.slice(index, index + chunkSize);
+                    stream.emit('data', { text: chunk });
+                    index += chunkSize;
+                    
+                    // Very fast streaming
+                    const delay = Math.random() * 15 + 5; // 5-20ms between chunks
+                    setTimeout(sendChunk, delay);
+                  } else {
+                    stream.emit('end');
+                  }
+                };
+                
+                sendChunk();
+                return; // Success, exit the loop
+              }
+            } catch (error) {
+              logger.warn(`${api.name} failed for model ${modelId}:`, error.message);
+              continue;
+            }
+          }
+          
+          // If all APIs fail, use fallback
+          logger.warn(`All APIs failed for model ${modelId}, using fallback`);
+          const fallbackResponse = `I understand you're asking about: "${prompt}". As ${modelId}, I'm here to help you with this request. (API temporarily unavailable, using fallback response) Powered by ${modelId}`;
+          
+          // Stream fallback response quickly
+          const words = fallbackResponse.split(' ');
+          let index = 0;
+          
+          const sendWord = () => {
+            if (index < words.length) {
+              const word = words[index] + (index < words.length - 1 ? ' ' : '');
+              stream.emit('data', { text: word });
+              index++;
+              setTimeout(sendWord, 50); // Very fast for fallback
+            } else {
+              stream.emit('end');
+            }
+          };
+          
+          sendWord();
+        };
+        
+        tryApis();
+      }, initialDelay);
+
+      return stream;
+
+    } catch (error) {
+      logger.error('Streaming generation error:', error);
+      stream.emit('error', error);
+      return stream;
+    }
   }
 }
 

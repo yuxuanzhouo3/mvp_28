@@ -135,23 +135,14 @@ router.post('/stream-guest', async (req, res) => {
       detectedLanguage = containsChinese ? 'zh' : 'en';
     }
     
-    console.log('Language detection:', { 
-      originalLanguage: language, 
-      detectedLanguage, 
-      message: message.substring(0, 50) + '...',
-      containsChinese: /[\u4e00-\u9fff]/.test(message)
-    });
-    
     const options = detectedLanguage === 'zh' ? { 
       language: 'zh-CN',
       systemPrompt: 'You are a helpful AI assistant. Please respond in Chinese (中文) when the user writes in Chinese. Be natural and conversational in your Chinese responses.'
     } : {};
     
-    console.log('Options being sent to provider:', options);
-    
     // Check if provider supports streaming
     if (provider.generateTextStream) {
-      console.log('Using streaming provider:', provider.constructor.name);
+      console.log('Using streaming provider');
       const stream = await provider.generateTextStream(modelId, message, options, 'guest', 'free');
       
       stream.on('data', (chunk) => {
@@ -178,8 +169,8 @@ router.post('/stream-guest', async (req, res) => {
          const chunkSize = 3; // Smaller chunks for more realistic streaming
          let index = 0;
          
-                   // Add initial delay to simulate thinking time (max 2 seconds)
-          const initialDelay = Math.min(2000, Math.random() * 500 + 200); // 200-700ms for faster start
+                   // Add initial delay to simulate thinking time (max 1 second)
+          const initialDelay = Math.min(1000, Math.random() * 500 + 200); // 200-700ms, max 1s
          
          setTimeout(() => {
            const sendChunk = () => {

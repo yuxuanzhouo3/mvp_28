@@ -1262,30 +1262,43 @@ class RealModelProvider {
         ];
       }
 
-      // Start streaming immediately with very fast fallback (no API calls for now)
-      const initialDelay = Math.min(50, Math.random() * 25 + 10); // 10-35ms, max 50ms
+      // Try real API calls first, with fallback if they fail
+      let responseReceived = false;
+      let apiTimeout = null;
       
-      setTimeout(() => {
-        // Use fast fallback response immediately
-        const fallbackResponse = `I understand you're asking about: "${prompt}". As ${modelId}, I'm here to help you with this request. (Fast response mode) Powered by ${modelId}`;
-        
-        // Stream fallback response very quickly
-        const words = fallbackResponse.split(' ');
-        let index = 0;
-        
-        const sendWord = () => {
-          if (index < words.length) {
-            const word = words[index] + (index < words.length - 1 ? ' ' : '');
-            stream.emit('data', { text: word });
-            index++;
-            setTimeout(sendWord, 10); // Very fast streaming
-          } else {
-            stream.emit('end');
+      // Set a timeout for API calls (2 seconds max)
+      apiTimeout = setTimeout(() => {
+        if (!responseReceived) {
+          console.log(`API timeout for ${modelId}, using fallback`);
+          this.sendFallbackResponse(stream, prompt, modelId);
+        }
+      }, 2000);
+      
+      // Try each API in order
+      for (const api of apis) {
+        try {
+          console.log(`Trying ${api.name} API for ${modelId}`);
+          const result = await api.method.call(this, modelId, prompt, options);
+          
+          if (result && result.success && result.text) {
+            responseReceived = true;
+            clearTimeout(apiTimeout);
+            console.log(`Success with ${api.name} API`);
+            
+            // Stream the real response
+            this.streamResponse(stream, result.text);
+            return stream;
           }
-        };
-        
-        sendWord();
-      }, initialDelay);
+        } catch (error) {
+          console.log(`${api.name} API failed for ${modelId}:`, error.message);
+          continue;
+        }
+      }
+      
+      // If all APIs failed, use fallback
+      clearTimeout(apiTimeout);
+      console.log(`All APIs failed for ${modelId}, using fallback`);
+      this.sendFallbackResponse(stream, prompt, modelId);
 
       return stream;
 
@@ -1294,6 +1307,46 @@ class RealModelProvider {
       stream.emit('error', error);
       return stream;
     }
+  }
+
+  // Helper method to stream response text
+  streamResponse(stream, text) {
+    const words = text.split(' ');
+    let index = 0;
+    
+    const sendWord = () => {
+      if (index < words.length) {
+        const word = words[index] + (index < words.length - 1 ? ' ' : '');
+        stream.emit('data', { text: word });
+        index++;
+        setTimeout(sendWord, 20); // Moderate streaming speed
+      } else {
+        stream.emit('end');
+      }
+    };
+    
+    sendWord();
+  }
+
+  // Helper method to send fallback response
+  sendFallbackResponse(stream, prompt, modelId) {
+    const fallbackResponse = `I understand you're asking about: "${prompt}". As ${modelId}, I'm here to help you with this request. (API temporarily unavailable, using fallback response) Powered by ${modelId}`;
+    
+    const words = fallbackResponse.split(' ');
+    let index = 0;
+    
+    const sendWord = () => {
+      if (index < words.length) {
+        const word = words[index] + (index < words.length - 1 ? ' ' : '');
+        stream.emit('data', { text: word });
+        index++;
+        setTimeout(sendWord, 15); // Fast fallback streaming
+      } else {
+        stream.emit('end');
+      }
+    };
+    
+    sendWord();
   }
 }
 

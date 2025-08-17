@@ -86,8 +86,6 @@ router.post('/stream', chatController.streamChat);
 router.post('/stream-guest', async (req, res) => {
   try {
     console.log('Guest streaming endpoint received request body:', req.body);
-    console.log('Environment check - NODE_ENV:', process.env.NODE_ENV);
-    console.log('Environment check - JWT_SECRET:', process.env.JWT_SECRET ? 'SET' : 'NOT SET');
     const { modelId, message, language } = req.body;
     
     if (!message || !modelId) {

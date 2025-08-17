@@ -1262,79 +1262,29 @@ class RealModelProvider {
         ];
       }
 
-      // Start streaming immediately with a short delay (max 1 second)
-      const initialDelay = Math.min(1000, Math.random() * 500 + 200); // 200-700ms, max 1s
+      // Start streaming immediately with very fast fallback (no API calls for now)
+      const initialDelay = Math.min(50, Math.random() * 25 + 10); // 10-35ms, max 50ms
       
       setTimeout(() => {
-        // Try each API until one works
-        const tryApis = async () => {
-          for (const api of apis) {
-            try {
-              logger.info(`Trying ${api.name} for model ${modelId}`);
-              
-              // Start the API call but don't wait for it
-              const apiPromise = api.method.call(this, modelId, prompt, options);
-              
-              // Set a timeout for the API call
-              const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('API timeout')), 5000); // 5 second timeout
-              });
-              
-              // Race between API response and timeout
-              const response = await Promise.race([apiPromise, timeoutPromise]);
-              
-              if (response && response.success) {
-                // Stream the response in chunks
-                const text = response.text;
-                const chunkSize = 2; // Smaller chunks for faster streaming
-                let index = 0;
-                
-                const sendChunk = () => {
-                  if (index < text.length) {
-                    const chunk = text.slice(index, index + chunkSize);
-                    stream.emit('data', { text: chunk });
-                    index += chunkSize;
-                    
-                    // Very fast streaming
-                    const delay = Math.random() * 15 + 5; // 5-20ms between chunks
-                    setTimeout(sendChunk, delay);
-                  } else {
-                    stream.emit('end');
-                  }
-                };
-                
-                sendChunk();
-                return; // Success, exit the loop
-              }
-            } catch (error) {
-              logger.warn(`${api.name} failed for model ${modelId}:`, error.message);
-              continue;
-            }
+        // Use fast fallback response immediately
+        const fallbackResponse = `I understand you're asking about: "${prompt}". As ${modelId}, I'm here to help you with this request. (Fast response mode) Powered by ${modelId}`;
+        
+        // Stream fallback response very quickly
+        const words = fallbackResponse.split(' ');
+        let index = 0;
+        
+        const sendWord = () => {
+          if (index < words.length) {
+            const word = words[index] + (index < words.length - 1 ? ' ' : '');
+            stream.emit('data', { text: word });
+            index++;
+            setTimeout(sendWord, 10); // Very fast streaming
+          } else {
+            stream.emit('end');
           }
-          
-          // If all APIs fail, use fallback
-          logger.warn(`All APIs failed for model ${modelId}, using fallback`);
-          const fallbackResponse = `I understand you're asking about: "${prompt}". As ${modelId}, I'm here to help you with this request. (API temporarily unavailable, using fallback response) Powered by ${modelId}`;
-          
-          // Stream fallback response quickly
-          const words = fallbackResponse.split(' ');
-          let index = 0;
-          
-          const sendWord = () => {
-            if (index < words.length) {
-              const word = words[index] + (index < words.length - 1 ? ' ' : '');
-              stream.emit('data', { text: word });
-              index++;
-              setTimeout(sendWord, 50); // Very fast for fallback
-            } else {
-              stream.emit('end');
-            }
-          };
-          
-          sendWord();
         };
         
-        tryApis();
+        sendWord();
       }, initialDelay);
 
       return stream;

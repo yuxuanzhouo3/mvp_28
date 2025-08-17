@@ -124,15 +124,7 @@ app.use('/api/chat', (req, res, next) => {
 
 app.use('/api/files', authMiddleware, fileRoutes);
 app.use('/api/users', authMiddleware, userRoutes);
-// Downloads routes - allow public access for mobile app downloads
-app.use('/api/downloads', (req, res, next) => {
-  // Allow public access to mobile app downloads
-  if (req.path.startsWith('/mobile/')) {
-    return next();
-  }
-  // Require authentication for other download endpoints
-  return authMiddleware(req, res, next);
-}, downloadRoutes);
+app.use('/api/downloads', authMiddleware, downloadRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

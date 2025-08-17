@@ -14,36 +14,13 @@ const getApiBaseUrl = () => {
   // Check if we're in a mobile environment
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
-  // Get current hostname
-  const hostname = window.location.hostname;
-  const protocol = window.location.protocol;
-  
-  console.log('Environment detection:', {
-    hostname,
-    protocol,
-    userAgent: navigator.userAgent,
-    isMobile
-  });
-  
-  // Check if we're in development (localhost)
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    if (isMobile) {
-      // Mobile in development - use localhost:5000
-      const apiUrl = 'http://localhost:5000';
-      console.log('Mobile development - using localhost API URL:', apiUrl);
-      return apiUrl;
-    } else {
-      // Desktop in development - use relative URL for proxy
-      const apiUrl = '';
-      console.log('Desktop development - using relative API URL (proxy)');
-      return apiUrl;
-    }
+  if (isMobile) {
+    // Use relative URL for mobile to avoid CORS issues
+    return '';
   }
   
-  // Production environment - always use the same hostname
-  const apiUrl = `${protocol}//${hostname}`;
-  console.log('Production environment - using same hostname API URL:', apiUrl);
-  return apiUrl;
+  // Desktop environment
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 };
 
 const API_BASE_URL = getApiBaseUrl();

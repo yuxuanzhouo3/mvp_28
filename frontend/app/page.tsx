@@ -2157,7 +2157,6 @@ export default function MornGPTHomepage() {
         setTimeout(() => setVoiceError(""), 5000)
         return null
       }
-
     }
     return null
   }
@@ -3074,8 +3073,8 @@ export default function MornGPTHomepage() {
     
     // Simulate download for different platforms and variants
     const downloadUrls = {
-      ios: "http://localhost:5000/api/downloads/mobile/ios",
-      android: "http://localhost:5000/api/downloads/mobile/android",
+      ios: "https://apps.apple.com/app/morngpt",
+      android: "https://play.google.com/store/apps/details?id=com.morngpt.app",
       chrome: "https://chrome.google.com/webstore/detail/morngpt",
       firefox: "https://addons.mozilla.org/en-US/firefox/addon/morngpt",
       edge: "https://microsoftedge.microsoft.com/addons/detail/morngpt",
@@ -8847,4 +8846,3 @@ export default function MornGPTHomepage() {
     </div>
   )
 }
-

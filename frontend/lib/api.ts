@@ -8,19 +8,19 @@ const getApiBaseUrl = () => {
   // Check if we're in a browser environment
   if (typeof window === 'undefined') {
     // Server-side rendering - use default
-    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    return process.env.NEXT_PUBLIC_API_URL || 'http://192.168.31.9:5000';
   }
   
   // Check if we're in a mobile environment
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
-  if (isMobile) {
-    // Use relative URL for mobile to avoid CORS issues
-    return '';
-  }
+  // Always use IP address for network access (both mobile and desktop)
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.31.9:5000';
   
-  // Desktop environment
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  console.log('Device type:', isMobile ? 'Mobile' : 'Desktop');
+  console.log('API URL:', apiUrl);
+  
+  return apiUrl;
 };
 
 const API_BASE_URL = getApiBaseUrl();

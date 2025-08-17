@@ -7,6 +7,12 @@
  * Unauthorized copying, distribution, or use is strictly prohibited.
  */
 
+// Mobile detection utility
+const isMobileDevice = () => {
+  if (typeof window === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
 // Speech Recognition types
 interface SpeechRecognition extends EventTarget {
   continuous: boolean
@@ -477,6 +483,12 @@ interface ExternalModel {
 }
 
 export default function MornGPTHomepage() {
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    setIsMobile(isMobileDevice());
+  }, []);
+  
   const [selectedCategory, setSelectedCategory] = useState<string>("")
   const [selectedModel, setSelectedModel] = useState<string>("")
   const [selectedModelType, setSelectedModelType] = useState<string>("general")
@@ -1833,8 +1845,8 @@ export default function MornGPTHomepage() {
                   id: aiMessageId,
                   role: "assistant" as const,
                   content: chunk,
-                  timestamp: new Date(),
-                  model: currentModel,
+            timestamp: new Date(),
+            model: currentModel,
                   isStreaming: true,
                 };
                 setMessages((prev) => [...prev, initialMessage]);
@@ -1880,40 +1892,40 @@ export default function MornGPTHomepage() {
                 id: aiMessageId,
                 role: "assistant" as const,
                 content: streamedContent,
-                timestamp: new Date(),
-                model: currentModel,
+            timestamp: new Date(),
+            model: currentModel,
                 isStreaming: false,
               };
-              
-              if (appUser) {
-                setChatSessions((prev) =>
-                  prev.map((session) =>
-                    session.id === currentChatId
-                      ? {
-                          ...session,
+
+      if (appUser) {
+        setChatSessions((prev) =>
+          prev.map((session) =>
+            session.id === currentChatId
+              ? {
+                  ...session,
                           messages: session.messages.map((msg) =>
                             msg.id === aiMessageId ? finalMessage : msg
                           ),
-                          lastUpdated: new Date(),
-                        }
-                      : session,
-                  ),
-                )
-              } else {
-                setGuestChatSessions((prev) =>
-                  prev.map((session) =>
-                    session.id === currentChatId
-                      ? {
-                          ...session,
+                  lastUpdated: new Date(),
+                }
+              : session,
+          ),
+        )
+      } else {
+        setGuestChatSessions((prev) =>
+          prev.map((session) =>
+            session.id === currentChatId
+              ? {
+                  ...session,
                           messages: session.messages.map((msg) =>
                             msg.id === aiMessageId ? finalMessage : msg
                           ),
-                          lastUpdated: new Date(),
-                        }
-                      : session,
-                  ),
-                )
-              }
+                  lastUpdated: new Date(),
+                }
+              : session,
+          ),
+        )
+      }
             },
             // onError callback
             (error: string) => {
@@ -1965,18 +1977,18 @@ export default function MornGPTHomepage() {
       
       // Only create fallback message if we're not in streaming mode
       if (!isStreaming) {
-        // Fallback response on error
-        const errorMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
+      // Fallback response on error
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
           content: selectedLanguage === 'zh' 
             ? `抱歉，我现在无法连接到AI服务。请稍后再试。（错误：${error instanceof Error ? error.message : '未知错误'}）`
             : `I apologize, but I'm having trouble connecting to the AI service right now. Please try again in a moment. (Error: ${error instanceof Error ? error.message : 'Unknown error'})`,
-          timestamp: new Date(),
-          model: currentModel,
-        }
-        
-        setMessages((prev) => [...prev, errorMessage])
+        timestamp: new Date(),
+        model: currentModel,
+      }
+      
+      setMessages((prev) => [...prev, errorMessage])
       }
       setIsLoading(false)
       setIsStreaming(false)
@@ -1994,30 +2006,30 @@ export default function MornGPTHomepage() {
           model: currentModel,
         }
         
-        if (appUser) {
-          setChatSessions((prev) =>
-            prev.map((session) =>
-              session.id === currentChatId
-                ? {
-                    ...session,
-                    messages: [...session.messages, errorMessage],
-                    lastUpdated: new Date(),
-                  }
-                : session,
-            ),
-          )
-        } else {
-          setGuestChatSessions((prev) =>
-            prev.map((session) =>
-              session.id === currentChatId
-                ? {
-                    ...session,
-                    messages: [...session.messages, errorMessage],
-                    lastUpdated: new Date(),
-                  }
-                : session,
-            ),
-          )
+      if (appUser) {
+        setChatSessions((prev) =>
+          prev.map((session) =>
+            session.id === currentChatId
+              ? {
+                  ...session,
+                  messages: [...session.messages, errorMessage],
+                  lastUpdated: new Date(),
+                }
+              : session,
+          ),
+        )
+      } else {
+        setGuestChatSessions((prev) =>
+          prev.map((session) =>
+            session.id === currentChatId
+              ? {
+                  ...session,
+                  messages: [...session.messages, errorMessage],
+                  lastUpdated: new Date(),
+                }
+              : session,
+          ),
+        )
         }
       }
     }
@@ -4440,8 +4452,8 @@ export default function MornGPTHomepage() {
 
         {/* Main Content */}
         <div className={`flex-1 flex flex-col ${sidebarCollapsed ? "ml-12" : ""} h-screen md:ml-0`}>
-                      {/* Header - Fixed height */}
-            <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#565869] flex-shrink-0">
+          {/* Header - Fixed height */}
+          <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#565869] flex-shrink-0">
               {/* Mobile Menu Button */}
               <div className="md:hidden p-2">
                 <Button
@@ -4581,14 +4593,14 @@ export default function MornGPTHomepage() {
                   <p className="text-xl text-gray-600 dark:text-gray-300 mb-8">Advanced AI models at your fingertips</p>
 
                   {/* Compact Tips */}
-                                     <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 max-w-4xl mx-auto">
-                     <div className="flex items-center justify-center space-x-6 text-xs text-blue-800 dark:text-blue-200">
+                  <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 max-w-4xl mx-auto">
+                    <div className="flex items-center justify-center space-x-6 text-xs text-blue-800 dark:text-blue-200">
                        <span>• {getLocalizedText('beSpecific')}</span>
                        <span>• {getLocalizedText('chooseSpecialized')}</span>
                        <span>• {getLocalizedText('uploadFilesWith')} 📎</span>
                        <span>• {getLocalizedText('useCtrlEnter')}</span>
-                     </div>
-                   </div>
+                    </div>
+                  </div>
 
 
                 </div>
@@ -4743,7 +4755,7 @@ export default function MornGPTHomepage() {
                         if (checkHotkeyMatch(e, currentHotkey)) {
                           e.preventDefault()
                           if (!isLoading) {
-                            handleSubmit()
+                          handleSubmit()
                           }
                         }
                         
@@ -5425,18 +5437,18 @@ export default function MornGPTHomepage() {
                               
                               <Tabs value={selectedModelType} onValueChange={setSelectedModelType} className="w-full">
                               <TabsList className="grid w-full grid-cols-3 bg-gray-100 dark:bg-[#565869]">
-                                                                 <TabsTrigger value="general" className="text-xs text-gray-900 dark:text-[#ececf1]">
-                                   <MessageSquare className="w-3 h-3 mr-1" />
+                                <TabsTrigger value="general" className="text-xs text-gray-900 dark:text-[#ececf1]">
+                                  <MessageSquare className="w-3 h-3 mr-1" />
                                    {getLocalizedText('general')}
-                                 </TabsTrigger>
-                                 <TabsTrigger value="morngpt" className="text-xs text-gray-900 dark:text-[#ececf1]">
-                                   <Sparkles className="w-3 h-3 mr-1" />
+                                </TabsTrigger>
+                                <TabsTrigger value="morngpt" className="text-xs text-gray-900 dark:text-[#ececf1]">
+                                  <Sparkles className="w-3 h-3 mr-1" />
                                    {getLocalizedText('mornGPT')}
-                                 </TabsTrigger>
-                                 <TabsTrigger value="external" className="text-xs text-gray-900 dark:text-[#ececf1]">
-                                   <Globe className="w-3 h-3 mr-1" />
+                                </TabsTrigger>
+                                <TabsTrigger value="external" className="text-xs text-gray-900 dark:text-[#ececf1]">
+                                  <Globe className="w-3 h-3 mr-1" />
                                    {getLocalizedText('external')}
-                                 </TabsTrigger>
+                                </TabsTrigger>
                               </TabsList>
 
                               <TabsContent value="general" className="p-2">
@@ -5454,45 +5466,45 @@ export default function MornGPTHomepage() {
                                 </div>
                               </TabsContent>
 
-                                                             <TabsContent value="morngpt" className="p-2">
-                                 <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
-                                   {mornGPTCategories.map((category) => {
-                                     const IconComponent = category.icon
-                                     return (
-                                       <div
-                                         key={category.id}
-                                         className={`p-1.5 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm border ${
-                                           selectedCategory === category.id
-                                             ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
-                                             : "border-gray-100 dark:border-gray-700"
-                                         }`}
-                                         onClick={() => handleModelChange("morngpt", category.id)}
-                                       >
-                                         <div className="flex flex-col space-y-1">
-                                           <div className="flex items-center space-x-1.5">
-                                             <div className={`p-0.5 rounded ${category.color} text-white shadow-sm`}>
-                                               <IconComponent className="w-2 h-2" />
-                                             </div>
-                                             <div className="flex-1 min-w-0">
-                                               <div className="flex items-center justify-between">
-                                                 <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
-                                                   {category.name}
-                                                 </p>
-                                                 <Badge variant="secondary" className="text-[2px] px-0.5 py-0 h-2">
-                                                   {category.id.toUpperCase()}1
-                                                 </Badge>
-                                               </div>
-                                             </div>
-                                           </div>
-                                           <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
+                              <TabsContent value="morngpt" className="p-2">
+                                <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
+                                  {mornGPTCategories.map((category) => {
+                                    const IconComponent = category.icon
+                                    return (
+                                      <div
+                                        key={category.id}
+                                        className={`p-1.5 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm border ${
+                                          selectedCategory === category.id
+                                            ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
+                                            : "border-gray-100 dark:border-gray-700"
+                                        }`}
+                                        onClick={() => handleModelChange("morngpt", category.id)}
+                                      >
+                                        <div className="flex flex-col space-y-1">
+                                          <div className="flex items-center space-x-1.5">
+                                            <div className={`p-0.5 rounded ${category.color} text-white shadow-sm`}>
+                                              <IconComponent className="w-2 h-2" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center justify-between">
+                                                <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
+                                                  {category.name}
+                                                </p>
+                                                <Badge variant="secondary" className="text-[2px] px-0.5 py-0 h-2">
+                                                  {category.id.toUpperCase()}1
+                                                </Badge>
+                                              </div>
+                                            </div>
+                                          </div>
+                                                                                     <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
                                              {category.description}
                                            </p>
-                                         </div>
-                                       </div>
-                                     )
-                                   })}
-                                 </div>
-                               </TabsContent>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </TabsContent>
 
                               <TabsContent value="external" className="p-2">
                                 <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
@@ -5506,38 +5518,38 @@ export default function MornGPTHomepage() {
                                              (apiName === "stability ai" && modelProvider === "stability");
                                     });
                                     return (
-                                      <div
-                                        key={index}
+                                    <div
+                                      key={index}
                                         className="relative group"
                                       >
                                         <div
-                                          className={`p-1 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm ${
-                                            selectedAPI === api.id
-                                              ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
-                                              : "border border-gray-100 dark:border-gray-700"
-                                          }`}
-                                          onClick={() => setSelectedAPI(api.id)}
-                                        >
-                                          <div className="flex flex-col space-y-1">
-                                            <div className="flex items-center space-x-1.5">
-                                              <div className="p-0.5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-sm text-[8px]">
-                                                {api.icon}
-                                              </div>
-                                              <div className="flex-1 min-w-0">
-                                                <div className="flex items-center justify-between">
-                                                  <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
-                                                    {api.name}
-                                                  </p>
-                                                  <Badge variant="secondary" className="text-[2px] px-0.5 py-0 h-2 ml-1">
-                                                    {api.models}
-                                                  </Badge>
-                                                </div>
-                                              </div>
+                                      className={`p-1 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm ${
+                                        selectedAPI === api.id
+                                          ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
+                                          : "border border-gray-100 dark:border-gray-700"
+                                      }`}
+                                      onClick={() => setSelectedAPI(api.id)}
+                                    >
+                                                                             <div className="flex flex-col space-y-1">
+                                         <div className="flex items-center space-x-1.5">
+                                                                                       <div className="p-0.5 rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-sm text-[8px]">
+                                              {api.icon}
                                             </div>
-                                            <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
-                                              {api.description}
-                                            </p>
-                                          </div>
+                                           <div className="flex-1 min-w-0">
+                                             <div className="flex items-center justify-between">
+                                               <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
+                                                 {api.name}
+                                               </p>
+                                                 <Badge variant="secondary" className="text-[2px] px-0.5 py-0 h-2 ml-1">
+                                                   {api.models}
+                                                 </Badge>
+                                               </div>
+                                           </div>
+                                         </div>
+                                         <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
+                                           {api.description}
+                                         </p>
+                                       </div>
                                         </div>
                                         
                                         {/* Hover dropdown with individual models */}
@@ -5556,8 +5568,8 @@ export default function MornGPTHomepage() {
                                                   <p className="text-[6px] text-gray-900 dark:text-[#ececf1] truncate leading-tight">
                                                     {model.name}
                                                   </p>
-                                                </div>
-                                              ))}
+                                    </div>
+                                  ))}
                                             </div>
                                           </div>
                                         </div>
@@ -5588,25 +5600,25 @@ export default function MornGPTHomepage() {
                             <Send className="w-3.5 h-3.5" />
                           )}
                         </Button>
-                                      </div>
                   </div>
                 </div>
+              </div>
 
-                {/* Upload Error Display */}
-                {uploadError && (
-                  <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
-                    <p className="text-xs text-red-600 dark:text-red-400">{uploadError}</p>
-                  </div>
-                )}
+              {/* Upload Error Display */}
+              {uploadError && (
+                <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+                  <p className="text-xs text-red-600 dark:text-red-400">{uploadError}</p>
+                </div>
+              )}
 
-                {/* Voice Error Display */}
-                {voiceError && (
-                  <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
-                    <p className="text-xs text-red-600 dark:text-red-400">{voiceError}</p>
-                  </div>
-                )}
+              {/* Voice Error Display */}
+              {voiceError && (
+                <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+                  <p className="text-xs text-red-600 dark:text-red-400">{voiceError}</p>
+                </div>
+              )}
 
-                {/* Camera Error Display */}
+              {/* Camera Error Display */}
               {cameraError && (
                 <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
                   <p className="text-xs text-red-600 dark:text-red-400">{cameraError}</p>

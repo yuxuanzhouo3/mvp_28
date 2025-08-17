@@ -2141,9 +2141,38 @@ export default function MornGPTHomepage() {
 
         recognition.onerror = (event) => {
           console.error('Speech recognition error:', event.error)
-          setVoiceError(`Speech recognition error: ${event.error}`)
+          let errorMessage = `Speech recognition error: ${event.error}`
+          
+          // Provide more helpful error messages
+          switch (event.error) {
+            case 'network':
+              errorMessage = "Network error. Speech recognition service may not be available in your region. Please try again later."
+              break
+            case 'not-allowed':
+              errorMessage = "Microphone access denied. Please allow microphone permissions in your browser settings."
+              break
+            case 'no-speech':
+              errorMessage = "No speech detected. Please try speaking again."
+              break
+            case 'audio-capture':
+              errorMessage = "Audio capture error. Please check your microphone and try again."
+              break
+            case 'service-not-allowed':
+              errorMessage = "Speech recognition service not allowed. Please check your browser settings."
+              break
+            case 'bad-grammar':
+              errorMessage = "Speech recognition grammar error. Please try again."
+              break
+            case 'language-not-supported':
+              errorMessage = "Language not supported. Please try with English or Chinese."
+              break
+            default:
+              errorMessage = `Speech recognition error: ${event.error}. Please try again.`
+          }
+          
+          setVoiceError(errorMessage)
           setIsRecording(false)
-          setTimeout(() => setVoiceError(""), 5000)
+          setTimeout(() => setVoiceError(""), 8000) // Show error longer for network issues
         }
 
         recognition.onend = () => {
@@ -2171,6 +2200,22 @@ export default function MornGPTHomepage() {
       return
     }
     
+    // Check if speech recognition is supported
+    if (typeof window !== 'undefined' && !window.SpeechRecognition && !window.webkitSpeechRecognition) {
+      setVoiceError("Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.")
+      setTimeout(() => setVoiceError(""), 5000)
+      return
+    }
+    
+    // Set a timeout to handle network issues
+    const networkTimeout = setTimeout(() => {
+      if (isRecording) {
+        setVoiceError("Network timeout. Speech recognition may not be available in your region.")
+        setIsRecording(false)
+        setTimeout(() => setVoiceError(""), 5000)
+      }
+    }, 5000)
+    
     if (!recognition) {
       const newRecognition = initializeSpeechRecognition()
       if (newRecognition) {
@@ -2178,10 +2223,12 @@ export default function MornGPTHomepage() {
           newRecognition.start()
           setIsRecording(true)
           scrollToInputArea() // Auto-scroll when voice recording starts
+          clearTimeout(networkTimeout) // Clear timeout on success
         } catch (error) {
           console.error('Error starting speech recognition:', error)
-          setVoiceError("Failed to start voice recording")
+          setVoiceError("Failed to start voice recording. Please try again.")
           setTimeout(() => setVoiceError(""), 5000)
+          clearTimeout(networkTimeout)
         }
       }
     } else {
@@ -2189,10 +2236,12 @@ export default function MornGPTHomepage() {
         recognition.start()
         setIsRecording(true)
         scrollToInputArea() // Auto-scroll when voice recording starts
+        clearTimeout(networkTimeout) // Clear timeout on success
       } catch (error) {
         console.error('Error starting speech recognition:', error)
-        setVoiceError("Failed to start voice recording")
+        setVoiceError("Failed to start voice recording. Please try again.")
         setTimeout(() => setVoiceError(""), 5000)
+        clearTimeout(networkTimeout)
       }
     }
   }

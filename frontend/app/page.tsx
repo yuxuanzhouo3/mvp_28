@@ -2172,11 +2172,27 @@ export default function MornGPTHomepage() {
           
           setVoiceError(errorMessage)
           setIsRecording(false)
+          
+          // Clear any existing recognition instance on error
+          if (recognition) {
+            try {
+              recognition.stop()
+            } catch (stopError) {
+              console.error('Error stopping recognition on error:', stopError)
+            }
+          }
+          
           setTimeout(() => setVoiceError(""), 8000) // Show error longer for network issues
         }
 
         recognition.onend = () => {
+          console.log('Speech recognition ended')
           setIsRecording(false)
+        }
+        
+        recognition.onstart = () => {
+          console.log('Speech recognition started successfully')
+          setIsRecording(true)
         }
 
         setRecognition(recognition)
@@ -2212,6 +2228,16 @@ export default function MornGPTHomepage() {
       if (isRecording) {
         setVoiceError("Network timeout. Speech recognition may not be available in your region.")
         setIsRecording(false)
+        
+        // Clear any existing recognition instance
+        if (recognition) {
+          try {
+            recognition.stop()
+          } catch (error) {
+            console.error('Error stopping recognition on timeout:', error)
+          }
+        }
+        
         setTimeout(() => setVoiceError(""), 5000)
       }
     }, 5000)
@@ -2221,7 +2247,7 @@ export default function MornGPTHomepage() {
       if (newRecognition) {
         try {
           newRecognition.start()
-          setIsRecording(true)
+          // Don't set isRecording here - wait for onstart event
           scrollToInputArea() // Auto-scroll when voice recording starts
           clearTimeout(networkTimeout) // Clear timeout on success
         } catch (error) {
@@ -2234,7 +2260,7 @@ export default function MornGPTHomepage() {
     } else {
       try {
         recognition.start()
-        setIsRecording(true)
+        // Don't set isRecording here - wait for onstart event
         scrollToInputArea() // Auto-scroll when voice recording starts
         clearTimeout(networkTimeout) // Clear timeout on success
       } catch (error) {
@@ -2266,6 +2292,20 @@ export default function MornGPTHomepage() {
       startVoiceRecording()
       // Auto-scroll when voice input button is clicked
       scrollToInputArea()
+    }
+  }
+  
+  // Manual reset function for stuck recording state
+  const resetVoiceRecording = () => {
+    console.log('Manually resetting voice recording state')
+    setIsRecording(false)
+    setVoiceError("")
+    if (recognition) {
+      try {
+        recognition.stop()
+      } catch (error) {
+        console.error('Error stopping recognition during reset:', error)
+      }
     }
   }
 
@@ -4964,6 +5004,20 @@ export default function MornGPTHomepage() {
                             <Volume2 className="w-3 h-3" />
                           )}
                         </Button>
+                        
+                        {/* Reset Voice Recording Button (shown when stuck) */}
+                        {isRecording && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all duration-200 rounded-full border border-orange-300 dark:border-orange-600"
+                            title="Reset voice recording (if stuck)"
+                            type="button"
+                            onClick={resetVoiceRecording}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        )}
 
                         {/* Camera Button */}
                         <Button

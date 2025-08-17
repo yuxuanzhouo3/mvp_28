@@ -2118,15 +2118,17 @@ export default function MornGPTHomepage() {
         const recognition = new SpeechRecognition()
         recognition.continuous = true
         recognition.interimResults = true
-        recognition.lang = 'en-US'
+        recognition.lang = selectedLanguage === 'zh' ? 'zh-CN' : 'en-US'
         recognition.maxAlternatives = 1
 
         recognition.onresult = (event) => {
+          console.log('Speech recognition result received:', event.results)
           let finalTranscript = ''
           let interimTranscript = ''
 
           for (let i = event.resultIndex; i < event.results.length; i++) {
             const transcript = event.results[i][0].transcript
+            console.log(`Result ${i}: ${transcript} (final: ${event.results[i].isFinal})`)
             if (event.results[i].isFinal) {
               finalTranscript += transcript
             } else {
@@ -2134,8 +2136,23 @@ export default function MornGPTHomepage() {
             }
           }
 
+          // Show interim results in real-time
+          if (interimTranscript) {
+            setPrompt(prev => {
+              // Remove any previous interim results and add new ones
+              const withoutInterim = prev.replace(/\[interim:.*?\]/g, '')
+              return withoutInterim + `[interim: ${interimTranscript}]`
+            })
+          }
+
+          // Add final results to the prompt
           if (finalTranscript) {
-            setPrompt(prev => prev + finalTranscript)
+            console.log('Adding final transcript:', finalTranscript)
+            setPrompt(prev => {
+              // Remove interim results and add final transcript
+              const withoutInterim = prev.replace(/\[interim:.*?\]/g, '')
+              return withoutInterim + finalTranscript
+            })
           }
         }
 
@@ -2193,6 +2210,31 @@ export default function MornGPTHomepage() {
         recognition.onstart = () => {
           console.log('Speech recognition started successfully')
           setIsRecording(true)
+          setVoiceError("") // Clear any previous errors
+        }
+        
+        recognition.onaudiostart = () => {
+          console.log('Audio capture started')
+        }
+        
+        recognition.onaudioend = () => {
+          console.log('Audio capture ended')
+        }
+        
+        recognition.onsoundstart = () => {
+          console.log('Sound detected')
+        }
+        
+        recognition.onsoundend = () => {
+          console.log('Sound ended')
+        }
+        
+        recognition.onspeechstart = () => {
+          console.log('Speech started')
+        }
+        
+        recognition.onspeechend = () => {
+          console.log('Speech ended')
         }
 
         setRecognition(recognition)

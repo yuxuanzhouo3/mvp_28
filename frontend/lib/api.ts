@@ -14,35 +14,35 @@ const getApiBaseUrl = () => {
   // Check if we're in a mobile environment
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
-  if (isMobile) {
-    // For mobile, we need to use the actual backend URL
-    // Check if we're accessing via localhost or IP address
-    const hostname = window.location.hostname;
-    const port = window.location.port;
-    
-    console.log('Mobile device detected:', {
-      hostname,
-      port,
-      userAgent: navigator.userAgent,
-      isMobile
-    });
-    
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      // Local development - use localhost:5000
+  // Get current hostname
+  const hostname = window.location.hostname;
+  const protocol = window.location.protocol;
+  
+  console.log('Environment detection:', {
+    hostname,
+    protocol,
+    userAgent: navigator.userAgent,
+    isMobile
+  });
+  
+  // Check if we're in development (localhost)
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    if (isMobile) {
+      // Mobile in development - use localhost:5000
       const apiUrl = 'http://localhost:5000';
-      console.log('Using localhost API URL:', apiUrl);
+      console.log('Mobile development - using localhost API URL:', apiUrl);
       return apiUrl;
     } else {
-      // Production or remote access - use the same hostname with port 5000
-      const apiUrl = `http://${hostname}:5000`;
-      console.log('Using remote API URL:', apiUrl);
+      // Desktop in development - use relative URL for proxy
+      const apiUrl = '';
+      console.log('Desktop development - using relative API URL (proxy)');
       return apiUrl;
     }
   }
   
-  // Desktop environment - use relative URL since we have API proxy
-  const apiUrl = '';
-  console.log('Desktop environment, using relative API URL (proxy)');
+  // Production environment - always use the same hostname
+  const apiUrl = `${protocol}//${hostname}`;
+  console.log('Production environment - using same hostname API URL:', apiUrl);
   return apiUrl;
 };
 

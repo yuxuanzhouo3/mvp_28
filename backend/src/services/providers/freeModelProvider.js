@@ -159,7 +159,7 @@ class FreeModelProvider {
           const chunk = chunks[index] + (index < chunks.length - 1 ? ' ' : '');
           stream.push(chunk);
           index++;
-          setTimeout(sendChunk, 200); // 200ms per word (0.2 seconds)
+          setTimeout(sendChunk, 1000); // 1000ms per word (1 second)
         } else {
           stream.push(null);
         }

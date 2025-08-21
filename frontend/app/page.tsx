@@ -1830,7 +1830,7 @@ export default function MornGPTHomepage() {
         
         // Set thinking timeout (max 2 seconds)
         const thinkingTimeout = setTimeout(() => {
-          if (isLoading && !messageCreated) {
+          if (!messageCreated) {
             console.log('Thinking timeout reached, forcing response start');
             setIsLoading(false);
             setThinkingText("");
@@ -4892,11 +4892,9 @@ export default function MornGPTHomepage() {
                     ))}
                     {isLoading && thinkingText && (
                       <div className="flex justify-start">
-                        <div className="bg-white dark:bg-[#444654] border border-gray-200 dark:border-[#565869] text-gray-900 dark:text-[#ececf1] p-4 rounded-lg">
-                          <div className="flex items-center space-x-2">
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900 dark:border-[#ececf1]"></div>
-                            <span>{thinkingText}</span>
-                          </div>
+                        <div className="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 dark:border-gray-400"></div>
+                          <span className="text-sm">{thinkingText}</span>
                         </div>
                       </div>
                     )}

@@ -1812,9 +1812,13 @@ export default function MornGPTHomepage() {
         let isStreamingComplete = false;
         let messageCreated = false;
         
+        // Detect if user input contains Chinese characters for thinking text
+        const isChinese = /[\u4e00-\u9fff]/.test(userMessage.content);
+        const thinkingText = isChinese ? '思考中...' : 'Thinking...';
+        
         // Set thinking state with circle indicator (no message box)
         setIsLoading(true);
-        setThinkingText("Thinking...");
+        setThinkingText(thinkingText);
         messageCreated = false;
         
         // Make streaming API call

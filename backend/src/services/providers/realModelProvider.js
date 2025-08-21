@@ -573,7 +573,11 @@ class RealModelProvider {
       'llama3.1-8b': 'llama3.1:8b',
       'mistral-7b': 'mistral:7b',
       'phi3-3.8b': 'phi3:mini',
-      'codellama-7b': 'codellama:7b'
+      'codellama-7b': 'codellama:7b',
+      // Smart selection models
+      'llama3-8b-8192': 'llama3.1:8b',
+      'llama3-70b-8192': 'llama3.1:70b',
+      'mixtral-8x7b-32768': 'mixtral:8x7b'
     };
 
     const ollamaModel = ollamaModelMapping[modelId];
@@ -638,7 +642,11 @@ class RealModelProvider {
         'llama3.1-8b': 'meta-llama/Llama-3.1-8B-Instruct',
         'mistral-7b': 'mistralai/Mistral-7B-Instruct-v0.2',
         'phi3-3.8b': 'microsoft/Phi-3-mini-4k-instruct',
-        'codellama-7b': 'codellama/CodeLlama-7b-Instruct-hf'
+        'codellama-7b': 'codellama/CodeLlama-7b-Instruct-hf',
+        // Smart selection models
+        'llama3-8b-8192': 'meta-llama/Llama-3.1-8B-Instruct',
+        'llama3-70b-8192': 'meta-llama/Llama-3.1-70B-Instruct',
+        'mixtral-8x7b-32768': 'mistralai/Mixtral-8x7B-Instruct-v0.1'
       };
 
       const hfModel = modelMapping[modelId];
@@ -719,7 +727,14 @@ class RealModelProvider {
       logger.info(`Groq API Key available: ${!!apiKey}`);
       logger.info(`Groq API Key length: ${apiKey ? apiKey.length : 0}`);
       if (!apiKey) throw new Error('Groq API key not configured');
-      const modelMap = { 'groq-llama3-8b': 'llama3-8b-8192', 'groq-mixtral-8x7b': 'mixtral-8x7b-32768' };
+      const modelMap = { 
+        'groq-llama3-8b': 'llama3-8b-8192', 
+        'groq-mixtral-8x7b': 'mixtral-8x7b-32768',
+        // Smart selection models
+        'llama3-8b-8192': 'llama3-8b-8192',
+        'llama3-70b-8192': 'llama3-70b-8192',
+        'mixtral-8x7b-32768': 'mixtral-8x7b-32768'
+      };
       const groqModel = modelMap[modelId];
       if (!groqModel) throw new Error(`No Groq mapping for ${modelId}`);
       const messages = options.language === 'zh-CN' 

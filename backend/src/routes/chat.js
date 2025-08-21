@@ -88,6 +88,18 @@ router.post('/stream-guest', async (req, res) => {
     console.log('Guest streaming endpoint received request body:', req.body);
     const { modelId, message, language } = req.body;
     
+    // Get user IP for smart model selection
+    const userIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'] || '127.0.0.1';
+    console.log('User IP:', userIP);
+    
+    // Use smart model selector to get best model
+    const smartModelSelector = require('../services/smartModelSelector');
+    const selectedModel = smartModelSelector.selectBestModel(userIP, message.length);
+    console.log('Smart model selection:', selectedModel);
+    
+    // Override modelId with smart selection
+    const optimizedModelId = selectedModel.modelId;
+    
     if (!message || !modelId) {
       return res.status(400).json({
         success: false,
@@ -98,18 +110,18 @@ router.post('/stream-guest', async (req, res) => {
     // Get available models
     const { getAllModels } = require('../config/enterpriseModels');
     const availableModels = getAllModels();
-    const selectedModel = availableModels.find(m => m.id === modelId);
+    const originalSelectedModel = availableModels.find(m => m.id === modelId);
 
-    if (!selectedModel) {
+    if (!originalSelectedModel) {
       return res.status(400).json({
         success: false,
         message: 'Model not available'
       });
     }
 
-    // Get AI response using load balancer
+    // Get AI response using load balancer with optimized model
     const loadBalancer = require('../services/loadBalancer');
-    const provider = await loadBalancer.getNextProvider(modelId, 'free');
+    const provider = await loadBalancer.getNextProvider(optimizedModelId, 'free');
     
     if (!provider) {
       return res.status(500).json({

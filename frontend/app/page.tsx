@@ -1812,13 +1812,9 @@ export default function MornGPTHomepage() {
         let isStreamingComplete = false;
         let messageCreated = false;
         
-        // Detect if user input contains Chinese characters
-        const isChinese = /[\u4e00-\u9fff]/.test(userMessage.content);
-        const thinkingText = isChinese ? '思考中...' : 'Thinking...';
-        
         // Set thinking state with circle indicator (no message box)
         setIsLoading(true);
-        setThinkingText(thinkingText);
+        setThinkingText("Thinking...");
         messageCreated = false;
         
         // Make streaming API call
@@ -1828,26 +1824,8 @@ export default function MornGPTHomepage() {
         const controller = new AbortController();
         setStreamingController(controller);
         
-        // Set thinking timeout (max 2 seconds)
-        const thinkingTimeout = setTimeout(() => {
-          if (!messageCreated) {
-            console.log('Thinking timeout reached, forcing response start');
-            setIsLoading(false);
-            setThinkingText("");
-            // Create empty message to start streaming
-            const initialMessage: Message = {
-              id: aiMessageId,
-              role: "assistant" as const,
-              content: "正在生成响应...", // Show placeholder text
-              timestamp: new Date(),
-              model: currentModel,
-              isStreaming: true,
-            };
-            setMessages((prev) => [...prev, initialMessage]);
-            messageCreated = true;
-            streamedContent = "正在生成响应..."; // Set initial content
-          }
-        }, 2000); // 2 seconds timeout
+        // No timeout - let thinking continue until response arrives
+        let thinkingTimeout: NodeJS.Timeout | null = null;
         setIsStreaming(true);
         // Keep isLoading true to show thinking indicator until first chunk arrives
         
@@ -1915,8 +1893,10 @@ export default function MornGPTHomepage() {
             },
             // onEnd callback
             () => {
-              // Clear the thinking timeout
-              clearTimeout(thinkingTimeout);
+              // Clear the thinking timeout if it exists
+              if (thinkingTimeout) {
+                clearTimeout(thinkingTimeout);
+              }
               isStreamingComplete = true;
               setIsLoading(false);
               setIsStreaming(false);

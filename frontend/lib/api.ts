@@ -210,32 +210,45 @@ class ApiService {
         const { done, value } = await reader.read();
         
         if (done) {
+          console.log('Stream reading done');
           break;
         }
 
-        buffer += decoder.decode(value, { stream: true });
+        const decoded = decoder.decode(value, { stream: true });
+        console.log('Decoded chunk:', decoded);
+        buffer += decoded;
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
+        console.log('Processing lines:', lines);
         for (const line of lines) {
           if (line.trim() === '') continue;
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
+            console.log('Processing data line:', data);
             if (data === '[DONE]') {
+              console.log('Stream complete');
               onEnd?.();
               return;
             }
             
             try {
               const parsed = JSON.parse(data);
+              console.log('Received SSE data:', parsed);
               if (parsed.chunk) {
+                console.log('Calling onChunk with:', parsed.chunk);
                 onChunk?.(parsed.chunk);
+                // Force immediate UI update
+                await new Promise(resolve => setTimeout(resolve, 0));
               }
             } catch (e) {
-              console.warn('Failed to parse SSE data:', data);
+              console.warn('Failed to parse SSE data:', data, e);
             }
           }
         }
+        
+        // Add a small delay to ensure UI updates
+        await new Promise(resolve => setTimeout(resolve, 1));
       }
 
       onEnd?.();

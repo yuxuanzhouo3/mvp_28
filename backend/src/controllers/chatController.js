@@ -113,7 +113,7 @@ class ChatController {
         if ((currentUsage + estimatedTokens) > modelLimit) {
           return res.status(402).json({
             success: false,
-            message: `Token limit exceeded for ${selectedModel.name}. You've used ${currentUsage}/${modelLimit} tokens. Upgrade to Pro for higher limits!`,
+            message: `Token limit exceeded for ${modelId}. You've used ${currentUsage}/${modelLimit} tokens. Upgrade to Pro for higher limits!`,
             error: 'PAYMENT_REQUIRED',
             currentUsage,
             limit: modelLimit,

@@ -164,30 +164,30 @@ router.post('/stream-guest', async (req, res) => {
       const response = await provider.generateText(modelId, message, options, 'guest', 'free');
       
       if (response.success) {
-                 // Simulate streaming by sending the response in chunks
-         const text = response.text;
-         const chunkSize = 3; // Smaller chunks for more realistic streaming
-         let index = 0;
-         
-                   // Add initial delay to simulate thinking time (max 1 second)
-          const initialDelay = Math.min(1000, Math.random() * 500 + 200); // 200-700ms, max 1s
-         
-         setTimeout(() => {
-           const sendChunk = () => {
-             if (index < text.length) {
-               const chunk = text.slice(index, index + chunkSize);
-               res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
-               index += chunkSize;
-               // Faster streaming with variable delays
-               const delay = Math.random() * 20 + 10; // 10-30ms between chunks for faster output
-               setTimeout(sendChunk, delay);
-             } else {
-               res.write('data: [DONE]\n\n');
-               res.end();
-             }
-           };
-           
-                     sendChunk();
+        // Simulate streaming by sending the response in chunks
+        const text = response.text;
+        const chunkSize = 1; // Single character chunks for faster streaming
+        let index = 0;
+        
+        // Minimal initial delay to simulate thinking time
+        const initialDelay = Math.min(100, Math.random() * 50 + 10); // 10-60ms, max 100ms for faster start
+        
+        setTimeout(() => {
+          const sendChunk = () => {
+            if (index < text.length) {
+              const chunk = text.slice(index, index + chunkSize);
+              res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+              index += chunkSize;
+              // Ultra fast streaming with minimal delays
+              const delay = Math.random() * 2 + 1; // 1-3ms between chunks for ultra fast output
+              setTimeout(sendChunk, delay);
+            } else {
+              res.write('data: [DONE]\n\n');
+              res.end();
+            }
+          };
+          
+          sendChunk();
         }, initialDelay);
       } else {
         res.write(`data: ${JSON.stringify({ error: response.error || 'Failed to generate response' })}\n\n`);

@@ -1319,7 +1319,7 @@ class RealModelProvider {
         const word = words[index] + (index < words.length - 1 ? ' ' : '');
         stream.emit('data', { text: word });
         index++;
-        setTimeout(sendWord, 20); // Moderate streaming speed
+        setTimeout(sendWord, 8); // Much faster streaming speed
       } else {
         stream.emit('end');
       }
@@ -1340,7 +1340,7 @@ class RealModelProvider {
         const word = words[index] + (index < words.length - 1 ? ' ' : '');
         stream.emit('data', { text: word });
         index++;
-        setTimeout(sendWord, 15); // Fast fallback streaming
+        setTimeout(sendWord, 5); // Very fast fallback streaming
       } else {
         stream.emit('end');
       }

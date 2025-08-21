@@ -707,6 +707,7 @@ export default function MornGPTHomepage() {
   // Share link state
   const [showShareDialog, setShowShareDialog] = useState(false)
   const [shareLink, setShareLink] = useState("")
+  const [forceUpdate, setForceUpdate] = useState(0)
   const [shareSecret, setShareSecret] = useState("")
   const [isGeneratingLink, setIsGeneratingLink] = useState(false)
   const [makeDiscoverable, setMakeDiscoverable] = useState(false)
@@ -1688,6 +1689,7 @@ export default function MornGPTHomepage() {
         // Don't add initial message - wait for real content
         let messageCreated = false;
         setIsStreaming(true);
+        setIsLoading(false); // Stop showing "Thinking..." once streaming starts
         
         // Simulate streaming for MultiGPT
         const multiGPTResponse = await simulateMultiGPTResponse(userMessage.content);
@@ -1727,10 +1729,10 @@ export default function MornGPTHomepage() {
                 behavior: 'smooth'
               });
             }
-          }, 10);
+          }, 5);
           
-          // Delay between words
-          await new Promise(resolve => setTimeout(resolve, 50));
+          // Much faster delay between words for MultiGPT
+          await new Promise(resolve => setTimeout(resolve, 15));
         }
         
         // Final update
@@ -1809,6 +1811,18 @@ export default function MornGPTHomepage() {
         let isStreamingComplete = false;
         let messageCreated = false;
         
+        // Create initial message immediately to show streaming indicator
+        const initialMessage: Message = {
+          id: aiMessageId,
+          role: "assistant" as const,
+          content: '⚡ AI Response Starting...',
+          timestamp: new Date(),
+          model: currentModel,
+          isStreaming: true,
+        };
+        setMessages((prev) => [...prev, initialMessage]);
+        messageCreated = true;
+        
         // Make streaming API call
         console.log('Making streaming API call with modelId:', modelId, 'message:', userMessage.content, 'language:', detectedLanguage);
         
@@ -1816,6 +1830,7 @@ export default function MornGPTHomepage() {
         const controller = new AbortController();
         setStreamingController(controller);
         setIsStreaming(true);
+        setIsLoading(false); // Stop showing "Thinking..." once streaming starts
         
         try {
           await apiService.sendMessageStream(
@@ -1826,29 +1841,31 @@ export default function MornGPTHomepage() {
             detectedLanguage,
             // onChunk callback
             (chunk: string) => {
-              // Create the message only when we get the first real content (skip thinking messages)
-              if (!messageCreated && chunk.trim() && !chunk.includes('思考中') && !chunk.includes('Thinking')) {
-                messageCreated = true;
-                const initialMessage: Message = {
-                  id: aiMessageId,
-                  role: "assistant" as const,
-                  content: chunk,
-            timestamp: new Date(),
-            model: currentModel,
-                  isStreaming: true,
-                };
-                setMessages((prev) => [...prev, initialMessage]);
-                streamedContent = chunk;
-              } else if (messageCreated) {
-                streamedContent += chunk;
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === aiMessageId
-                      ? { ...msg, content: streamedContent, isStreaming: true }
-                      : msg
-                  )
+              console.log('=== onChunk called with:', chunk, '===');
+              console.log('Previous streamedContent:', streamedContent);
+              streamedContent += chunk;
+              console.log('Updated streamedContent:', streamedContent);
+              console.log('StreamedContent length:', streamedContent.length);
+              
+              // Force immediate update with better visual feedback
+              setMessages((prev) => {
+                const updated = prev.map((msg) =>
+                  msg.id === aiMessageId
+                    ? { 
+                        ...msg, 
+                        content: streamedContent, 
+                        isStreaming: true,
+                        // Add visual indicator for streaming
+                        model: streamedContent.length < 50 ? `${currentModel} (Streaming...)` : currentModel
+                      }
+                    : msg
                 );
-              }
+                console.log('Updated messages:', updated);
+                return updated;
+              });
+              
+              // Force React to re-render immediately
+              setForceUpdate(prev => prev + 1);
               
               // Auto-scroll to bottom for smooth experience
               setTimeout(() => {
@@ -1858,7 +1875,7 @@ export default function MornGPTHomepage() {
                     behavior: 'smooth'
                   });
                 }
-              }, 10);
+              }, 2); // Faster auto-scroll
             },
             // onEnd callback
             () => {
@@ -1866,11 +1883,17 @@ export default function MornGPTHomepage() {
               setIsLoading(false);
               setIsStreaming(false);
               setStreamingController(null);
+              
               // Remove streaming indicator when complete and update final message
               setMessages((prev) =>
                 prev.map((msg) =>
                   msg.id === aiMessageId
-                    ? { ...msg, isStreaming: false, content: streamedContent }
+                    ? { 
+                        ...msg, 
+                        isStreaming: false, 
+                        content: streamedContent || "No response received",
+                        model: currentModel // Reset model name
+                      }
                     : msg
                 )
               );

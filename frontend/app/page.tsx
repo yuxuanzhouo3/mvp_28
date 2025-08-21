@@ -1811,18 +1811,6 @@ export default function MornGPTHomepage() {
         let isStreamingComplete = false;
         let messageCreated = false;
         
-        // Create initial message immediately to show streaming indicator
-        const initialMessage: Message = {
-          id: aiMessageId,
-          role: "assistant" as const,
-          content: '', // Start with empty content
-          timestamp: new Date(),
-          model: currentModel,
-          isStreaming: true,
-        };
-        setMessages((prev) => [...prev, initialMessage]);
-        messageCreated = true;
-        
         // Make streaming API call
         console.log('Making streaming API call with modelId:', modelId, 'message:', userMessage.content, 'language:', detectedLanguage);
         
@@ -1847,22 +1835,36 @@ export default function MornGPTHomepage() {
               console.log('Updated streamedContent:', streamedContent);
               console.log('StreamedContent length:', streamedContent.length);
               
-              // Force immediate update with better visual feedback
-              setMessages((prev) => {
-                const updated = prev.map((msg) =>
-                  msg.id === aiMessageId
-                    ? { 
-                        ...msg, 
-                        content: streamedContent, 
-                        isStreaming: true,
-                        // Add visual indicator for streaming
-                        model: streamedContent.length < 50 ? `${currentModel} (Streaming...)` : currentModel
-                      }
-                    : msg
-                );
-                console.log('Updated messages:', updated);
-                return updated;
-              });
+              // Create message on first chunk if not created yet
+              if (!messageCreated) {
+                const initialMessage: Message = {
+                  id: aiMessageId,
+                  role: "assistant" as const,
+                  content: streamedContent,
+                  timestamp: new Date(),
+                  model: currentModel,
+                  isStreaming: true,
+                };
+                setMessages((prev) => [...prev, initialMessage]);
+                messageCreated = true;
+              } else {
+                // Update existing message
+                setMessages((prev) => {
+                  const updated = prev.map((msg) =>
+                    msg.id === aiMessageId
+                      ? { 
+                          ...msg, 
+                          content: streamedContent, 
+                          isStreaming: true,
+                          // Add visual indicator for streaming
+                          model: streamedContent.length < 50 ? `${currentModel} (Streaming...)` : currentModel
+                        }
+                      : msg
+                  );
+                  console.log('Updated messages:', updated);
+                  return updated;
+                });
+              }
               
               // Force React to re-render immediately
               setForceUpdate(prev => prev + 1);

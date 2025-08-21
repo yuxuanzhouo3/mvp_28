@@ -1838,17 +1838,18 @@ export default function MornGPTHomepage() {
             const initialMessage: Message = {
               id: aiMessageId,
               role: "assistant" as const,
-              content: "",
+              content: "正在生成响应...", // Show placeholder text
               timestamp: new Date(),
               model: currentModel,
               isStreaming: true,
             };
             setMessages((prev) => [...prev, initialMessage]);
             messageCreated = true;
+            streamedContent = "正在生成响应..."; // Set initial content
           }
         }, 2000); // 2 seconds timeout
         setIsStreaming(true);
-        setIsLoading(false); // Stop showing "Thinking..." once streaming starts
+        // Keep isLoading true to show thinking indicator until first chunk arrives
         
         try {
           await apiService.sendMessageStream(
@@ -1914,6 +1915,8 @@ export default function MornGPTHomepage() {
             },
             // onEnd callback
             () => {
+              // Clear the thinking timeout
+              clearTimeout(thinkingTimeout);
               isStreamingComplete = true;
               setIsLoading(false);
               setIsStreaming(false);

@@ -169,8 +169,8 @@ router.post('/stream-guest', async (req, res) => {
         const chunkSize = 1; // Single character chunks for faster streaming
         let index = 0;
         
-        // Minimal initial delay to simulate thinking time
-        const initialDelay = Math.min(100, Math.random() * 50 + 10); // 10-60ms, max 100ms for faster start
+        // Moderate initial delay to simulate thinking time
+        const initialDelay = Math.min(300, Math.random() * 200 + 100); // 100-300ms, max 300ms for moderate start
         
         setTimeout(() => {
           const sendChunk = () => {
@@ -178,8 +178,8 @@ router.post('/stream-guest', async (req, res) => {
               const chunk = text.slice(index, index + chunkSize);
               res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
               index += chunkSize;
-              // Ultra fast streaming with minimal delays
-              const delay = Math.random() * 2 + 1; // 1-3ms between chunks for ultra fast output
+              // Moderate streaming speed for better readability
+              const delay = Math.random() * 15 + 10; // 10-25ms between chunks for moderate speed
               setTimeout(sendChunk, delay);
             } else {
               res.write('data: [DONE]\n\n');

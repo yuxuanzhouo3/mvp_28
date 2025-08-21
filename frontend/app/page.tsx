@@ -1815,7 +1815,7 @@ export default function MornGPTHomepage() {
         const initialMessage: Message = {
           id: aiMessageId,
           role: "assistant" as const,
-          content: '⚡ AI Response Starting...',
+          content: '', // Start with empty content
           timestamp: new Date(),
           model: currentModel,
           isStreaming: true,

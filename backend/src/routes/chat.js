@@ -173,21 +173,23 @@ router.post('/stream-guest', async (req, res) => {
         const initialDelay = Math.min(300, Math.random() * 200 + 100); // 100-300ms, max 300ms for moderate start
         
         setTimeout(() => {
-          const sendChunk = () => {
-            if (index < text.length) {
-              const chunk = text.slice(index, index + chunkSize);
-              res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
-              index += chunkSize;
-              // Moderate streaming speed for better readability
-              const delay = Math.random() * 15 + 10; // 10-25ms between chunks for moderate speed
-              setTimeout(sendChunk, delay);
+          const words = text.split(' ');
+          let wordIndex = 0;
+          
+          const sendWord = () => {
+            if (wordIndex < words.length) {
+              const word = words[wordIndex] + (wordIndex < words.length - 1 ? ' ' : '');
+              res.write(`data: ${JSON.stringify({ chunk: word })}\n\n`);
+              wordIndex++;
+              // 50ms per word (0.05 seconds)
+              setTimeout(sendWord, 50);
             } else {
               res.write('data: [DONE]\n\n');
               res.end();
             }
           };
           
-          sendChunk();
+          sendWord();
         }, initialDelay);
       } else {
         res.write(`data: ${JSON.stringify({ error: response.error || 'Failed to generate response' })}\n\n`);

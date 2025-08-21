@@ -1811,6 +1811,22 @@ export default function MornGPTHomepage() {
         let isStreamingComplete = false;
         let messageCreated = false;
         
+        // Detect if user input contains Chinese characters
+        const isChinese = /[\u4e00-\u9fff]/.test(userMessage.content);
+        const thinkingText = isChinese ? '思考中...' : 'Thinking...';
+        
+        // Create initial thinking message
+        const initialMessage: Message = {
+          id: aiMessageId,
+          role: "assistant" as const,
+          content: thinkingText,
+          timestamp: new Date(),
+          model: currentModel,
+          isStreaming: false,
+        };
+        setMessages((prev) => [...prev, initialMessage]);
+        messageCreated = true;
+        
         // Make streaming API call
         console.log('Making streaming API call with modelId:', modelId, 'message:', userMessage.content, 'language:', detectedLanguage);
         
@@ -1835,36 +1851,22 @@ export default function MornGPTHomepage() {
               console.log('Updated streamedContent:', streamedContent);
               console.log('StreamedContent length:', streamedContent.length);
               
-              // Create message on first chunk if not created yet
-              if (!messageCreated) {
-                const initialMessage: Message = {
-                  id: aiMessageId,
-                  role: "assistant" as const,
-                  content: streamedContent,
-                  timestamp: new Date(),
-                  model: currentModel,
-                  isStreaming: true,
-                };
-                setMessages((prev) => [...prev, initialMessage]);
-                messageCreated = true;
-              } else {
-                // Update existing message
-                setMessages((prev) => {
-                  const updated = prev.map((msg) =>
-                    msg.id === aiMessageId
-                      ? { 
-                          ...msg, 
-                          content: streamedContent, 
-                          isStreaming: true,
-                          // Add visual indicator for streaming
-                          model: streamedContent.length < 50 ? `${currentModel} (Streaming...)` : currentModel
-                        }
-                      : msg
-                  );
-                  console.log('Updated messages:', updated);
-                  return updated;
-                });
-              }
+              // Update existing thinking message with streaming content
+              setMessages((prev) => {
+                const updated = prev.map((msg) =>
+                  msg.id === aiMessageId
+                    ? { 
+                        ...msg, 
+                        content: streamedContent, 
+                        isStreaming: true,
+                        // Add visual indicator for streaming
+                        model: streamedContent.length < 50 ? `${currentModel} (Streaming...)` : currentModel
+                      }
+                    : msg
+                );
+                console.log('Updated messages:', updated);
+                return updated;
+              });
               
               // Force React to re-render immediately
               setForceUpdate(prev => prev + 1);

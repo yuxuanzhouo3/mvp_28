@@ -1319,7 +1319,7 @@ class RealModelProvider {
         const word = words[index] + (index < words.length - 1 ? ' ' : '');
         stream.emit('data', { text: word });
         index++;
-        setTimeout(sendWord, 50); // 50ms per word (0.05 seconds)
+        setTimeout(sendWord, 200); // 200ms per word (0.2 seconds)
       } else {
         stream.emit('end');
       }
@@ -1340,7 +1340,7 @@ class RealModelProvider {
         const word = words[index] + (index < words.length - 1 ? ' ' : '');
         stream.emit('data', { text: word });
         index++;
-        setTimeout(sendWord, 50); // 50ms per word (0.05 seconds)
+        setTimeout(sendWord, 200); // 200ms per word (0.2 seconds)
       } else {
         stream.emit('end');
       }

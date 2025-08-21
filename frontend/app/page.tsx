@@ -708,6 +708,7 @@ export default function MornGPTHomepage() {
   const [showShareDialog, setShowShareDialog] = useState(false)
   const [shareLink, setShareLink] = useState("")
   const [forceUpdate, setForceUpdate] = useState(0)
+  const [thinkingText, setThinkingText] = useState("")
   const [shareSecret, setShareSecret] = useState("")
   const [isGeneratingLink, setIsGeneratingLink] = useState(false)
   const [makeDiscoverable, setMakeDiscoverable] = useState(false)
@@ -1815,17 +1816,10 @@ export default function MornGPTHomepage() {
         const isChinese = /[\u4e00-\u9fff]/.test(userMessage.content);
         const thinkingText = isChinese ? '思考中...' : 'Thinking...';
         
-        // Create initial thinking message
-        const initialMessage: Message = {
-          id: aiMessageId,
-          role: "assistant" as const,
-          content: thinkingText,
-          timestamp: new Date(),
-          model: currentModel,
-          isStreaming: false,
-        };
-        setMessages((prev) => [...prev, initialMessage]);
-        messageCreated = true;
+        // Set thinking state with circle indicator (no message box)
+        setIsLoading(true);
+        setThinkingText(thinkingText);
+        messageCreated = false;
         
         // Make streaming API call
         console.log('Making streaming API call with modelId:', modelId, 'message:', userMessage.content, 'language:', detectedLanguage);
@@ -1833,6 +1827,26 @@ export default function MornGPTHomepage() {
         // Create abort controller for stopping streaming
         const controller = new AbortController();
         setStreamingController(controller);
+        
+        // Set thinking timeout (max 2 seconds)
+        const thinkingTimeout = setTimeout(() => {
+          if (isLoading && !messageCreated) {
+            console.log('Thinking timeout reached, forcing response start');
+            setIsLoading(false);
+            setThinkingText("");
+            // Create empty message to start streaming
+            const initialMessage: Message = {
+              id: aiMessageId,
+              role: "assistant" as const,
+              content: "",
+              timestamp: new Date(),
+              model: currentModel,
+              isStreaming: true,
+            };
+            setMessages((prev) => [...prev, initialMessage]);
+            messageCreated = true;
+          }
+        }, 2000); // 2 seconds timeout
         setIsStreaming(true);
         setIsLoading(false); // Stop showing "Thinking..." once streaming starts
         
@@ -1851,22 +1865,39 @@ export default function MornGPTHomepage() {
               console.log('Updated streamedContent:', streamedContent);
               console.log('StreamedContent length:', streamedContent.length);
               
-              // Update existing thinking message with streaming content
-              setMessages((prev) => {
-                const updated = prev.map((msg) =>
-                  msg.id === aiMessageId
-                    ? { 
-                        ...msg, 
-                        content: streamedContent, 
-                        isStreaming: true,
-                        // Add visual indicator for streaming
-                        model: streamedContent.length < 50 ? `${currentModel} (Streaming...)` : currentModel
-                      }
-                    : msg
+              // If this is the first chunk, create the message and stop thinking
+              if (!messageCreated) {
+                setIsLoading(false);
+                setThinkingText("");
+                const initialMessage: Message = {
+                  id: aiMessageId,
+                  role: "assistant" as const,
+                  content: streamedContent,
+                  timestamp: new Date(),
+                  model: currentModel,
+                  isStreaming: true,
+                };
+                setMessages((prev) => [...prev, initialMessage]);
+                messageCreated = true;
+                console.log('Created initial message with content:', streamedContent);
+              } else {
+                // Update existing message
+                setMessages((prev) => {
+                  const updated = prev.map((msg) =>
+                    msg.id === aiMessageId
+                      ? { 
+                          ...msg, 
+                          content: streamedContent, 
+                          isStreaming: true,
+                          // Add visual indicator for streaming
+                          model: streamedContent.length < 50 ? `${currentModel} (Streaming...)` : currentModel
+                        }
+                      : msg
                 );
-                console.log('Updated messages:', updated);
-                return updated;
-              });
+                  console.log('Updated messages:', updated);
+                  return updated;
+                });
+              }
               
               // Force React to re-render immediately
               setForceUpdate(prev => prev + 1);
@@ -4856,12 +4887,12 @@ export default function MornGPTHomepage() {
                         </div>
                       </div>
                     ))}
-                    {isLoading && (
+                    {isLoading && thinkingText && (
                       <div className="flex justify-start">
                         <div className="bg-white dark:bg-[#444654] border border-gray-200 dark:border-[#565869] text-gray-900 dark:text-[#ececf1] p-4 rounded-lg">
                           <div className="flex items-center space-x-2">
                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900 dark:border-[#ececf1]"></div>
-                            <span>{selectedCategory === "h" ? getLocalizedText('deepThinking') : getLocalizedText('thinking')}</span>
+                            <span>{thinkingText}</span>
                           </div>
                         </div>
                       </div>

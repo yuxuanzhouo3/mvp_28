@@ -181,8 +181,8 @@ router.post('/stream-guest', async (req, res) => {
               const word = words[wordIndex] + (wordIndex < words.length - 1 ? ' ' : '');
               res.write(`data: ${JSON.stringify({ chunk: word })}\n\n`);
               wordIndex++;
-              // 50ms per word (0.05 seconds)
-              setTimeout(sendWord, 50);
+              // 200ms per word (0.2 seconds)
+              setTimeout(sendWord, 200);
             } else {
               res.write('data: [DONE]\n\n');
               res.end();

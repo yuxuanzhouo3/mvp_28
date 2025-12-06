@@ -1,4 +1,3 @@
-import { updateSession } from "@/lib/supabase/proxy";
 import { NextResponse, type NextRequest } from "next/server";
 
 // 与 mvp_modules-main 国际版一致的欧洲地区屏蔽名单（EU + EEA + UK + CH）
@@ -122,7 +121,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  return updateSession(request);
+  // 为避免 Edge Runtime 使用 supabase-js 触发 Node API 警告，这里不再调用 Supabase 代理。
+  // 会话校验改由客户端与 API 401 处理。
+  return NextResponse.next();
 }
 
 export const config = {

@@ -1,9 +1,10 @@
 packages:
   - .
 
-# Allow listed dependencies to run their build scripts when pnpm@10 installs.
-# This prevents Vercel from skipping native builds (e.g., sharp).
-onlyBuiltDependencies:
-  - core-js-pure
-  - sharp
-  - unrs-resolver
+pnpm:
+  # Allow listed dependencies to run their build scripts when pnpm@10 installs.
+  # This prevents Vercel from skipping native builds (e.g., sharp).
+  onlyBuiltDependencies:
+    - core-js-pure
+    - sharp
+    - unrs-resolver

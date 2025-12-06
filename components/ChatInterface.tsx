@@ -1,0 +1,441 @@
+"use client";
+
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import { Copy, Share, Download, Star, Zap, Bot, User } from "lucide-react";
+import { Message } from "../types";
+import type { ReactNode } from "react";
+import { useState, memo } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+
+interface ChatInterfaceProps {
+  messages: Message[];
+  appUser: any;
+  guestChatSessions: any[];
+  currentChatId: string;
+  jumpToScrollPosition: number | null;
+  scrollAreaRef: any;
+  messagesEndRef: any;
+  isLoading: boolean;
+  isConversationLoading: boolean;
+  thinkingText: string;
+  currentChat: any;
+  getLocalizedText: (key: string) => string;
+  copyToClipboard: (text: string) => void;
+  shareMessage: (text: string) => void;
+  downloadMessage: (content: string, id: string) => void;
+  isMessageBookmarked: (id: string) => boolean;
+  bookmarkMessage: (message: Message) => void;
+  removeBookmark: (id: string) => void;
+  setShowShareDialog: (show: boolean) => void;
+  bookmarkedMessages: any[];
+  onDeleteMessage: (messageId: string) => void;
+}
+
+export default memo(ChatInterface);
+
+function ChatInterface({
+  messages,
+  appUser,
+  guestChatSessions,
+  currentChatId,
+  jumpToScrollPosition,
+  scrollAreaRef,
+  messagesEndRef,
+  isLoading,
+  isConversationLoading,
+  thinkingText,
+  currentChat,
+  getLocalizedText,
+  copyToClipboard,
+  shareMessage,
+  downloadMessage,
+  isMessageBookmarked,
+  bookmarkMessage,
+  removeBookmark,
+  setShowShareDialog,
+  bookmarkedMessages,
+  onDeleteMessage,
+}: ChatInterfaceProps) {
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+
+  // Normalize common AI 输出的“[\\vec{F} = m \\vec{a}]”或“\\[ ... \\]”为 math 块，仅在原文完全没有 $ 时执行，避免重复渲染
+  const normalizeMathContent = (text: string) => {
+    // If user已写 $, 不处理，避免重复
+    if (/\$/.test(text)) return text;
+    let out = text;
+
+    // \[ ... \]  => $$ ... $$
+    out = out.replace(/\\\[(.+?)\\\]/gs, (_m, inner) => `$$${inner}$$`);
+
+    // \( ... \)  => $ ... $
+    out = out.replace(/\\\((.+?)\\\)/g, (_m, inner) => `$${inner}$`);
+
+    // ( \vec{F} ) 样式 => $...$ 仅替换包含反斜杠命令的括号
+    out = out.replace(/\((\\[a-zA-Z][^)]*?)\)/g, (_m, inner) => `$${inner}$`);
+
+    // [\vec{F}] => $...$ （避免整段包裹中文）
+    out = out.replace(/\[(\\[^\]]+)\]/g, (_m, inner) => `$${inner}$`);
+
+    return out;
+  };
+
+  const markdownComponents = {
+    h1: ({ ...props }) => (
+      <h1
+        className="text-xl font-semibold mt-2 mb-1 leading-snug"
+        {...props}
+      />
+    ),
+    h2: ({ ...props }) => (
+      <h2
+        className="text-lg font-semibold mt-2 mb-1 leading-snug"
+        {...props}
+      />
+    ),
+    h3: ({ ...props }) => (
+      <h3 className="font-semibold mt-2 mb-1 leading-snug" {...props} />
+    ),
+    p: ({ ...props }) => (
+      <p className="mb-2 leading-relaxed whitespace-pre-wrap" {...props} />
+    ),
+    strong: ({ ...props }) => <strong className="font-semibold" {...props} />,
+    em: ({ ...props }) => <em className="italic" {...props} />,
+    ul: ({ ...props }) => (
+      <ul className="list-disc pl-5 space-y-1 mb-2" {...props} />
+    ),
+    ol: ({ ...props }) => (
+      <ol className="list-decimal pl-5 space-y-1 mb-2" {...props} />
+    ),
+    li: ({ ...props }) => <li className="leading-relaxed" {...props} />,
+    blockquote: ({ ...props }) => (
+      <blockquote
+        className="border-l-4 border-gray-200 dark:border-gray-600 pl-3 italic text-gray-700 dark:text-gray-200 mb-2"
+        {...props}
+      />
+    ),
+    code: (props: any) => {
+      const { inline, className, children, node, ...rest } = props;
+      if (inline) {
+        return (
+          <code
+            className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#2f3037] text-[0.95em]"
+            {...rest}
+          >
+            {children}
+          </code>
+        );
+      }
+      const codeText = String(children).replace(/\n$/, "");
+      const blockId = `${node?.position?.start?.offset ?? 0}-${codeText.length}`;
+      const isCopied = copiedCodeId === blockId;
+
+      return (
+        <div className="relative group">
+          <pre
+            className="bg-gray-900/90 text-gray-100 rounded-md p-3 overflow-x-auto text-sm mb-3"
+            {...rest}
+          >
+            <code className={className}>{children}</code>
+          </pre>
+          <button
+            type="button"
+            onClick={() => {
+              copyToClipboard(codeText);
+              setCopiedCodeId(blockId);
+              setTimeout(() => setCopiedCodeId(null), 1600);
+            }}
+            className="absolute top-2 right-2 text-[11px] px-2 py-1 rounded-md bg-white/90 text-gray-800 shadow-sm border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity dark:bg-[#2f3037] dark:text-gray-100 dark:border-gray-600"
+          >
+            {isCopied ? getLocalizedText("copied") || "Copied" : getLocalizedText("copy") || "Copy"}
+          </button>
+        </div>
+      );
+    },
+    a: ({ ...props }) => (
+      <a
+        className="text-blue-600 dark:text-blue-400 underline underline-offset-2 hover:text-blue-700 dark:hover:text-blue-300"
+        target="_blank"
+        rel="noreferrer"
+        {...props}
+      />
+    ),
+    table: ({ ...props }) => (
+      <table
+        className="border-collapse border border-gray-300 dark:border-gray-600 my-2 text-sm"
+        {...props}
+      />
+    ),
+    thead: ({ ...props }) => (
+      <thead className="bg-gray-100 dark:bg-[#3a3b42]" {...props} />
+    ),
+    td: ({ ...props }) => (
+      <td
+        className="border border-gray-300 dark:border-gray-600 px-2 py-1"
+        {...props}
+      />
+    ),
+    th: ({ ...props }) => (
+      <th
+        className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-left font-semibold"
+        {...props}
+      />
+    ),
+  };
+
+  return (
+    <div className="flex-1 overflow-hidden min-h-0 bg-gradient-to-b from-slate-50 via-white to-slate-100 dark:from-[#1c1d24] dark:via-[#181920] dark:to-[#0f1016] transition-colors relative">
+      {isConversationLoading && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80 dark:bg-black/60 backdrop-blur-sm">
+          <div className="flex items-center space-x-2 text-gray-700 dark:text-gray-200">
+            <div className="h-5 w-5 rounded-full border-2 border-gray-400 border-t-transparent animate-spin" />
+            <span className="text-sm">
+              {getLocalizedText("loading") || "Loading conversation..."}
+            </span>
+          </div>
+        </div>
+      )}
+      {messages.length === 0 ? (
+        <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-[#2d2d30] transition-colors">
+          <div className="text-center">
+            <h1 className="text-4xl font-bold text-gray-900 dark:text-[#ececf1] mb-4">
+              MornGPT
+            </h1>
+            <p className="text-xl text-gray-600 dark:text-gray-300 mb-8">
+              {getLocalizedText("heroTagline")}
+            </p>
+
+            {/* Compact Tips */}
+            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 max-w-4xl mx-auto">
+              <div className="flex items-center justify-center space-x-6 text-xs text-blue-800 dark:text-blue-200">
+                <span>🧭 {getLocalizedText("beSpecific")}</span>
+                <span>🚀 {getLocalizedText("chooseSpecialized")}</span>
+                <span>📎 {getLocalizedText("uploadFilesWith")} ⌘U</span>
+                <span>⏎ {getLocalizedText("useCtrlEnter")}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <ScrollArea
+          className={`h-full ${
+            isConversationLoading ? "pointer-events-none blur-[1px]" : ""
+          }`}
+          ref={scrollAreaRef}
+        >
+          <div
+            className={`p-4 transition-colors duration-500 ${
+              jumpToScrollPosition !== null && jumpToScrollPosition > 0
+                ? "bg-blue-50 dark:bg-blue-900/30"
+                : ""
+            }`}
+          >
+            <div className="max-w-4xl mx-auto space-y-4">
+              {(appUser
+                ? messages
+                : guestChatSessions.find((c) => c.id === currentChatId)
+                    ?.messages || []
+              ).map((message: Message) => {
+                    const isUser = message.role === "user";
+                    const userDisplayName =
+                      (appUser?.name || "").trim() ||
+                      getLocalizedText("you") ||
+                      "You";
+                    const assistantDisplayName =
+                      (message.model || currentChat?.model || "").trim() ||
+                      getLocalizedText("assistant") ||
+                      "Assistant";
+                    const timeLabel = new Date(message.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+
+                    const bubble = (
+                      <div
+                        className={`max-w-3xl p-4 rounded-2xl relative group shadow-lg ${
+                          isUser
+                            ? "bg-gradient-to-br from-indigo-500 via-blue-500 to-blue-600 text-white shadow-blue-500/25"
+                            : "bg-white/90 dark:bg-[#2f3039] border border-white/70 dark:border-[#3f4150] text-gray-900 dark:text-[#e7e9f3] backdrop-blur"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span
+                            className={`px-2 py-1 text-[11px] font-semibold rounded-full uppercase tracking-wide ${
+                              isUser
+                                ? "bg-white/20 text-white"
+                                : "bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-100"
+                            }`}
+                          >
+                            {isUser ? userDisplayName : assistantDisplayName}
+                          </span>
+                          <span
+                            className={`ml-auto text-[11px] ${
+                              isUser ? "text-white/80" : "text-gray-500 dark:text-gray-400"
+                            }`}
+                          >
+                            {timeLabel}
+                          </span>
+                        </div>
+
+                        {message.isMultiGPT && (
+                          <div className="flex items-center space-x-2 mb-3 text-indigo-200 dark:text-indigo-300">
+                            <Zap className="w-4 h-4" />
+                            <span className="text-sm font-medium">
+                              {getLocalizedText("multiGPTDeepThinking")}
+                            </span>
+                          </div>
+                        )}
+                        {isUser ? (
+                          <p className="whitespace-pre-wrap leading-relaxed">
+                            {message.content}
+                            {message.isStreaming && (
+                              <span className="inline-block w-0.5 h-4 bg-white/90 ml-1 animate-pulse"></span>
+                            )}
+                          </p>
+                        ) : (
+                          <div className="text-sm leading-relaxed space-y-2">
+                            <ReactMarkdown
+                              // math should run before gfm to avoid gfm eating backslashes/underscores
+                              remarkPlugins={[remarkMath, remarkGfm]}
+                              rehypePlugins={[rehypeKatex]}
+                              components={markdownComponents}
+                            >
+                              {normalizeMathContent(message.content)}
+                            </ReactMarkdown>
+                            {message.isStreaming && (
+                              <span className="inline-block w-0.5 h-4 bg-gray-900 dark:bg-[#ececf1] ml-1 animate-pulse"></span>
+                            )}
+                          </div>
+                        )}
+                        {!isUser && (
+                          <div className="flex items-center flex-wrap gap-2 mt-3 pt-3 border-t border-gray-200/70 dark:border-[#4a4c5c]">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                              onClick={() => copyToClipboard(message.content)}
+                              title={getLocalizedText("copyResponse")}
+                            >
+                              <Copy className="w-3 h-3 mr-1" />
+                              {getLocalizedText("copy")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                              onClick={() => shareMessage(message.content)}
+                              title={getLocalizedText("shareResponse")}
+                            >
+                              <Share className="w-3 h-3 mr-1" />
+                              {getLocalizedText("share")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                              onClick={() => downloadMessage(message.content, message.id)}
+                              title={getLocalizedText("downloadResponse")}
+                            >
+                              <Download className="w-3 h-3 mr-1" />
+                              {getLocalizedText("download")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className={`h-7 px-2 text-xs ${
+                                isMessageBookmarked(message.id)
+                                  ? "text-yellow-600 dark:text-yellow-400"
+                                  : "text-gray-700 dark:text-gray-300"
+                              } hover:text-yellow-600 dark:hover:text-yellow-400 hover:bg-gray-100 dark:hover:bg-[#565869]`}
+                              onClick={() =>
+                                isMessageBookmarked(message.id)
+                                  ? removeBookmark(
+                                      bookmarkedMessages.find((b) => b.messageId === message.id)?.id || ""
+                                    )
+                                  : bookmarkMessage(message)
+                              }
+                              title={
+                                isMessageBookmarked(message.id)
+                                  ? getLocalizedText("removeBookmark")
+                                  : getLocalizedText("bookmarkMessage")
+                              }
+                            >
+                              <Star
+                                className={`w-3 h-3 mr-1 ${
+                                  isMessageBookmarked(message.id) ? "fill-current" : ""
+                                }`}
+                              />
+                              {isMessageBookmarked(message.id)
+                                ? getLocalizedText("bookmarked")
+                                : getLocalizedText("bookmark")}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+
+                    return (
+                      <div
+                        key={message.id}
+                        id={`message-${message.id}`}
+                        className={`flex items-start gap-3 ${
+                          isUser ? "flex-row-reverse" : "flex-row"
+                        } transition-colors duration-500`}
+                      >
+                        <div
+                          className={`mt-1 h-10 w-10 rounded-xl flex items-center justify-center text-white shadow-md ${
+                            isUser
+                              ? "bg-gradient-to-br from-indigo-500 to-blue-600 shadow-blue-400/30"
+                              : "bg-gradient-to-br from-emerald-500 to-teal-500 shadow-emerald-400/30"
+                          }`}
+                        >
+                          {isUser ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
+                        </div>
+
+                        <ContextMenu>
+                          <ContextMenuTrigger asChild>{bubble}</ContextMenuTrigger>
+                          <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
+                            <ContextMenuItem
+                              onClick={() => copyToClipboard(message.content)}
+                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                            >
+                              <Copy className="w-4 h-4 mr-2" />
+                              {getLocalizedText("copy") || "Copy"}
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onClick={() => onDeleteMessage(message.id)}
+                              className="text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30"
+                            >
+                              {getLocalizedText("delete") || "Delete"}
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      </div>
+                    );
+                  })}
+              {isLoading && thinkingText && (
+                <div className="flex justify-start">
+                  <div className="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 dark:border-gray-400"></div>
+                    <span className="text-sm">{thinkingText}</span>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+        </ScrollArea>
+      )}
+    </div>
+  );
+}

@@ -3,6 +3,12 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -43,6 +49,10 @@ interface HeaderProps {
   messages: any[];
   guestChatSessions: any[];
   currentChatId: string;
+  currentPlan?: "Basic" | "Pro" | "Enterprise" | null;
+  planExp?: string | null;
+  setShowUpgradeDialog: (show: boolean) => void;
+  isDomestic: boolean;
 }
 
 export default function Header({
@@ -63,7 +73,23 @@ export default function Header({
   messages,
   guestChatSessions,
   currentChatId,
+  setShowUpgradeDialog,
+  currentPlan,
+  planExp,
+  isDomestic,
 }: HeaderProps) {
+  const tier =
+    appUser ? currentPlan || (appUser?.isPro ? "Pro" : null) : null;
+  const tierDisplay = tier || (appUser ? "Free" : "Guest User");
+  const tierClass =
+    tier === "Enterprise"
+      ? "bg-purple-600 text-white"
+      : tier === "Pro"
+      ? "bg-blue-600 text-white"
+      : tier === "Basic"
+      ? "bg-amber-500 text-white"
+      : "bg-gray-200 text-gray-800";
+
   return (
     <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#40414f] shadow-sm transition-colors">
       <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
@@ -72,19 +98,48 @@ export default function Header({
             <h1 className="text-2xl font-bold text-gray-900 dark:text-[#ececf1]">
               {getLocalizedText("mornGPT")}
             </h1>
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className={`text-xs px-2 py-0.5 border-0 ${
+                      appUser
+                        ? tierClass
+                        : "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+                    }`}
+                  >
+                    {tierDisplay}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">
+                  {appUser ? (
+                    <div className="space-y-1">
+                      <div className="font-semibold text-gray-900 dark:text-gray-50">
+                        {tierDisplay}
+                      </div>
+                      {planExp ? (
+                        <div className="text-gray-600 dark:text-gray-300">
+                          Expires: {new Date(planExp).toLocaleString()}
+                        </div>
+                      ) : (
+                        <div className="text-gray-600 dark:text-gray-300">
+                          Active subscription
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-gray-700 dark:text-gray-200">
+                      Guest session (data not saved)
+                    </div>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             {currentChat && (
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 - {currentChat.title}
               </span>
-            )}
-            {!appUser && (
-              <Badge
-                variant="outline"
-                className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700"
-                title="Data will not be saved unless you login"
-              >
-                {getLocalizedText("guestUser")}
-              </Badge>
             )}
           </div>
           <div className="flex items-center space-x-4">
@@ -163,6 +218,17 @@ export default function Header({
                 <Moon className="w-4 h-4" />
               )}
             </Button>
+            {appUser && !isDomestic && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowUpgradeDialog(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700"
+                title={getLocalizedText("Choose Your MornGPT Plan")}
+              >
+                <Crown className="w-4 h-4" />
+              </Button>
+            )}
             {appUser ? (
               <div className="relative">
                 <Popover>

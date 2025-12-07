@@ -84,6 +84,8 @@ export interface AppUser {
   bio?: string;
   isPro: boolean;
   isPaid: boolean;
+   plan?: "Basic" | "Pro" | "Enterprise";
+   planExp?: string;
   avatar?: string;
   settings?: {
     theme: "light" | "dark" | "auto";

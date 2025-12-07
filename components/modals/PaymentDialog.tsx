@@ -55,6 +55,11 @@ export function PaymentDialog({
   pricingPlans,
   handlePayment,
 }: PaymentDialogProps) {
+  const annualMonthlyPrice = selectedPlan
+    ? parseFloat(selectedPlan.annualPrice.replace(/[^0-9.]/g, "") || "0")
+    : 0;
+  const annualTotal = (annualMonthlyPrice * 12).toFixed(2);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm-max-w-md sm:max-w-md bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] data-[state=open]:animate-none data-[state=closed]:animate-none transition-none">
@@ -162,6 +167,9 @@ export function PaymentDialog({
                     {billingPeriod === "annual" && (
                       <div className="text-xs text-green-600 dark:text-green-400">
                         Billed annually (Save 30%)
+                        <span className="block text-[11px] text-gray-500 dark:text-gray-300">
+                          Total ${annualTotal}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -400,7 +408,7 @@ export function PaymentDialog({
                   >
                     Pay{" "}
                     {billingPeriod === "annual"
-                      ? selectedPlan.annualPrice
+                      ? `$${annualTotal}`
                       : selectedPlan.price}
                   </Button>
                 </div>

@@ -708,15 +708,25 @@ const loadMessagesForConversation = useCallback(
         if (res.ok) {
           const data = await res.json();
           const user = data.user;
+          const planExp = user.metadata?.plan_exp || null;
           const mappedUser: AppUser = {
             id: user.id,
             email: user.email || "",
             name: user.name || user.email || "User",
             isPro: !!user.metadata?.pro,
             isPaid: !!user.metadata?.pro,
+            plan: user.metadata?.plan || undefined,
+            planExp: planExp || undefined,
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
+          if (mappedUser.plan) {
+            setCurrentPlan(mappedUser.plan as "Basic" | "Pro" | "Enterprise");
+            localStorage.setItem("morngpt_current_plan", mappedUser.plan);
+            if (mappedUser.planExp) {
+              localStorage.setItem("morngpt_current_plan_exp", mappedUser.planExp);
+            }
+          }
           await loadConversations(mappedUser);
         } else {
           setAppUser(null);
@@ -725,6 +735,7 @@ const loadMessagesForConversation = useCallback(
           setMessages([]);
           setCurrentChatId("");
           setShowAuthDialog(true);
+          setCurrentPlan(null);
           hasLoadedConversationsRef.current = false;
           loadConversationsPendingRef.current = false;
           loadedConversationsForUserRef.current = null;
@@ -747,9 +758,22 @@ const loadMessagesForConversation = useCallback(
               "User",
             isPro: false,
             isPaid: false,
+            plan: (user.user_metadata as any)?.plan,
+            planExp: (user.user_metadata as any)?.plan_exp,
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
+          const planMeta = (user.user_metadata as any)?.plan;
+          if (planMeta) {
+            setCurrentPlan(planMeta as "Basic" | "Pro" | "Enterprise");
+            localStorage.setItem("morngpt_current_plan", planMeta);
+            const expMeta = (user.user_metadata as any)?.plan_exp;
+            if (expMeta) {
+              localStorage.setItem("morngpt_current_plan_exp", expMeta);
+            }
+          } else if (mappedUser.isPro) {
+            setCurrentPlan("Pro");
+          }
           await loadConversations(mappedUser);
         } else {
           setAppUser(null);
@@ -758,6 +782,7 @@ const loadMessagesForConversation = useCallback(
           setMessages([]);
           setCurrentChatId("");
           setShowAuthDialog(true);
+          setCurrentPlan(null);
           hasLoadedConversationsRef.current = false;
           loadConversationsPendingRef.current = false;
           loadedConversationsForUserRef.current = null;
@@ -782,9 +807,22 @@ const loadMessagesForConversation = useCallback(
                 "User",
               isPro: false,
               isPaid: false,
+              plan: (user.user_metadata as any)?.plan,
+              planExp: (user.user_metadata as any)?.plan_exp,
             };
             setAppUser(mappedUser);
             setIsLoggedIn(true);
+            const planMeta = (user.user_metadata as any)?.plan;
+            if (planMeta) {
+              setCurrentPlan(planMeta as "Basic" | "Pro" | "Enterprise");
+              localStorage.setItem("morngpt_current_plan", planMeta);
+              const expMeta = (user.user_metadata as any)?.plan_exp;
+              if (expMeta) {
+                localStorage.setItem("morngpt_current_plan_exp", expMeta);
+              }
+            } else if (mappedUser.isPro) {
+              setCurrentPlan("Pro");
+            }
             await loadConversations(mappedUser);
           }
           if (event === "SIGNED_OUT") {
@@ -794,6 +832,7 @@ const loadMessagesForConversation = useCallback(
             setMessages([]);
             setCurrentChatId("");
             setShowAuthDialog(true);
+            setCurrentPlan(null);
             hasLoadedConversationsRef.current = false;
             loadConversationsPendingRef.current = false;
             loadedConversationsForUserRef.current = null;
@@ -1087,6 +1126,7 @@ const loadMessagesForConversation = useCallback(
     const savedUser = localStorage.getItem("morngpt_user");
     const savedTheme = localStorage.getItem("morngpt_theme");
     const savedPlan = localStorage.getItem("morngpt_current_plan");
+    const savedPlanExp = localStorage.getItem("morngpt_current_plan_exp");
     const savedCustomShortcuts = localStorage.getItem("customShortcuts");
 
     // Check for shared conversation in URL
@@ -1139,6 +1179,21 @@ const loadMessagesForConversation = useCallback(
 
     if (savedPlan) {
       setCurrentPlan(savedPlan as "Basic" | "Pro" | "Enterprise");
+    }
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser);
+        if (parsed.planExp || savedPlanExp) {
+          parsed.planExp = parsed.planExp || savedPlanExp;
+          setAppUser((prev) =>
+            prev
+              ? { ...prev, planExp: parsed.planExp }
+              : (parsed as AppUser),
+          );
+        }
+      } catch (e) {
+        // ignore malformed local data
+      }
     }
 
     if (savedTheme === "dark") {
@@ -1577,12 +1632,15 @@ const loadMessagesForConversation = useCallback(
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || "Register failed");
           // CloudBase 返回用户对象
+          const storedExp = localStorage.getItem("morngpt_current_plan_exp");
           const mappedUser: AppUser = {
             id: data.user.id,
             email: data.user.email || "",
             name: data.user.name || data.user.email || "User",
             isPro: !!data.user.metadata?.pro,
             isPaid: !!data.user.metadata?.pro,
+            plan: data.user.metadata?.plan,
+            planExp: data.user.metadata?.plan_exp || storedExp || undefined,
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
@@ -1635,12 +1693,15 @@ const loadMessagesForConversation = useCallback(
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || "Login failed");
+          const storedExp = localStorage.getItem("morngpt_current_plan_exp");
           const mappedUser: AppUser = {
             id: data.user.id,
             email: data.user.email || "",
             name: data.user.name || data.user.email || "User",
             isPro: !!data.user.metadata?.pro,
             isPaid: !!data.user.metadata?.pro,
+            plan: data.user.metadata?.plan,
+            planExp: data.user.metadata?.plan_exp || storedExp || undefined,
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
@@ -1733,6 +1794,7 @@ const loadMessagesForConversation = useCallback(
       await supabase.auth.signOut();
     }
     setAppUser(null);
+    setCurrentPlan(null);
 
     // Clear all user-specific data
     Object.keys(localStorage).forEach((key) => {
@@ -1743,15 +1805,25 @@ const loadMessagesForConversation = useCallback(
         localStorage.removeItem(key);
       }
     });
+    localStorage.removeItem("morngpt_current_plan");
+    localStorage.removeItem("morngpt_current_plan_exp");
+    localStorage.removeItem("morngpt_user");
 
     setChatSessions([]);
     setCurrentChatId("");
     setMessages([]);
     setPromptHistory([]);
     setBookmarkedMessages([]);
+    setCurrentPlan(null);
     hasLoadedConversationsRef.current = false;
     loadConversationsPendingRef.current = false;
     loadedConversationsForUserRef.current = null;
+    try {
+      localStorage.removeItem("morngpt_user");
+      localStorage.removeItem("morngpt_current_plan");
+    } catch (e) {
+      // ignore
+    }
 
     // Close any open dialogs
     setShowSettingsDialog(false);
@@ -1791,27 +1863,57 @@ const loadMessagesForConversation = useCallback(
 
   const handlePayment = (e: React.FormEvent) => {
     e.preventDefault();
-    if (appUser && selectedPlan) {
-      // Simulate payment processing
-      const updatedUser = { ...appUser, isPro: true, isPaid: true };
-      setAppUser(updatedUser);
-      setCurrentPlan(selectedPlan.name as "Basic" | "Pro" | "Enterprise");
-      localStorage.setItem("morngpt_user", JSON.stringify(updatedUser));
-      localStorage.setItem("morngpt_current_plan", selectedPlan.name);
-      setShowPaymentDialog(false);
+    if (!appUser || !selectedPlan) return;
 
-      // If this was triggered by a paid model, select it after payment
-      if (selectedPaidModel) {
-        handleModelChange("external", undefined, selectedPaidModel.name);
-        setSelectedPaidModel(null);
-        alert(
-          `Successfully upgraded to ${selectedPlan.name} plan! You now have access to ${selectedPaidModel.name} and other premium models.`
-        );
-      } else {
-        alert(
-          `Successfully upgraded to ${selectedPlan.name} plan! Welcome to MornGPT Pro!`
-        );
-      }
+    if (selectedPaymentMethod === "paypal" && !isDomestic) {
+      // Real PayPal checkout for international users
+      (async () => {
+        try {
+          const res = await fetch("/api/payment/paypal/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              planName: selectedPlan.name,
+              billingPeriod,
+              userId: appUser.id,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.approvalUrl) {
+            throw new Error(data.error || "Failed to create PayPal order");
+          }
+          // redirect to PayPal
+          window.location.href = data.approvalUrl as string;
+        } catch (err) {
+          console.error("PayPal create order error", err);
+          alert(
+            isZh
+              ? "创建 PayPal 支付失败，请稍后再试"
+              : "Failed to start PayPal checkout. Please try again.",
+          );
+        }
+      })();
+      return;
+    }
+
+    // fallback: simulate success (other methods not implemented)
+    const updatedUser = { ...appUser, isPro: true, isPaid: true };
+    setAppUser(updatedUser);
+    setCurrentPlan(selectedPlan.name as "Basic" | "Pro" | "Enterprise");
+    localStorage.setItem("morngpt_user", JSON.stringify(updatedUser));
+    localStorage.setItem("morngpt_current_plan", selectedPlan.name);
+    setShowPaymentDialog(false);
+
+    if (selectedPaidModel) {
+      handleModelChange("external", undefined, selectedPaidModel.name);
+      setSelectedPaidModel(null);
+      alert(
+        `Successfully upgraded to ${selectedPlan.name} plan! You now have access to ${selectedPaidModel.name} and other premium models.`
+      );
+    } else {
+      alert(
+        `Successfully upgraded to ${selectedPlan.name} plan! Welcome to MornGPT Pro!`
+      );
     }
   };
 
@@ -2910,6 +3012,8 @@ const loadMessagesForConversation = useCallback(
     isGeneratingLink,
     selectedLanguage,
     setSelectedLanguage,
+    currentPlan,
+    planExp: appUser?.planExp || null,
     prompt,
     detectLanguage,
     toggleTheme,
@@ -2922,6 +3026,8 @@ const loadMessagesForConversation = useCallback(
     messages,
     guestChatSessions,
     currentChatId,
+    setShowUpgradeDialog,
+    isDomestic,
   };
 
   const chatInterfaceProps = {

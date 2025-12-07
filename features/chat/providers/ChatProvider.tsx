@@ -2355,15 +2355,31 @@ const loadMessagesForConversation = useCallback(
   async function deleteChat(chatId: string) {
     try {
       if (appUser) {
-        const { error } = await supabase
-          .from("conversations")
-          .delete()
-          .eq("id", chatId)
-          .eq("user_id", appUser.id);
-        if (error) throw error;
+        if (isDomestic) {
+          const res = await fetch(`/api/conversations/${chatId}`, {
+            method: "DELETE",
+            credentials: "include",
+          });
+          if (!res.ok) {
+            const msg = await res.text();
+            throw new Error(`Delete failed ${res.status}: ${msg || "unknown"}`);
+          }
+        } else {
+          const { error } = await supabase
+            .from("conversations")
+            .delete()
+            .eq("id", chatId)
+            .eq("user_id", appUser.id);
+          if (error) throw error;
+        }
       }
     } catch (err) {
       console.error("Failed to delete conversation", err);
+      alert(
+        isZh
+          ? "删除对话失败，请稍后再试。"
+          : "Failed to delete conversation. Please try again."
+      );
     }
 
     setChatSessions((prev) => prev.filter((chat) => chat.id !== chatId));

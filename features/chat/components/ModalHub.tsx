@@ -38,6 +38,7 @@ export default function ModalHub(props: ModalHubProps) {
     setShowPassword,
     handleAuth,
     handleGoogleAuth,
+    handleWechatAuth,
     showSettingsDialog,
     setShowSettingsDialog,
     isEditingProfile,
@@ -155,14 +156,15 @@ export default function ModalHub(props: ModalHubProps) {
         open={showAuthDialog}
         onOpenChange={setShowAuthDialog}
         authMode={authMode}
-        setAuthMode={setAuthMode}
-        authForm={authForm}
-        setAuthForm={setAuthForm}
-        showPassword={showPassword}
-        setShowPassword={setShowPassword}
-        handleAuth={handleAuth}
-        handleGoogleAuth={handleGoogleAuth}
-      />
+      setAuthMode={setAuthMode}
+      authForm={authForm}
+      setAuthForm={setAuthForm}
+      showPassword={showPassword}
+      setShowPassword={setShowPassword}
+      handleAuth={handleAuth}
+      handleGoogleAuth={handleGoogleAuth}
+      handleWechatAuth={handleWechatAuth}
+    />
 
       {/* Settings Dialog */}
       <SettingsDialog

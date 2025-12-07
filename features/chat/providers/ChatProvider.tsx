@@ -1675,6 +1675,27 @@ const loadMessagesForConversation = useCallback(
     }
   };
 
+  const handleWechatAuth = async () => {
+    if (!isDomestic) {
+      alert(isZh ? "当前为国际版，请使用 Google 登录" : "WeChat is only available in CN build");
+      return;
+    }
+    try {
+      const nextPath = typeof window !== "undefined" ? window.location.pathname : "/";
+      const res = await fetch(
+        `/api/auth/wechat/qrcode${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`,
+      );
+      const data = await res.json();
+      if (!res.ok || !data.qrcodeUrl) {
+        throw new Error(data.error || (isZh ? "微信登录失败" : "WeChat login failed"));
+      }
+      window.location.href = data.qrcodeUrl as string;
+    } catch (err) {
+      console.error("WeChat OAuth error", err);
+      alert(isZh ? "微信登录失败，请稍后再试" : "WeChat sign-in failed. Please try again.");
+    }
+  };
+
   const handleLogout = async () => {
     console.log("handleLogout called"); // Debug log
     if (isDomestic) {
@@ -2974,6 +2995,7 @@ const loadMessagesForConversation = useCallback(
     setShowPassword,
     handleAuth,
     handleGoogleAuth,
+    handleWechatAuth,
     showSettingsDialog,
     setShowSettingsDialog,
     isEditingProfile,

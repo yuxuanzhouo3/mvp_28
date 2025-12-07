@@ -13,6 +13,8 @@ export interface CloudBaseUser {
   password: string | null;
   name: string | null;
   avatar: string | null;
+  wechatOpenId?: string;
+  wechatUnionId?: string | null;
   createdAt: string;
   lastLoginAt: string;
   pro: boolean;

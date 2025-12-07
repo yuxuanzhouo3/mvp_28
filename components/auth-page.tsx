@@ -68,6 +68,30 @@ export function AuthPage({ mode }: { mode: Mode }) {
     }
   };
 
+  const handleWechat = async () => {
+    if (!isDomestic) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const qs = next ? `?next=${encodeURIComponent(next)}` : "";
+      const res = await fetch(`/api/auth/wechat/qrcode${qs}`);
+      const data = await res.json();
+      if (!res.ok || !data.qrcodeUrl) {
+        throw new Error(data.error || (isZhText ? "微信登录失败" : "WeChat login failed"));
+      }
+      window.location.href = data.qrcodeUrl as string;
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : isZhText
+            ? "微信登录失败，请稍后再试"
+            : "WeChat login failed. Please try again."
+      );
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -232,18 +256,37 @@ export function AuthPage({ mode }: { mode: Mode }) {
                           : "Sign in"}
                     </Button>
 
-                    {!isDomestic && (
-                      <>
-                        <div className="relative">
-                          <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t border-white/10" />
-                          </div>
-                          <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-slate-900/60 px-2 text-slate-400">
-                              {isZhText ? "或" : "or"}
-                            </span>
-                          </div>
+                    <>
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t border-white/10" />
                         </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-slate-900/60 px-2 text-slate-400">
+                            {isZhText ? "或" : "or"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isDomestic ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full bg-white text-slate-900 hover:bg-slate-100"
+                          disabled={isLoading}
+                          onClick={handleWechat}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            className="mr-2 h-5 w-5"
+                            fill="currentColor"
+                          >
+                            <path d="M5.5 4C2.46 4 0 6.24 0 8.99c0 2 1.33 3.74 3.3 4.62-.12.45-.76 2.8-.79 3.02 0 0-.02.17.09.24.11.07.24.02.24.02.32-.05 3.04-1.99 3.47-2.31.4.06.8.09 1.19.09 3.04 0 5.5-2.23 5.5-4.99C13 6.24 10.54 4 7.5 4h-2Zm12 4c-2.49 0-4.5 1.8-4.5 4.02 0 1.34.7 2.53 1.78 3.31-.09.36-.53 2.04-.55 2.2 0 0-.02.13.07.19.09.06.2.02.2.02.26-.04 2.45-1.6 2.8-1.85.32.05.65.07.97.07 2.49 0 4.5-1.8 4.5-4.02C22 9.8 19.99 8 17.5 8Z" />
+                          </svg>
+                          {isZhText ? "使用微信登录" : "Continue with WeChat"}
+                        </Button>
+                      ) : (
                         <Button
                           type="button"
                           variant="outline"
@@ -261,8 +304,8 @@ export function AuthPage({ mode }: { mode: Mode }) {
                           </svg>
                           {isZhText ? "使用 Google 登录" : "Continue with Google"}
                         </Button>
-                      </>
-                    )}
+                      )}
+                    </>
 
                     <p className="text-sm text-slate-300 text-center">
                       {isZhText ? "没有账号？" : "Need an account?"}{" "}
@@ -370,18 +413,37 @@ export function AuthPage({ mode }: { mode: Mode }) {
                           : "Sign up"}
                     </Button>
 
-                    {!isZh && (
-                      <>
-                        <div className="relative">
-                          <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t border-white/10" />
-                          </div>
-                          <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-slate-900/60 px-2 text-slate-400">
-                              {isZh ? "或" : "or"}
-                            </span>
-                          </div>
+                    <>
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t border-white/10" />
                         </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-slate-900/60 px-2 text-slate-400">
+                            {isZh ? "或" : "or"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isDomestic ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full bg-white text-slate-900 hover:bg-slate-100"
+                          disabled={isLoading}
+                          onClick={handleWechat}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            className="mr-2 h-5 w-5"
+                            fill="currentColor"
+                          >
+                            <path d="M5.5 4C2.46 4 0 6.24 0 8.99c0 2 1.33 3.74 3.3 4.62-.12.45-.76 2.8-.79 3.02 0 0-.02.17.09.24.11.07.24.02.24.02.32-.05 3.04-1.99 3.47-2.31.4.06.8.09 1.19.09 3.04 0 5.5-2.23 5.5-4.99C13 6.24 10.54 4 7.5 4h-2Zm12 4c-2.49 0-4.5 1.8-4.5 4.02 0 1.34.7 2.53 1.78 3.31-.09.36-.53 2.04-.55 2.2 0 0-.02.13.07.19.09.06.2.02.2.02.26-.04 2.45-1.6 2.8-1.85.32.05.65.07.97.07 2.49 0 4.5-1.8 4.5-4.02C22 9.8 19.99 8 17.5 8Z" />
+                          </svg>
+                          {isZh ? "使用微信登录" : "Continue with WeChat"}
+                        </Button>
+                      ) : (
                         <Button
                           type="button"
                           variant="outline"
@@ -399,8 +461,8 @@ export function AuthPage({ mode }: { mode: Mode }) {
                           </svg>
                           {isZh ? "使用 Google 登录" : "Continue with Google"}
                         </Button>
-                      </>
-                    )}
+                      )}
+                    </>
 
                     <p className="text-sm text-slate-300 text-center">
                       {isZh ? "已有账号？" : "Already have an account?"}{" "}

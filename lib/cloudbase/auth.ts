@@ -158,6 +158,85 @@ export class CloudBaseAuthService {
     }
   }
 
+  async signInWithWechat(params: {
+    openid: string;
+    unionid?: string | null;
+    nickname?: string | null;
+    avatar?: string | null;
+  }): Promise<{
+    user: CloudBaseAuthUser | null;
+    session?: CloudBaseSession;
+    error?: Error;
+  }> {
+    const { openid, unionid, nickname, avatar } = params;
+
+    if (!openid) {
+      return { user: null, error: new Error("Missing openid") };
+    }
+
+    try {
+      await this.ensureReady();
+      const usersColl = this.db.collection("users");
+
+      // 优先按 wechatOpenId 查找
+      let existing = await usersColl.where({ wechatOpenId: openid }).limit(1).get();
+      let user = existing.data[0] as CloudBaseUser | undefined;
+
+      // 兼容早期用 email 存 openid 的情况
+      if (!user) {
+        const emailKey = `wechat_${openid}@local.wechat`;
+        existing = await usersColl.where({ email: emailKey }).limit(1).get();
+        user = existing.data[0] as CloudBaseUser | undefined;
+      }
+
+      const now = new Date().toISOString();
+
+      if (!user) {
+        // 创建新用户
+        const email = `wechat_${openid}@local.wechat`;
+        const userData: CloudBaseUser & { wechatOpenId: string; wechatUnionId?: string | null } =
+          {
+            email,
+            password: null,
+            name: nickname || "微信用户",
+            avatar: avatar || null,
+            createdAt: now,
+            lastLoginAt: now,
+            pro: false,
+            region: "CN",
+            subscriptionTier: "free",
+            paymentMethod: null,
+            wechatOpenId: openid,
+            wechatUnionId: unionid || null,
+          };
+
+        const result = await usersColl.add(userData);
+        user = { ...userData, _id: result.id };
+      } else if (user._id) {
+        // 更新已有用户的头像/昵称/登录时间
+        await usersColl.doc(user._id).update({
+          name: nickname || user.name,
+          avatar: avatar || user.avatar,
+          lastLoginAt: now,
+          wechatOpenId: openid,
+          wechatUnionId: unionid || null,
+        });
+      }
+
+      if (!user || !user._id) {
+        return { user: null, error: new Error("Failed to load/create user") };
+      }
+
+      const authUser = this.mapUser(user._id, user);
+      const session = await this.createSession(user._id);
+
+      return { user: authUser, session };
+    } catch (error) {
+      console.error("[cloudbase] signInWithWechat error", error);
+      return { user: null, error: error as Error };
+    }
+  }
+
   private generateToken(): string {
     return Buffer.from(`${Date.now()}-${Math.random().toString(36).slice(2)}`).toString("base64");
   }

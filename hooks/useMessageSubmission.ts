@@ -614,6 +614,13 @@ export const useMessageSubmission = (
             await new Promise((resolve) => setTimeout(resolve, 100));
           }
         } catch (error) {
+          // 用户主动停止会触发 AbortError，这里不视为异常
+          if (error instanceof DOMException && error.name === "AbortError") {
+            setIsLoading(false);
+            setIsStreaming(false);
+            setStreamingController(null);
+            return;
+          }
           console.error("Streaming API call failed:", error);
           const errorContent = formatStreamingError(
             error instanceof Error ? error.message : String(error),

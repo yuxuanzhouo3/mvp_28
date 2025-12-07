@@ -271,8 +271,8 @@ export function AuthPage({ mode }: { mode: Mode }) {
                       {isDomestic ? (
                         <Button
                           type="button"
-                          variant="outline"
-                          className="w-full bg-white text-slate-900 hover:bg-slate-100"
+                          variant="default"
+                          className="w-full bg-[#00c060] hover:bg-[#00a654] text-white border-none"
                           disabled={isLoading}
                           onClick={handleWechat}
                         >
@@ -425,14 +425,14 @@ export function AuthPage({ mode }: { mode: Mode }) {
                         </div>
                       </div>
 
-                      {isDomestic ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="w-full bg-white text-slate-900 hover:bg-slate-100"
-                          disabled={isLoading}
-                          onClick={handleWechat}
-                        >
+                        {isDomestic ? (
+                          <Button
+                            type="button"
+                            variant="default"
+                            className="w-full bg-[#00c060] hover:bg-[#00a654] text-white border-none"
+                            disabled={isLoading}
+                            onClick={handleWechat}
+                          >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 24 24"

@@ -85,8 +85,8 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
             {isDomestic ? (
               <Button
                 onClick={handleWechatAuth}
-                variant="outline"
-                className="w-full flex items-center space-x-2 mb-4 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869]"
+                variant="default"
+                className="w-full flex items-center space-x-2 mb-4 bg-[#00c060] hover:bg-[#00a654] text-white border-none"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path

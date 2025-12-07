@@ -610,108 +610,101 @@ const loadMessagesForConversation = useCallback(
   [setChatSessions, setMessages, setAppUser, setIsLoggedIn, setShowAuthDialog],
 );
 
-  const loadConversations = useCallback(async () => {
-    if (!appUser) return;
-    // allow domestic to retry once each page load even if flag set (in case earlier fetch failed)
-    if (!isDomestic) {
-      if (hasLoadedConversationsRef.current) return;
+  const loadConversations = useCallback(
+    async (userOverride?: AppUser | null) => {
+      const user = userOverride ?? appUserRef.current;
+      if (!user) return;
       if (loadConversationsPendingRef.current) return;
-    }
-    loadConversationsPendingRef.current = true;
-    setIsSidebarLoading(true);
-    try {
-      const res = await fetch("/api/conversations", {
-        cache: "no-store",
-        credentials: "include",
-      });
-      if (res.status === 401) {
-        setAppUser(null);
-        setIsLoggedIn(false);
-        setShowAuthDialog(true);
+      if (
+        hasLoadedConversationsRef.current &&
+        loadedConversationsForUserRef.current === user.id
+      )
         return;
-      }
-      if (!res.ok) {
-        throw new Error(`Failed to load conversations ${res.status}`);
-      }
-      const data = await res.json();
-
-      const mapped: ChatSession[] =
-        data?.map((c: any) => ({
-          id: c.id,
-          title: c.title || "New Chat",
-          messages: [],
-          model: c.model || defaultExternalModelId,
-          modelType: "external",
-          category: "general",
-          lastUpdated: c.updated_at ? new Date(c.updated_at) : new Date(),
-          isModelLocked: false, // allow model selection before messages load
-        })) || [];
-
-      setChatSessions(mapped);
-      // only memoize for international; domestic should allow repeated loads to reflect new data
-      if (!isDomestic) {
-        hasLoadedConversationsRef.current = true;
-      }
-
-      const currentId = currentChatIdRef.current;
-      const stillExists = currentId && mapped.some((c) => c.id === currentId);
-
-      // New flow: default select nothing, only load when user clicks
-      if (mapped.length === 0) {
-        setMessages([]);
-        setCurrentChatId("");
-        currentChatIdRef.current = "";
-      } else if (!stillExists) {
-        setMessages([]);
-        setCurrentChatId("");
-        currentChatIdRef.current = "";
-      } else {
-        // keep current selection but do not auto-load messages
-        const current = mapped.find((c) => c.id === currentId);
-        if (current) {
-          setSelectedModelType(current.modelType || "external");
-          setSelectedModel(current.model || defaultExternalModelId);
-          setSelectedCategory(current.category || "general");
+      loadConversationsPendingRef.current = true;
+      setIsSidebarLoading(true);
+      try {
+        const res = await fetch("/api/conversations", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (res.status === 401) {
+          setAppUser(null);
+          setIsLoggedIn(false);
+          setShowAuthDialog(true);
+          hasLoadedConversationsRef.current = false;
+          loadedConversationsForUserRef.current = null;
+          return;
         }
+        if (!res.ok) {
+          throw new Error(`Failed to load conversations ${res.status}`);
+        }
+        const data = await res.json();
+
+        const mapped: ChatSession[] =
+          data?.map((c: any) => ({
+            id: c.id,
+            title: c.title || "New Chat",
+            messages: [],
+            model: c.model || defaultExternalModelId,
+            modelType: "external",
+            category: "general",
+            lastUpdated: c.updated_at ? new Date(c.updated_at) : new Date(),
+            isModelLocked: false, // allow model selection before messages load
+          })) || [];
+
+        setChatSessions(mapped);
+        hasLoadedConversationsRef.current = true;
+        loadedConversationsForUserRef.current = user.id;
+
+        const currentId = currentChatIdRef.current;
+        const stillExists = currentId && mapped.some((c) => c.id === currentId);
+
+        // New flow: default select nothing, only load when user clicks
+        if (mapped.length === 0) {
+          setMessages([]);
+          setCurrentChatId("");
+          currentChatIdRef.current = "";
+        } else if (!stillExists) {
+          setMessages([]);
+          setCurrentChatId("");
+          currentChatIdRef.current = "";
+        } else {
+          // keep current selection but do not auto-load messages
+          const current = mapped.find((c) => c.id === currentId);
+          if (current) {
+            setSelectedModelType(current.modelType || "external");
+            setSelectedModel(current.model || defaultExternalModelId);
+            setSelectedCategory(current.category || "general");
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load conversations", err);
+        hasLoadedConversationsRef.current = false;
+        loadedConversationsForUserRef.current = null;
+      } finally {
+        loadConversationsPendingRef.current = false;
+        setIsSidebarLoading(false);
       }
-    } catch (err) {
-      console.error("Failed to load conversations", err);
-    } finally {
-      loadConversationsPendingRef.current = false;
-      setIsSidebarLoading(false);
-    }
-  }, [
-    appUser,
-    setChatSessions,
-    setCurrentChatId,
-    setMessages,
-    setSelectedCategory,
-    setSelectedModel,
-    setSelectedModelType,
-    setIsSidebarLoading,
-  ]);
+    },
+    [
+      setChatSessions,
+      setCurrentChatId,
+      setMessages,
+      setSelectedCategory,
+      setSelectedModel,
+      setSelectedModelType,
+      setIsSidebarLoading,
+    ],
+  );
 
   useEffect(() => {
     let mounted = true;
 
     const syncSession = async () => {
       if (isDomestic) {
-        if (domesticSessionCheckedRef.current) return;
-        if (!hasAuthToken()) {
-          domesticSessionCheckedRef.current = true;
-          setAppUser(null);
-          setIsLoggedIn(false);
-          setChatSessions([]);
-          setMessages([]);
-          setCurrentChatId("");
-          setShowAuthDialog(true);
-          hasLoadedConversationsRef.current = false;
-          loadConversationsPendingRef.current = false;
-          return;
-        }
+        // 每次挂载都尝试同步，避免初次 401 后不再重试
         const res = await fetch("/api/auth/me", { credentials: "include" });
         if (!mounted) return;
-        domesticSessionCheckedRef.current = true;
         if (res.ok) {
           const data = await res.json();
           const user = data.user;
@@ -724,7 +717,7 @@ const loadMessagesForConversation = useCallback(
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
-          await loadConversations();
+          await loadConversations(mappedUser);
         } else {
           setAppUser(null);
           setIsLoggedIn(false);
@@ -734,6 +727,7 @@ const loadMessagesForConversation = useCallback(
           setShowAuthDialog(true);
           hasLoadedConversationsRef.current = false;
           loadConversationsPendingRef.current = false;
+          loadedConversationsForUserRef.current = null;
         }
       } else {
         const { data, error } = await supabase.auth.getSession();
@@ -756,7 +750,7 @@ const loadMessagesForConversation = useCallback(
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
-          await loadConversations();
+          await loadConversations(mappedUser);
         } else {
           setAppUser(null);
           setIsLoggedIn(false);
@@ -766,6 +760,7 @@ const loadMessagesForConversation = useCallback(
           setShowAuthDialog(true);
           hasLoadedConversationsRef.current = false;
           loadConversationsPendingRef.current = false;
+          loadedConversationsForUserRef.current = null;
         }
       }
     };
@@ -790,7 +785,7 @@ const loadMessagesForConversation = useCallback(
             };
             setAppUser(mappedUser);
             setIsLoggedIn(true);
-            await loadConversations();
+            await loadConversations(mappedUser);
           }
           if (event === "SIGNED_OUT") {
             setAppUser(null);
@@ -801,6 +796,7 @@ const loadMessagesForConversation = useCallback(
             setShowAuthDialog(true);
             hasLoadedConversationsRef.current = false;
             loadConversationsPendingRef.current = false;
+            loadedConversationsForUserRef.current = null;
           }
         });
 
@@ -896,11 +892,12 @@ const loadMessagesForConversation = useCallback(
   const promptScrollRef = useRef<HTMLDivElement>(null);
   const bookmarkScrollRef = useRef<HTMLDivElement>(null);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
-  const domesticSessionCheckedRef = useRef<boolean>(false);
+  const appUserRef = useRef<AppUser | null>(null);
   const currentChatIdRef = useRef<string>("");
   const messagesLoadTokenRef = useRef<number>(0);
   const loadConversationsPendingRef = useRef<boolean>(false);
   const hasLoadedConversationsRef = useRef<boolean>(false);
+  const loadedConversationsForUserRef = useRef<string | null>(null);
   const [isConversationLoading, setIsConversationLoading] =
     useState<boolean>(false);
 
@@ -908,10 +905,21 @@ const loadMessagesForConversation = useCallback(
     currentChatIdRef.current = currentChatId;
   }, [currentChatId]);
 
-  const hasAuthToken = useCallback(() => {
-    if (typeof document === "undefined") return false;
-    return document.cookie.split(";").some((c) => c.trim().startsWith("auth-token="));
-  }, []);
+  useEffect(() => {
+    appUserRef.current = appUser as AppUser | null;
+  }, [appUser]);
+
+  // reset conversation loading guards when user switches
+  useEffect(() => {
+    if (!appUser?.id) {
+      hasLoadedConversationsRef.current = false;
+      loadConversationsPendingRef.current = false;
+      loadedConversationsForUserRef.current = null;
+    } else if (loadedConversationsForUserRef.current !== appUser.id) {
+      hasLoadedConversationsRef.current = false;
+      loadConversationsPendingRef.current = false;
+    }
+  }, [appUser?.id]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -1578,7 +1586,8 @@ const loadMessagesForConversation = useCallback(
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
-          await loadConversations();
+          appUserRef.current = mappedUser;
+          await loadConversations(mappedUser);
           alert(isZh ? "注册成功" : "Sign up successful");
         } else {
           const { data, error } = await supabase.auth.signUp({
@@ -1600,16 +1609,17 @@ const loadMessagesForConversation = useCallback(
                 user.email?.split("@")[0] ||
                 "User",
               isPro: false,
-              isPaid: false,
-            };
-            setAppUser(mappedUser);
-            setIsLoggedIn(true);
-            await loadConversations();
-          }
-          alert(
-            isZh
-              ? "注册成功，请查收邮箱并完成验证。"
-              : "Sign up successful. Please check your email to confirm.",
+            isPaid: false,
+          };
+          setAppUser(mappedUser);
+          setIsLoggedIn(true);
+          appUserRef.current = mappedUser;
+          await loadConversations(mappedUser);
+        }
+        alert(
+          isZh
+            ? "注册成功，请查收邮箱并完成验证。"
+            : "Sign up successful. Please check your email to confirm.",
           );
         }
       } else {
@@ -1634,7 +1644,8 @@ const loadMessagesForConversation = useCallback(
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
-          await loadConversations();
+          appUserRef.current = mappedUser;
+          await loadConversations(mappedUser);
         } else {
           const { data, error } = await supabase.auth.signInWithPassword({
             email: authForm.email,
@@ -1651,13 +1662,14 @@ const loadMessagesForConversation = useCallback(
                 user.email?.split("@")[0] ||
                 "User",
               isPro: false,
-              isPaid: false,
-            };
-            setAppUser(mappedUser);
-            setIsLoggedIn(true);
-            await loadConversations();
-          }
+            isPaid: false,
+          };
+          setAppUser(mappedUser);
+          setIsLoggedIn(true);
+          appUserRef.current = mappedUser;
+          await loadConversations(mappedUser);
         }
+      }
       }
       setShowAuthDialog(false);
       setAuthForm({ email: "", password: "", name: "" });
@@ -1737,6 +1749,9 @@ const loadMessagesForConversation = useCallback(
     setMessages([]);
     setPromptHistory([]);
     setBookmarkedMessages([]);
+    hasLoadedConversationsRef.current = false;
+    loadConversationsPendingRef.current = false;
+    loadedConversationsForUserRef.current = null;
 
     // Close any open dialogs
     setShowSettingsDialog(false);
@@ -1928,27 +1943,47 @@ const loadMessagesForConversation = useCallback(
   };
 
   const stopStreaming = () => {
+    // snapshot current streaming message
+    let streamingMsg: Message | undefined;
+    setMessages((prev) => {
+      const updated = prev.map((msg) => {
+        if (msg.isStreaming && !streamingMsg) {
+          streamingMsg = msg;
+          return {
+            ...msg,
+            isStreaming: false,
+            content:
+              msg.content +
+              (selectedLanguage === "zh" ? "\n\n[已停止]" : "\n\n[Stopped]"),
+          };
+        }
+        return msg;
+      });
+      return updated;
+    });
+
+    // Persist the partial assistant message if available
+    if (streamingMsg && streamingMsg.content && currentChatId) {
+      fetch(`/api/conversations/${currentChatId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          role: "assistant",
+          content: streamingMsg.content,
+          client_id: streamingMsg.id,
+        }),
+      }).catch((err) =>
+        console.error("Failed to persist stopped assistant message", err),
+      );
+    }
+
     if (streamingController) {
       streamingController.abort();
       setStreamingController(null);
     }
     setIsStreaming(false);
     setIsLoading(false);
-
-    // Update the streaming message to show it was stopped
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.isStreaming
-          ? {
-              ...msg,
-              isStreaming: false,
-              content:
-                msg.content +
-                (selectedLanguage === "zh" ? "\n\n[已停止]" : "\n\n[Stopped]"),
-            }
-          : msg
-      )
-    );
   };
 
   // File handling functions moved to utils

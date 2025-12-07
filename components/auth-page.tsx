@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, LogIn, UserPlus } from "lucide-react";
+import { Eye, EyeOff, LogIn, UserPlus, Loader2 } from "lucide-react";
 
 type Mode = "login" | "signup";
 
@@ -106,6 +106,19 @@ export function AuthPage({ mode }: { mode: Mode }) {
         }
 
         if (isDomestic) {
+          // 先检查邮箱是否已被注册，提升用户体验
+          const check = await fetch("/api/auth/check-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: form.email }),
+          });
+          const checkData = await check.json();
+          if (check.ok && checkData.exists) {
+            setError(isZhText ? "该邮箱已被注册，请直接登录" : "This email is already registered. Please sign in instead.");
+            setIsLoading(false);
+            return;
+          }
+
           const res = await fetch("/api/auth/register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -244,9 +257,10 @@ export function AuthPage({ mode }: { mode: Mode }) {
                       </div>
                     </div>
 
-                    {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && <p className="text-sm text-red-400">{error}</p>}
 
                     <Button type="submit" className="w-full" disabled={isLoading}>
+                      {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       {isLoading
                         ? isZhText
                           ? "登录中..."
@@ -276,6 +290,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
                           disabled={isLoading}
                           onClick={handleWechat}
                         >
+                          {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 24 24"
@@ -294,6 +309,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
                           disabled={isLoading}
                           onClick={handleGoogle}
                         >
+                          {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 488 512"

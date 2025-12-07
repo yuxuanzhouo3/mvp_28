@@ -274,18 +274,17 @@ export default function Sidebar({
 
             <ScrollArea className="flex-1 max-h-[calc(100vh-180px)] relative">
               <div className="p-2 relative">
-                {isSidebarLoading && (
-                  <div className="absolute inset-0 z-20 bg-white/70 dark:bg-[#0f1016]/80 backdrop-blur-sm pointer-events-none rounded-md">
-                    <div className="space-y-2 w-full px-2 py-3 animate-pulse">
-                      {Array.from({ length: 8 }).map((_, idx) => (
-                        <div
-                          key={`skeleton-${idx}`}
-                          className="h-6 rounded-md bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-[#3a3b42] dark:via-[#32333c] dark:to-[#2a2b33]"
-                        />
-                      ))}
-                    </div>
+                {isSidebarLoading ? (
+                  <div className="space-y-2 w-full px-2 py-3 animate-pulse">
+                    {Array.from({ length: 10 }).map((_, idx) => (
+                      <div
+                        key={`skeleton-${idx}`}
+                        className="h-6 rounded-md bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-[#3a3b42] dark:via-[#32333c] dark:to-[#2a2b33]"
+                      />
+                    ))}
                   </div>
-                )}
+                ) : (
+                  <>
                 {/* General Folder */}
                 <div className="mb-1">
                   <ContextMenu>
@@ -654,6 +653,8 @@ export default function Sidebar({
                     </div>
                   );
                 })}
+                  </>
+                )}
               </div>
             </ScrollArea>
 

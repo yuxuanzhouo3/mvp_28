@@ -613,9 +613,77 @@ export const useMessageSubmission = (
           while (!isStreamingComplete) {
             await new Promise((resolve) => setTimeout(resolve, 100));
           }
+
+          // 如果用户中途点击“停止”，sendMessageStream 会提前返回且 isStreamingComplete 仍为 false
+          // 此处兜底：将已生成内容落库，并清理状态
+          if (!isStreamingComplete && messageCreated) {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === aiMessageId
+                  ? {
+                      ...msg,
+                      isStreaming: false,
+                      content: streamedContent || msg.content,
+                      model: currentModel,
+                    }
+                  : msg
+              )
+            );
+
+            if (conversationId && streamedContent) {
+              fetch(`/api/conversations/${conversationId}/messages`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({
+                  role: "assistant",
+                  content: streamedContent,
+                  client_id: aiMessageId,
+                }),
+              }).catch((err) =>
+                console.error("Failed to persist assistant message after abort", err)
+              );
+            }
+
+            setIsLoading(false);
+            setIsStreaming(false);
+            setStreamingController(null);
+          }
         } catch (error) {
-          // 用户主动停止会触发 AbortError，这里不视为异常
+          // 用户主动停止会触发 AbortError：收尾并落库当前已流出的内容
           if (error instanceof DOMException && error.name === "AbortError") {
+            if (messageCreated) {
+              // 更新本地消息状态，去掉 streaming 标记
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === aiMessageId
+                    ? {
+                        ...msg,
+                        isStreaming: false,
+                        content: streamedContent || msg.content,
+                        model: currentModel,
+                      }
+                    : msg
+                )
+              );
+
+              // 持久化当前已生成的内容
+              if (conversationId && streamedContent) {
+                fetch(`/api/conversations/${conversationId}/messages`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({
+                    role: "assistant",
+                    content: streamedContent,
+                    client_id: aiMessageId,
+                  }),
+                }).catch((err) =>
+                  console.error("Failed to persist aborted assistant message", err)
+                );
+              }
+            }
+
             setIsLoading(false);
             setIsStreaming(false);
             setStreamingController(null);

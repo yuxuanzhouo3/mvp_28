@@ -295,6 +295,10 @@ class ApiService {
 
       await doRequest(1);
     } catch (error) {
+      // 用户主动停止（AbortController）时不视为错误
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
       console.error('Streaming error:', error);
       if (!alreadyNotified) {
         onError?.(error instanceof Error ? error.message : 'Unknown error');

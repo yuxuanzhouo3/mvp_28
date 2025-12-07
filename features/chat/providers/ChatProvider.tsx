@@ -697,6 +697,18 @@ const loadMessagesForConversation = useCallback(
     const syncSession = async () => {
       if (isDomestic) {
         if (domesticSessionCheckedRef.current) return;
+        if (!hasAuthToken()) {
+          domesticSessionCheckedRef.current = true;
+          setAppUser(null);
+          setIsLoggedIn(false);
+          setChatSessions([]);
+          setMessages([]);
+          setCurrentChatId("");
+          setShowAuthDialog(true);
+          hasLoadedConversationsRef.current = false;
+          loadConversationsPendingRef.current = false;
+          return;
+        }
         const res = await fetch("/api/auth/me", { credentials: "include" });
         if (!mounted) return;
         domesticSessionCheckedRef.current = true;
@@ -895,6 +907,11 @@ const loadMessagesForConversation = useCallback(
   useEffect(() => {
     currentChatIdRef.current = currentChatId;
   }, [currentChatId]);
+
+  const hasAuthToken = useCallback(() => {
+    if (typeof document === "undefined") return false;
+    return document.cookie.split(";").some((c) => c.trim().startsWith("auth-token="));
+  }, []);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {

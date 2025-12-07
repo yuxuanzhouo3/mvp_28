@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const next = request.nextUrl.searchParams.get("next") || "/";
     const statePayload = JSON.stringify({ next });
     const state = Buffer.from(statePayload).toString("base64url");
-    const redirectUri = `${appUrl.replace(/\\/$/, "")}/auth/callback`;
+    const redirectUri = `${appUrl.replace(/\/$/, "")}/auth/callback`;
 
     const qrcodeUrl = `https://open.weixin.qq.com/connect/qrconnect?appid=${appId}&redirect_uri=${encodeURIComponent(
       redirectUri

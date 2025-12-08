@@ -59,6 +59,7 @@ interface SidebarProps {
   saveTitle: () => void;
   cancelEditing: () => void;
   deleteChat: (chatId: string) => void;
+  exportChat: (chatId: string) => void;
   setShowShareDialog: (show: boolean) => void;
   truncateText: (text: string, maxLength: number) => string;
   appUser: any;
@@ -94,6 +95,7 @@ export default function Sidebar({
   setShowShareDialog,
   truncateText,
   appUser,
+  exportChat,
   updateUserSettings,
   showDownloadSection,
   setShowDownloadSection,
@@ -410,6 +412,28 @@ export default function Sidebar({
                                       >
                                         <Upload className="w-2.5 h-2.5" />
                                       </Button>
+                                      {appUser?.plan &&
+                                        ["pro", "enterprise"].includes(
+                                          String(appUser.plan).toLowerCase()
+                                        ) && (
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              exportChat(chat.id);
+                                            }}
+                                            disabled={chat.messages.length === 0}
+                                            title={
+                                              chat.messages.length === 0
+                                                ? "No messages to export"
+                                                : "Export conversation"
+                                            }
+                                          >
+                                            <Download className="w-2.5 h-2.5" />
+                                          </Button>
+                                        )}
                                       <Button
                                         size="sm"
                                         variant="ghost"
@@ -446,6 +470,19 @@ export default function Sidebar({
                               <Upload className="w-4 h-4 mr-2" />
                               Share
                             </ContextMenuItem>
+                            {appUser?.plan &&
+                              ["pro", "enterprise"].includes(
+                                String(appUser.plan).toLowerCase()
+                              ) && (
+                                <ContextMenuItem
+                                  onClick={() => exportChat(chat.id)}
+                                  disabled={chat.messages.length === 0}
+                                  className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <Download className="w-4 h-4 mr-2" />
+                                  Export
+                                </ContextMenuItem>
+                              )}
                             <ContextMenuItem
                               onClick={() => deleteChat(chat.id)}
                               className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"

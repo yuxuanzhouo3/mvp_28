@@ -37,6 +37,13 @@ import {
 import { useLanguage } from "@/context/LanguageContext";
 import { createLocalizedTextGetter } from "@/lib/localization";
 
+const FREE_DAILY_LIMIT = (() => {
+  const raw = process.env.NEXT_PUBLIC_FREE_DAILY_LIMIT || "10";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 10;
+  return Math.min(1000, n); // safety clamp
+})();
+
 // Import hooks
 import {
   useChatState,
@@ -547,15 +554,38 @@ export default function ChatProvider({
     setSelectedPaymentMethod,
     currentPlan,
     setCurrentPlan,
-    guestChatSessions,
-    setGuestChatSessions,
-    guestSessionTimeout,
-    setGuestSessionTimeout,
-  } = userState;
+  guestChatSessions,
+  setGuestChatSessions,
+  guestSessionTimeout,
+  setGuestSessionTimeout,
+} = userState;
+
+  const [freeQuotaUsed, setFreeQuotaUsed] = useState<number>(0);
+  const [freeQuotaDate, setFreeQuotaDate] = useState<string>("");
+  const [freeQuotaLimit, setFreeQuotaLimit] = useState<number>(FREE_DAILY_LIMIT);
+  const [basicQuotaUsed, setBasicQuotaUsed] = useState<number>(0);
+  const [basicQuotaLimit, setBasicQuotaLimit] = useState<number>(
+    Number.parseInt(process.env.NEXT_PUBLIC_BASIC_MONTHLY_LIMIT || "100", 10) || 100
+  );
+  const [basicQuotaPeriod, setBasicQuotaPeriod] = useState<string>("");
 
 const loadMessagesForConversation = useCallback(
   async (conversationId: string) => {
     const token = ++messagesLoadTokenRef.current;
+    // Local-only (unsaved) conversations have no server history; skip fetch
+    if (conversationId.startsWith("local-")) {
+      setMessages([]);
+      setChatSessions((prev) =>
+        prev.map((c) =>
+          c.id === conversationId
+            ? { ...c, messages: [], isModelLocked: false }
+            : c
+        )
+      );
+      setIsConversationLoading(false);
+      return;
+    }
+
     setIsConversationLoading(true);
     try {
       const res = await fetch(`/api/conversations/${conversationId}/messages`, {
@@ -566,6 +596,18 @@ const loadMessagesForConversation = useCallback(
         setAppUser(null);
         setIsLoggedIn(false);
         setShowAuthDialog(true);
+        return;
+      }
+      if (res.status === 404) {
+        // Conversation no longer exists server-side; clear local copy
+        setMessages([]);
+        setChatSessions((prev) =>
+          prev.map((c) =>
+            c.id === conversationId
+              ? { ...c, messages: [], isModelLocked: false }
+              : c
+          )
+        );
         return;
       }
       if (!res.ok) {
@@ -600,7 +642,18 @@ const loadMessagesForConversation = useCallback(
         ),
       );
     } catch (err) {
-      console.error("Failed to load messages", err);
+      // Ignore stale requests; for current chat, clear stale messages and log
+      if (currentChatIdRef.current === conversationId) {
+        setMessages([]);
+        setChatSessions((prev) =>
+          prev.map((c) =>
+            c.id === conversationId
+              ? { ...c, messages: [], isModelLocked: false }
+              : c
+          )
+        );
+        console.error("Failed to load messages", err);
+      }
     } finally {
       if (token === messagesLoadTokenRef.current) {
         setIsConversationLoading(false);
@@ -905,6 +958,15 @@ const loadMessagesForConversation = useCallback(
       setSelectedLanguage(activeLanguage);
     }
   }, [activeLanguage, selectedLanguage, setSelectedLanguage]);
+
+  // Sync plan expiration from localStorage after login without refresh
+  useEffect(() => {
+    if (!appUser || !currentPlan) return;
+    const storedExp = localStorage.getItem("morngpt_current_plan_exp");
+    if (storedExp && !appUser.planExp) {
+      setAppUser((prev) => (prev ? { ...prev, planExp: storedExp } : prev));
+    }
+  }, [appUser, currentPlan, setAppUser]);
   // propagate selection back to global language so auth screens & dialogs stay aligned
   useEffect(() => {
     if (selectedLanguage && selectedLanguage !== currentLanguage) {
@@ -947,6 +1009,105 @@ const loadMessagesForConversation = useCallback(
   useEffect(() => {
     appUserRef.current = appUser as AppUser | null;
   }, [appUser]);
+
+  const getToday = () => new Date().toISOString().split("T")[0];
+
+  useEffect(() => {
+    const today = getToday();
+    setFreeQuotaDate(today);
+
+    if (!appUser?.id || appUser.isPro) {
+      setFreeQuotaUsed(0);
+      setFreeQuotaLimit(FREE_DAILY_LIMIT);
+      setBasicQuotaUsed(0);
+      setBasicQuotaLimit(
+        Number.parseInt(process.env.NEXT_PUBLIC_BASIC_MONTHLY_LIMIT || "100", 10) || 100
+      );
+      setBasicQuotaPeriod("");
+      return;
+    }
+
+    const fetchQuota = async () => {
+      try {
+        const res = await fetch("/api/account/quota", { credentials: "include" });
+        if (!res.ok) throw new Error(`quota ${res.status}`);
+        const data = await res.json();
+        if (data?.plan === "basic") {
+          setBasicQuotaUsed(data.used ?? 0);
+          setBasicQuotaLimit(data.limit ?? basicQuotaLimit);
+          setBasicQuotaPeriod(data.period ?? "");
+          // 清空 free 计数，避免误显示
+          setFreeQuotaUsed(0);
+          setFreeQuotaLimit(FREE_DAILY_LIMIT);
+        } else {
+          setFreeQuotaUsed(data.used ?? 0);
+          setFreeQuotaLimit(data.limit ?? FREE_DAILY_LIMIT);
+          setBasicQuotaUsed(0);
+          setBasicQuotaPeriod("");
+        }
+      } catch {
+        // fallback: keep defaults
+        setFreeQuotaUsed(0);
+        setFreeQuotaLimit(FREE_DAILY_LIMIT);
+        setBasicQuotaUsed(0);
+        setBasicQuotaPeriod("");
+      }
+    };
+
+    void fetchQuota();
+  }, [appUser?.id, appUser?.isPro, currentPlan, basicQuotaLimit]);
+
+  const requireLogin = useCallback(() => {
+    setAuthMode("login");
+    setAuthForm((prev) => ({ ...prev, password: "" }));
+    setShowAuthDialog(true);
+    alert("Please sign in to start chatting.");
+  }, [setAuthMode, setAuthForm, setShowAuthDialog]);
+
+  const consumeFreeQuota = useCallback(() => {
+    if (!appUser) return false;
+    const planLower = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";
+    const isBasic = planLower === "basic";
+    if (appUser.isPro) return true;
+
+    if (isBasic) {
+      const limit = basicQuotaLimit || 100;
+      if (basicQuotaUsed >= limit) {
+        alert(
+          `You have reached this month's ${limit}-message limit on Basic. Please upgrade to continue.`
+        );
+        setShowUpgradeDialog(true);
+        return false;
+      }
+      setBasicQuotaUsed((prev) => prev + 1);
+      return true;
+    } else {
+      const today = getToday();
+      const baseUsed = freeQuotaDate === today ? freeQuotaUsed : 0;
+      const limit = freeQuotaLimit || FREE_DAILY_LIMIT;
+      if (baseUsed >= limit) {
+        alert(
+          `You have reached today's ${limit}-message limit on Free. Please upgrade to continue.`
+        );
+        setShowUpgradeDialog(true);
+        return false;
+      }
+
+      const nextUsed = baseUsed + 1;
+      setFreeQuotaDate(today);
+      setFreeQuotaUsed(nextUsed);
+      return true;
+    }
+  }, [
+    appUser,
+    currentPlan,
+    freeQuotaDate,
+    freeQuotaUsed,
+    freeQuotaLimit,
+    basicQuotaLimit,
+    basicQuotaUsed,
+    setShowUpgradeDialog,
+  ]);
 
   // reset conversation loading guards when user switches
   useEffect(() => {
@@ -1066,7 +1227,8 @@ const loadMessagesForConversation = useCallback(
       setExpandedFolders,
       externalModels,
       supabase,
-      () => setShowAuthDialog(true)
+      requireLogin,
+      consumeFreeQuota
     );
 
   // Guest session timeout management
@@ -1644,6 +1806,13 @@ const loadMessagesForConversation = useCallback(
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
+          if (mappedUser.plan) {
+            setCurrentPlan(mappedUser.plan as "Basic" | "Pro" | "Enterprise");
+            localStorage.setItem("morngpt_current_plan", mappedUser.plan);
+          }
+          if (mappedUser.planExp) {
+            localStorage.setItem("morngpt_current_plan_exp", mappedUser.planExp);
+          }
           appUserRef.current = mappedUser;
           await loadConversations(mappedUser);
           alert(isZh ? "注册成功" : "Sign up successful");
@@ -1705,6 +1874,13 @@ const loadMessagesForConversation = useCallback(
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
+          if (mappedUser.plan) {
+            setCurrentPlan(mappedUser.plan as "Basic" | "Pro" | "Enterprise");
+            localStorage.setItem("morngpt_current_plan", mappedUser.plan);
+          }
+          if (mappedUser.planExp) {
+            localStorage.setItem("morngpt_current_plan_exp", mappedUser.planExp);
+          }
           appUserRef.current = mappedUser;
           await loadConversations(mappedUser);
         } else {
@@ -2431,7 +2607,7 @@ const loadMessagesForConversation = useCallback(
     model?: string
   ) {
     if (!appUser) {
-      setShowAuthDialog(true);
+      requireLogin();
       return;
     }
 
@@ -2478,6 +2654,8 @@ const loadMessagesForConversation = useCallback(
     currentChatIdRef.current = chatId;
     const chat = chatSessions.find((c) => c.id === chatId);
     if (chat) {
+      // Immediately reflect locally stored messages (may be empty) before fetch
+      setMessages(chat.messages || []);
       // Load messages only when user selects
       void loadMessagesForConversation(chatId);
       setSelectedModelType(chat.modelType || "external");
@@ -2509,6 +2687,10 @@ const loadMessagesForConversation = useCallback(
             .eq("user_id", appUser.id);
           if (error) throw error;
         }
+      } else {
+        // guests are not allowed to manage conversations; prompt login
+        requireLogin();
+        return;
       }
     } catch (err) {
       console.error("Failed to delete conversation", err);
@@ -2519,13 +2701,26 @@ const loadMessagesForConversation = useCallback(
       );
     }
 
-    setChatSessions((prev) => prev.filter((chat) => chat.id !== chatId));
+    // Remove locally and move off the deleted chat to avoid stale fetches
+    const updatedChats = chatSessions.filter((chat) => chat.id !== chatId);
+    setChatSessions(updatedChats);
+
     if (currentChatId === chatId) {
-      const remainingChats = chatSessions.filter((chat) => chat.id !== chatId);
-      if (remainingChats.length > 0) {
-        selectChat(remainingChats[0].id);
+      if (updatedChats.length > 0) {
+        const nextChat = updatedChats[0];
+        setCurrentChatId(nextChat.id);
+        currentChatIdRef.current = nextChat.id;
+        setSelectedModelType(nextChat.modelType || "external");
+        setSelectedModel(nextChat.model || defaultExternalModelId);
+        setSelectedCategory(nextChat.category || "general");
+        setExpandedFolders([nextChat.category || "general"]);
+        setMessages(nextChat.messages || []);
+        void loadMessagesForConversation(nextChat.id);
       } else {
-        void createNewChat();
+        // No chats left: clear selection; user can start a fresh one
+        setCurrentChatId("");
+        currentChatIdRef.current = "";
+        setMessages([]);
       }
     }
   }
@@ -2905,6 +3100,92 @@ const loadMessagesForConversation = useCallback(
     console.log("handleSpecializedProductSelect called");
   };
 
+  const freeQuotaRemaining = useMemo(() => {
+    const planLower = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";
+    if (!appUser || appUser.isPro || planLower === "basic" || planLower === "pro" || planLower === "enterprise") return null;
+    const today = getToday();
+    const used = freeQuotaDate === today ? freeQuotaUsed : 0;
+    const limit = freeQuotaLimit || FREE_DAILY_LIMIT;
+    return Math.max(0, limit - used);
+  }, [appUser, currentPlan, freeQuotaDate, freeQuotaUsed, freeQuotaLimit]);
+
+  const basicQuotaRemaining = useMemo(() => {
+    const planLower = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";
+    if (!appUser || appUser.isPro || planLower !== "basic") return null;
+    const limit = basicQuotaLimit || 100;
+    return Math.max(0, limit - basicQuotaUsed);
+  }, [appUser, currentPlan, basicQuotaLimit, basicQuotaUsed]);
+
+  const isUnlimitedPlan =
+    !!appUser &&
+    (appUser.isPro ||
+      (currentPlan || appUser?.plan || "").toLowerCase?.() === "pro" ||
+      (currentPlan || appUser?.plan || "").toLowerCase?.() === "enterprise");
+
+  const downloadConversation = useCallback(
+    (chatId: string, title: string, messages: Message[]) => {
+      const lines = messages
+        .map((m) => {
+          const ts =
+            m.timestamp instanceof Date
+              ? m.timestamp.toISOString()
+              : new Date(m.timestamp).toISOString();
+          return `[${ts}] ${m.role.toUpperCase()}: ${m.content}`;
+        })
+        .join("\n\n");
+      const blob = new Blob([lines], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${title || "conversation"}-${chatId}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+    []
+  );
+
+  const exportChat = useCallback(
+    async (chatId: string) => {
+      const chat =
+        chatSessions.find((c) => c.id === chatId) ||
+        guestChatSessions.find((c) => c.id === chatId);
+      if (!chat) return;
+
+      let messagesToExport = chat.messages;
+
+      // If no messages cached, try fetching (paid users only)
+      if ((!messagesToExport || messagesToExport.length === 0) && appUser) {
+        try {
+          const res = await fetch(`/api/conversations/${chatId}/messages`, {
+            credentials: "include",
+          });
+          if (res.ok) {
+            const data = await res.json();
+            messagesToExport =
+              data?.map((m: any) => ({
+                id: m.id,
+                role: m.role,
+                content: m.content,
+                timestamp: new Date(m.created_at),
+              })) || [];
+          }
+        } catch (err) {
+          console.error("Failed to fetch messages for export", err);
+        }
+      }
+
+      if (!messagesToExport || messagesToExport.length === 0) {
+        alert("No messages to export.");
+        return;
+      }
+
+      downloadConversation(chatId, chat.title || "conversation", messagesToExport);
+    },
+    [chatSessions, guestChatSessions, appUser, downloadConversation]
+  );
+
   // Handle message submission
   const handleSubmit = useCallback(async () => {
     if (!appUser) {
@@ -2994,6 +3275,7 @@ const loadMessagesForConversation = useCallback(
     saveTitle,
     cancelEditing,
     deleteChat,
+    exportChat,
     setShowShareDialog,
     truncateText,
     appUser,
@@ -3014,6 +3296,8 @@ const loadMessagesForConversation = useCallback(
     setSelectedLanguage,
     currentPlan,
     planExp: appUser?.planExp || null,
+    appUserPlan: appUser?.plan || currentPlan || null,
+    isUnlimitedPlan,
     prompt,
     detectLanguage,
     toggleTheme,
@@ -3028,6 +3312,10 @@ const loadMessagesForConversation = useCallback(
     currentChatId,
     setShowUpgradeDialog,
     isDomestic,
+    freeQuotaRemaining,
+    freeQuotaLimit: FREE_DAILY_LIMIT,
+    basicQuotaRemaining,
+    basicQuotaLimit,
   };
 
   const chatInterfaceProps = {

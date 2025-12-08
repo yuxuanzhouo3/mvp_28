@@ -51,8 +51,14 @@ interface HeaderProps {
   currentChatId: string;
   currentPlan?: "Basic" | "Pro" | "Enterprise" | null;
   planExp?: string | null;
+  appUserPlan?: string | null;
+  isUnlimitedPlan?: boolean;
   setShowUpgradeDialog: (show: boolean) => void;
   isDomestic: boolean;
+  freeQuotaRemaining?: number | null;
+  freeQuotaLimit?: number;
+  basicQuotaRemaining?: number | null;
+  basicQuotaLimit?: number;
 }
 
 export default function Header({
@@ -76,7 +82,13 @@ export default function Header({
   setShowUpgradeDialog,
   currentPlan,
   planExp,
+  appUserPlan,
+  isUnlimitedPlan,
   isDomestic,
+  freeQuotaRemaining,
+  freeQuotaLimit,
+  basicQuotaRemaining,
+  basicQuotaLimit,
 }: HeaderProps) {
   const tier =
     appUser ? currentPlan || (appUser?.isPro ? "Pro" : null) : null;
@@ -89,6 +101,34 @@ export default function Header({
       : tier === "Basic"
       ? "bg-amber-500 text-white"
       : "bg-gray-200 text-gray-800";
+
+  const planLower = (tier || appUserPlan || "").toLowerCase();
+  const isFreeUser = !!appUser && !tier && planLower !== "basic";
+  const isBasicUser = !!appUser && planLower === "basic";
+  const isUnlimited = !!appUser && isUnlimitedPlan;
+
+  const quotaLimit = isUnlimited
+    ? 1
+    : isBasicUser
+    ? basicQuotaLimit || 100
+    : freeQuotaLimit || 10;
+  const quotaRemaining = (() => {
+    if (isUnlimited) return Infinity;
+    if (isBasicUser) {
+      return typeof basicQuotaRemaining === "number"
+        ? Math.max(0, basicQuotaRemaining)
+        : quotaLimit;
+    }
+    if (isFreeUser) {
+      return typeof freeQuotaRemaining === "number"
+        ? Math.max(0, freeQuotaRemaining)
+        : quotaLimit;
+    }
+    return quotaLimit;
+  })();
+  const quotaPercent = isUnlimited
+    ? 100
+    : Math.min(100, Math.max(0, (quotaRemaining / quotaLimit) * 100));
 
   return (
     <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#40414f] shadow-sm transition-colors">
@@ -114,20 +154,74 @@ export default function Header({
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="text-xs">
                   {appUser ? (
-                    <div className="space-y-1">
-                      <div className="font-semibold text-gray-900 dark:text-gray-50">
-                        {tierDisplay}
+                    isUnlimited ? (
+                      <div className="space-y-2 w-56">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-gray-900 dark:text-gray-50">
+                            {tierDisplay}
+                          </span>
+                          <span className="text-gray-700 dark:text-gray-200 font-semibold">
+                            ∞/∞
+                          </span>
+                        </div>
+                        <div className="h-2.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-emerald-400 via-teal-400 to-blue-500"
+                            style={{ width: "100%" }}
+                          />
+                        </div>
+                        <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                          Unlimited messages on your plan.
+                        </div>
+                        <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                          {planExp
+                            ? `Expires: ${new Date(planExp).toLocaleString()}`
+                            : "Active subscription"}
+                        </div>
                       </div>
-                      {planExp ? (
-                        <div className="text-gray-600 dark:text-gray-300">
-                          Expires: {new Date(planExp).toLocaleString()}
+                    ) : isFreeUser || isBasicUser ? (
+                      <div className="space-y-2 w-56">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-gray-900 dark:text-gray-50">
+                            {isBasicUser ? "Basic Plan" : "Free Plan"}
+                          </span>
+                          <span className="text-gray-700 dark:text-gray-200 font-semibold">
+                            {quotaRemaining}/{quotaLimit}
+                          </span>
                         </div>
-                      ) : (
-                        <div className="text-gray-600 dark:text-gray-300">
-                          Active subscription
+                        <div className="h-2.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-green-400 via-blue-400 to-blue-600 transition-[width] duration-300"
+                            style={{ width: `${quotaPercent}%` }}
+                          />
                         </div>
-                      )}
-                    </div>
+                        <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                          Daily chat quota (renews daily)
+                        </div>
+                        {isBasicUser && (
+                          <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                            {planExp
+                              ? `Expires: ${new Date(planExp).toLocaleString()}`
+                              : "Active subscription"}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <div className="font-semibold text-gray-900 dark:text-gray-50">
+                          {tierDisplay}
+                        </div>
+                        {planExp ? (
+                          <div className="text-gray-600 dark:text-gray-300">
+                            Expires: {new Date(planExp).toLocaleString()}
+                          </div>
+                        ) : (
+                          <div className="text-gray-600 dark:text-gray-300">
+                            Active subscription
+                          </div>
+                        )}
+                      </div>
+                    )
                   ) : (
                     <div className="text-gray-700 dark:text-gray-200">
                       Guest session (data not saved)

@@ -45,7 +45,8 @@ export const useMessageSubmission = (
   setExpandedFolders: React.Dispatch<React.SetStateAction<string[]>>,
   externalModels: Array<{ id: string; name: string; provider: string; description: string; category: string; type: string; price: string; }>,
   supabaseClient?: SupabaseClient | null,
-  onRequireAuth?: () => void
+  onRequireAuth?: () => void,
+  consumeFreeQuota?: () => boolean
 ) => {
   const [forceUpdate, setForceUpdate] = useState(0);
   const supabase = useMemo(() => supabaseClient || createClient(), [supabaseClient]);
@@ -293,6 +294,17 @@ export const useMessageSubmission = (
             client_id: userMessage.id,
           }),
         });
+        if (res.status === 402) {
+          const body = await res.json().catch(() => ({}));
+          const msg =
+            selectedLanguage === "zh"
+              ? "今日免费额度已用完，请升级套餐后继续使用。"
+              : body?.error || "Daily free quota reached. Please upgrade to continue.";
+          alert(msg);
+          setIsLoading(false);
+          releaseLock();
+          return;
+        }
         if (!res.ok) throw new Error(`Save message failed ${res.status}`);
       } catch (err) {
         console.error("Failed to persist user message", err);
@@ -301,7 +313,17 @@ export const useMessageSubmission = (
             ? "保存消息到数据库失败，请检查网络或重试。"
             : "Failed to save message to database. Please retry."
         );
+        setIsLoading(false);
+        releaseLock();
+        return;
       }
+    }
+
+    // Consume local quota after server accepts the user message
+    if (consumeFreeQuota && !consumeFreeQuota()) {
+      setIsLoading(false);
+      releaseLock();
+      return;
     }
 
     try {

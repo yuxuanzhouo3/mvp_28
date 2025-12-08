@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, Share, Download, Star, Zap, Bot, User } from "lucide-react";
 import { Message } from "../types";
 import type { ReactNode } from "react";
+import { externalModels } from "@/constants";
 import { useState, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -41,6 +42,19 @@ interface ChatInterfaceProps {
   bookmarkedMessages: any[];
   onDeleteMessage: (messageId: string) => void;
 }
+
+const formatModelName = (raw: string) => {
+  if (!raw) return "";
+  const streaming = /\(streaming\.\.\.\)/i.test(raw);
+  const cleaned = raw.replace(/\(streaming\.\.\.\)/i, "").trim();
+  const mapped =
+    externalModels.find(
+      (m) =>
+        m.id.toLowerCase() === cleaned.toLowerCase() ||
+        m.name.toLowerCase() === cleaned.toLowerCase()
+    )?.name || cleaned;
+  return streaming ? `${mapped} (Streaming...)` : mapped;
+};
 
 export default memo(ChatInterface);
 
@@ -252,7 +266,9 @@ function ChatInterface({
                       getLocalizedText("you") ||
                       "You";
                     const assistantDisplayName =
-                      (message.model || currentChat?.model || "").trim() ||
+                      formatModelName(
+                        (message.model || currentChat?.model || "").trim()
+                      ) ||
                       getLocalizedText("assistant") ||
                       "Assistant";
                     const timeLabel = new Date(message.timestamp).toLocaleTimeString([], {
@@ -270,7 +286,7 @@ function ChatInterface({
                       >
                         <div className="flex items-center gap-2 mb-2">
                           <span
-                            className={`px-2 py-1 text-[11px] font-semibold rounded-full uppercase tracking-wide ${
+                            className={`px-2 py-1 text-[11px] font-semibold rounded-full ${
                               isUser
                                 ? "bg-white/20 text-white"
                                 : "bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-100"

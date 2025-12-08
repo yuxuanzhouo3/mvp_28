@@ -30,6 +30,18 @@ export async function GET(req: NextRequest) {
     if (userError || !userData?.user) {
       return new Response("Unauthorized", { status: 401 });
     }
+    const userPlan =
+      (userData.user.user_metadata as any)?.plan ||
+      ((userData.user.user_metadata as any)?.pro ? "Pro" : null);
+    const isFreeUser =
+      !userPlan ||
+      (typeof userPlan === "string" &&
+        userPlan.toLowerCase() === "free");
+
+    // Free 用户不返回历史记录（不读库）
+    if (isFreeUser) {
+      return Response.json([]);
+    }
 
     const { data, error } = await supabase
       .from("conversations")
@@ -95,6 +107,25 @@ export async function POST(req: NextRequest) {
     }
     const userId = userData.user.id;
     const { title, model } = await req.json();
+    const userPlan =
+      (userData.user.user_metadata as any)?.plan ||
+      ((userData.user.user_metadata as any)?.pro ? "Pro" : null);
+    const isFreeUser =
+      !userPlan ||
+      (typeof userPlan === "string" &&
+        userPlan.toLowerCase() === "free");
+
+    // Free 用户：不落库，返回本地临时会话 ID
+    if (isFreeUser) {
+      const now = new Date().toISOString();
+      return Response.json({
+        id: `local-${Date.now()}`,
+        title: title || "New Chat",
+        model: model || null,
+        created_at: now,
+        updated_at: now,
+      });
+    }
 
     const { data, error } = await supabase
       .from("conversations")

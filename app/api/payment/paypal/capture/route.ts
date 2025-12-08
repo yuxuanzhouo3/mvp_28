@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addDays } from "date-fns";
+import { addDays, isAfter } from "date-fns";
 import { capturePayPalOrder, paypalErrorResponse } from "@/lib/paypal";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
+const CYCLE_DAYS: Record<"monthly" | "annual", number> = {
+  monthly: 30,
+  annual: 365,
+};
 
 function parsePlanPeriod(customId?: string | null, description?: string | null) {
   let plan = "Pro";
@@ -59,60 +65,94 @@ export async function POST(request: NextRequest) {
     const description = unit?.description || null;
     const { plan, period } = parsePlanPeriod(customId, description);
 
-    // Persist subscription & payment
-    if (supabaseAdmin) {
-      const now = new Date();
-      const expiresAt = period === "annual" ? addDays(now, 365) : addDays(now, 30);
+    const userId =
+      (customId && customId.split("|")[0]) ||
+      (capture?.custom_id && capture.custom_id.split("|")[0]) ||
+      null;
 
-      const userId =
-        (customId && customId.split("|")[0]) ||
-        (capture?.custom_id && capture.custom_id.split("|")[0]) ||
-        null;
+  // defaults in case we cannot reach database
+  let effectivePlan = plan;
+  let effectivePeriod: "monthly" | "annual" = period;
+  let expiresAt = period === "annual" ? addDays(new Date(), 365) : addDays(new Date(), 30);
 
-      if (userId) {
-        // upsert subscription
-        await supabaseAdmin
-          .from("subscriptions")
-          .upsert({
-            user_id: userId,
-            plan,
-            period,
-            status: "active",
-            provider: "paypal",
-            provider_order_id: orderId,
-            started_at: now.toISOString(),
-            expires_at: expiresAt.toISOString(),
-          })
-          .select();
+  // Persist subscription & payment
+  if (supabaseAdmin && userId) {
+    const now = new Date();
+    // fetch all existing subs for this user/provider
+    const { data: existingSubs } = await supabaseAdmin
+      .from("subscriptions")
+      .select("plan, period, expires_at")
+      .eq("user_id", userId)
+      .eq("provider", "paypal");
 
-        // insert payment record
-        await supabaseAdmin.from("payments").insert({
+    // extend or insert current plan entry
+    const samePlan = existingSubs?.find((s) => s.plan === plan);
+    const baseDate =
+      samePlan?.expires_at && isAfter(new Date(samePlan.expires_at), now)
+        ? new Date(samePlan.expires_at)
+        : now;
+    expiresAt = addDays(baseDate, CYCLE_DAYS[period] || 30);
+
+    await supabaseAdmin
+      .from("subscriptions")
+      .upsert(
+        {
           user_id: userId,
-          provider: "paypal",
-          provider_order_id: orderId,
-          amount: amountValue,
-          currency,
-          status: status || "COMPLETED",
           plan,
           period,
-        });
+          status: "active",
+          provider: "paypal",
+          provider_order_id: orderId,
+          started_at: now.toISOString(),
+          expires_at: expiresAt.toISOString(),
+        },
+        { onConflict: "user_id,provider,plan" },
+      )
+      .select();
 
-        // mark user metadata as pro (for quick client reads)
-        await supabaseAdmin.auth.admin.updateUserById(userId, {
-          user_metadata: { pro: true, plan, plan_exp: expiresAt.toISOString() },
-        });
-      }
+    // insert payment record
+    await supabaseAdmin.from("payments").insert({
+      user_id: userId,
+      provider: "paypal",
+      provider_order_id: orderId,
+      amount: amountValue,
+      currency,
+      status: status || "COMPLETED",
+      plan,
+      period,
+    });
+
+    // determine highest active plan by rank
+    const nowIso = new Date();
+    const candidates = [
+      ...(existingSubs || []),
+      { plan, period, expires_at: expiresAt.toISOString() },
+    ].filter((s) => !s.expires_at || isAfter(new Date(s.expires_at), nowIso));
+
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => (PLAN_RANK[b.plan] || 0) - (PLAN_RANK[a.plan] || 0));
+      const top = candidates[0];
+      effectivePlan = top.plan;
+      effectivePeriod = (top.period as "monthly" | "annual") || period;
+      expiresAt = top.expires_at ? new Date(top.expires_at) : expiresAt;
     }
+
+    // mark user metadata as pro (for quick client reads)
+    await supabaseAdmin.auth.admin.updateUserById(userId, {
+      user_metadata: {
+        pro: true,
+        plan: effectivePlan,
+        plan_exp: expiresAt.toISOString(),
+      },
+    });
+  }
 
     return NextResponse.json({
       success: true,
       status,
-      plan,
-      period,
-      expiresAt:
-        period === "annual"
-          ? addDays(new Date(), 365).toISOString()
-          : addDays(new Date(), 30).toISOString(),
+      plan: effectivePlan,
+      period: effectivePeriod,
+      expiresAt: expiresAt.toISOString(),
       raw: result,
     });
   } catch (err) {

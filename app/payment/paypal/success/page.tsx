@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, Loader2, XCircle } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 export default function PayPalSuccessPage() {
   const searchParams = useSearchParams();
@@ -53,6 +54,10 @@ export default function PayPalSuccessPage() {
           } else {
             localStorage.setItem("morngpt_current_plan", "Pro");
           }
+
+          // Refresh Supabase user metadata so the session picks up new plan/exp
+          const supabase = createClient();
+          await supabase.auth.getUser();
         } catch (err) {
           // ignore localStorage errors
         }

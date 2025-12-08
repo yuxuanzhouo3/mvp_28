@@ -33,6 +33,18 @@ export async function GET(
     if (userError || !userData?.user) {
       return new Response("Unauthorized", { status: 401 });
     }
+    const userPlan =
+      (userData.user.user_metadata as any)?.plan ||
+      ((userData.user.user_metadata as any)?.pro ? "Pro" : null);
+    const isFreeUser =
+      !userPlan ||
+      (typeof userPlan === "string" &&
+        userPlan.toLowerCase() === "free");
+
+    // Free 用户或本地会话不返回历史
+    if (isFreeUser || conversationId.startsWith("local-")) {
+      return Response.json([]);
+    }
 
     const { data, error } = await supabase
       .from("messages")
@@ -111,6 +123,113 @@ export async function POST(
       return new Response("Unauthorized", { status: 401 });
     }
     const userId = userData.user.id;
+    const userPlan =
+      (userData.user.user_metadata as any)?.plan ||
+      ((userData.user.user_metadata as any)?.pro ? "Pro" : null);
+    const planLower = typeof userPlan === "string" ? userPlan.toLowerCase() : "";
+    const isFreeUser = !planLower || planLower === "free";
+    const isBasicUser = planLower === "basic";
+
+    // Enforce daily quota only for Free users and only on user messages
+    if (role === "user" && (isFreeUser || isBasicUser)) {
+      const today = new Date().toISOString().split("T")[0];
+      const isBasic = isBasicUser;
+      const limit = (() => {
+        if (isBasic) {
+          const raw = process.env.NEXT_PUBLIC_BASIC_MONTHLY_LIMIT || "100";
+          const n = parseInt(raw, 10);
+          if (!Number.isFinite(n) || n <= 0) return 100;
+          return Math.min(100000, n);
+        }
+        const raw = process.env.NEXT_PUBLIC_FREE_DAILY_LIMIT || "10";
+        const n = parseInt(raw, 10);
+        if (!Number.isFinite(n) || n <= 0) return 10;
+        return Math.min(1000, n);
+      })();
+
+      let used = 0;
+      if (isBasic) {
+        const monthStart = new Date(today);
+        monthStart.setDate(1);
+        const monthStr = monthStart.toISOString().split("T")[0];
+        const { data: quotaRow, error: quotaErr } = await supabase
+          .from("basic_quotas")
+          .select("used, limit_per_month")
+          .eq("user_id", userId)
+          .eq("month", monthStr)
+          .single();
+        if (quotaErr && quotaErr.code !== "PGRST116") {
+          console.error("Quota fetch error", quotaErr);
+          return new Response("Failed to check quota", { status: 500 });
+        }
+        used = quotaRow?.used ?? 0;
+      } else {
+        const { data: quotaRow, error: quotaErr } = await supabase
+          .from("free_quotas")
+          .select("used, limit_per_day")
+          .eq("user_id", userId)
+          .eq("day", today)
+          .single();
+        if (quotaErr && quotaErr.code !== "PGRST116") {
+          console.error("Quota fetch error", quotaErr);
+          return new Response("Failed to check quota", { status: 500 });
+        }
+        used = quotaRow?.used ?? 0;
+      }
+
+      if (used >= limit) {
+        return new Response(
+          JSON.stringify({
+            error: "Daily quota reached",
+            remaining: 0,
+            limit,
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      const newUsed = used + 1;
+      if (isBasic) {
+        const monthStart = new Date(today);
+        monthStart.setDate(1);
+        const monthStr = monthStart.toISOString().split("T")[0];
+        const { error: upsertErr } = await supabase.from("basic_quotas").upsert(
+          {
+            user_id: userId,
+            month: monthStr,
+            used: newUsed,
+            limit_per_month: limit,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,month" },
+        );
+        if (upsertErr) {
+          console.error("Quota upsert error", upsertErr);
+          return new Response("Failed to update quota", { status: 500 });
+        }
+      } else if (!missingQuotaTable) {
+        const { error: upsertErr } = await supabase.from("free_quotas").upsert(
+          {
+            user_id: userId,
+            day: today,
+            used: newUsed,
+            limit_per_day: limit,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,day" },
+        );
+        if (upsertErr) {
+          console.error("Quota upsert error", upsertErr);
+          return new Response("Failed to update quota", { status: 500 });
+        }
+      }
+
+    }
+
+    // Free 用户或本地会话不落库消息
+    if (isFreeUser || conversationId.startsWith("local-")) {
+      return new Response(null, { status: 201 });
+    }
 
     const { error } = await supabase.from("messages").insert({
       conversation_id: conversationId,

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Crown, Check, CreditCard, MessageSquare } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
+import { pricingPlans as pricingPlansRaw } from "@/constants/pricing";
 
 interface PricingPlan {
   name: string;
@@ -42,6 +44,29 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
   setSelectedPlanInDialog,
   handleUpgradeClick,
 }) => {
+  const { currentLanguage } = useLanguage();
+  const isZh = currentLanguage === "zh";
+  const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
+
+  const periodLabel = (planPeriod: string) => {
+    if (!isZh) return planPeriod;
+    if (planPeriod === "month" || planPeriod === "monthly") return "月";
+    if (planPeriod === "year" || planPeriod === "annual") return "年";
+    return planPeriod;
+  };
+
+  // 本地化 features 文案（支持 “英文|中文” 形式）
+  const basePlans = pricingPlans || pricingPlansRaw;
+  const localizedPlans = basePlans.map((p) => ({
+    ...p,
+    name: isZh ? p.nameZh || p.name : p.name,
+    features: p.features.map((f) => {
+      if (!f.includes("|")) return f;
+      const [en, zh] = f.split("|");
+      return isZh ? zh || en : en;
+    }),
+  }));
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
@@ -50,15 +75,19 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
             <Crown className="w-5 h-5 text-blue-500" />
             <span>
               {selectedPaidModel
-                ? `Upgrade to Access ${selectedPaidModel.name}`
-                : "Choose Your MornGPT Plan"}
+                ? tr(
+                    `Upgrade to Access ${selectedPaidModel.name}`,
+                    `升级以解锁 ${selectedPaidModel.name}`
+                  )
+                : tr("Choose Your MornGPT Plan", "选择你的 MornGPT 套餐")}
             </span>
           </DialogTitle>
           {selectedPaidModel && (
             <DialogDescription className="text-gray-600 dark:text-gray-400">
-              This premium model requires a paid subscription. Upgrade now to
-              unlock access to {selectedPaidModel.name} and other advanced
-              features.
+              {tr(
+                `This premium model requires a paid subscription. Upgrade now to unlock access to ${selectedPaidModel.name} and other advanced features.`,
+                `该高级模型需要付费订阅。立即升级即可解锁 ${selectedPaidModel.name} 及其它高级功能。`
+              )}
             </DialogDescription>
           )}
         </DialogHeader>
@@ -95,7 +124,7 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-[#ececf1]"
               }`}
             >
-              Monthly
+              {tr("Monthly", "月付")}
             </Button>
             <Button
               variant={billingPeriod === "annual" ? "default" : "ghost"}
@@ -108,9 +137,9 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
               }`}
             >
               <div className="flex items-center space-x-2">
-                <span>Annual</span>
+                <span>{tr("Annual", "年付")}</span>
                 <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 text-xs px-2 py-0.5">
-                  Save 30%
+                  {tr("Save 30%", "立省 30%")}
                 </Badge>
               </div>
             </Button>
@@ -118,7 +147,7 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
         </div>
 
         <div className="grid grid-cols-3 gap-6">
-          {pricingPlans.map((plan) => (
+          {localizedPlans.map((plan) => (
             <div
               key={plan.name}
               className={`relative p-6 rounded-lg border-2 cursor-pointer transition-all duration-200 hover:shadow-lg flex flex-col h-full ${
@@ -130,7 +159,9 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                  <Badge className="bg-blue-500 text-white">Most Popular</Badge>
+                  <Badge className="bg-blue-500 text-white">
+                    {tr("Most Popular", "人气套餐")}
+                  </Badge>
                 </div>
               )}
               <div className="text-center mb-4">
@@ -145,13 +176,16 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
                         : plan.price}
                     </span>
                     <span className="text-gray-500 dark:text-gray-400 ml-1">
-                      /{billingPeriod === "annual" ? "month" : plan.period}
+                      /
+                      {billingPeriod === "annual"
+                        ? tr("month", "月")
+                        : periodLabel(plan.period)}
                     </span>
                   </div>
                   {billingPeriod === "annual" && (
                     <div className="mt-1">
                       <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 text-xs">
-                        Save 30%
+                        {tr("Save 30%", "立省 30%")}
                       </Badge>
                     </div>
                   )}
@@ -177,8 +211,8 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
               >
                 <CreditCard className="w-4 h-4 mr-2" />
                 {selectedPlanInDialog?.name === plan.name
-                  ? "Selected"
-                  : `Choose ${plan.name}`}
+                  ? tr("Selected", "已选择")
+                  : tr(`Choose ${plan.name}`, `选择 ${plan.name}`)}
               </Button>
             </div>
           ))}

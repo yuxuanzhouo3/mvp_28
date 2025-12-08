@@ -1,4 +1,6 @@
-import React from "react";
+"use client";
+
+import React, { useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Zap } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface ShortcutDialogProps {
   open: boolean;
@@ -18,6 +21,9 @@ interface ShortcutDialogProps {
 
 export function ShortcutDialog({ open, onOpenChange }: ShortcutDialogProps) {
   const [shortcutsEnabled, setShortcutsEnabled] = React.useState(true);
+  const { currentLanguage } = useLanguage();
+  const isZh = currentLanguage === "zh";
+  const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
 
   const handleSave = () => {
     console.log("Shortcut settings saved:", { shortcutsEnabled });
@@ -30,7 +36,7 @@ export function ShortcutDialog({ open, onOpenChange }: ShortcutDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2 text-gray-900 dark:text-[#ececf1]">
             <Zap className="w-5 h-5 text-yellow-600" />
-            <span>Keyboard Shortcuts</span>
+            <span>{tr("Keyboard Shortcuts", "键盘快捷键")}</span>
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
@@ -38,46 +44,46 @@ export function ShortcutDialog({ open, onOpenChange }: ShortcutDialogProps) {
             <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#565869] rounded-lg">
               <div>
                 <p className="font-medium text-gray-900 dark:text-[#ececf1]">
-                  Send Message
+                  {tr("Send Message", "发送消息")}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Send current message
+                  {tr("Send current message", "发送当前输入内容")}
                 </p>
               </div>
               <Badge variant="outline" className="bg-white dark:bg-[#40414f]">
-                ⌘ + Enter
+                Ctrl / ⌘ + Enter
               </Badge>
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#565869] rounded-lg">
               <div>
                 <p className="font-medium text-gray-900 dark:text-[#ececf1]">
-                  New Chat
+                  {tr("New Chat", "新建对话")}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Start a new conversation
+                  {tr("Start a new conversation", "开始新的对话")}
                 </p>
               </div>
               <Badge variant="outline" className="bg-white dark:bg-[#40414f]">
-                ⌘ + N
+                Ctrl / ⌘ + N
               </Badge>
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#565869] rounded-lg">
               <div>
                 <p className="font-medium text-gray-900 dark:text-[#ececf1]">
-                  Toggle Theme
+                  {tr("Toggle Theme", "切换主题")}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Switch between light/dark
+                  {tr("Switch between light/dark", "在明亮/暗色模式间切换")}
                 </p>
               </div>
               <Badge variant="outline" className="bg-white dark:bg-[#40414f]">
-                ⌘ + T
+                Ctrl / ⌘ + T
               </Badge>
             </div>
           </div>
           <div className="flex items-center justify-between">
             <Label className="text-gray-700 dark:text-gray-300">
-              Enable Shortcuts
+              {tr("Enable Shortcuts", "启用快捷键")}
             </Label>
             <Switch
               checked={shortcutsEnabled}
@@ -90,13 +96,13 @@ export function ShortcutDialog({ open, onOpenChange }: ShortcutDialogProps) {
               onClick={() => onOpenChange(false)}
               className="flex-1 border-gray-300 dark:border-[#565869]"
             >
-              Close
+              {tr("Close", "关闭")}
             </Button>
             <Button
               onClick={handleSave}
               className="flex-1 bg-yellow-600 hover:bg-yellow-700"
             >
-              Save
+              {tr("Save", "保存")}
             </Button>
           </div>
         </div>

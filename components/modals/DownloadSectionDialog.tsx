@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,7 @@ import {
   Globe,
   Crown,
 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface Platform {
   platform: string;
@@ -51,23 +52,31 @@ export default function DownloadSectionDialog({
   onUpdateUserSettings,
   onUpgradeFromAds,
 }: DownloadSectionDialogProps) {
+  const { currentLanguage } = useLanguage();
+  const isZh = currentLanguage === "zh";
+  const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
+
+  const isBrowser = (p?: string | null) =>
+    !!p &&
+    ["chrome", "firefox", "edge", "opera", "safari"].includes(p.toLowerCase());
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-screen overflow-y-auto bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] data-[state=open]:animate-none data-[state=closed]:animate-none transition-none">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2 text-gray-900 dark:text-[#ececf1]">
             <Download className="w-5 h-5 text-blue-600" />
-            <span>Download MornGPT</span>
+            <span>{tr("Download MornGPT", "下载 MornGPT")}</span>
           </DialogTitle>
         </DialogHeader>
+
         <div className="space-y-4">
-          {/* Platform Downloads */}
+          {/* 平台选择 */}
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
-              Select Your Platform
+              {tr("Select Your Platform", "选择你的平台")}
             </h3>
 
-            {/* Selected Platform Display */}
             {selectedPlatform && (
               <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                 <div className="flex items-center justify-between">
@@ -78,7 +87,7 @@ export default function DownloadSectionDialog({
                         ` - ${selectedPlatform.variant.toUpperCase()}`}
                     </p>
                     <p className="text-xs text-blue-700 dark:text-blue-300">
-                      Ready to download
+                      {tr("Ready to download", "准备好下载")}
                     </p>
                   </div>
                   <Button
@@ -86,21 +95,18 @@ export default function DownloadSectionDialog({
                     className="bg-blue-600 hover:bg-blue-700"
                     onClick={onDownload}
                   >
-                    {selectedPlatform &&
-                    ["chrome", "firefox", "edge", "opera", "safari"].includes(
-                      selectedPlatform.platform
-                    )
-                      ? "Install Now"
-                      : "Download Now"}
+                    {isBrowser(selectedPlatform.platform)
+                      ? tr("Install Now", "立即安装")
+                      : tr("Download Now", "立即下载")}
                   </Button>
                 </div>
               </div>
             )}
 
-            {/* Mobile Apps */}
+            {/* 移动端 */}
             <div className="space-y-2">
               <h4 className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                Mobile Apps
+                {tr("Mobile Apps", "移动端")}
               </h4>
 
               <div className="p-2 bg-gray-50 dark:bg-[#565869] rounded-lg">
@@ -109,10 +115,10 @@ export default function DownloadSectionDialog({
                     <Smartphone className="w-4 h-4 text-purple-600" />
                     <div>
                       <p className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
-                        Mobile
+                        {tr("Mobile", "移动端")}
                       </p>
                       <p className="text-xs text-gray-600 dark:text-gray-400">
-                        iOS & Android
+                        {tr("iOS & Android", "iOS 与 Android")}
                       </p>
                     </div>
                   </div>
@@ -129,7 +135,7 @@ export default function DownloadSectionDialog({
                         selectedPlatform?.platform === "ios" ||
                         selectedPlatform?.platform === "android"
                       ) {
-                        onPlatformSelect(""); // Clear selection
+                        onPlatformSelect("");
                       } else {
                         onPlatformSelect("ios");
                       }
@@ -137,13 +143,16 @@ export default function DownloadSectionDialog({
                   >
                     {selectedPlatform?.platform === "ios" ||
                     selectedPlatform?.platform === "android"
-                      ? "Selected"
-                      : "Select"}
+                      ? tr("Selected", "已选择")
+                      : tr("Select", "选择")}
                   </Button>
                 </div>
                 <div className="space-y-1">
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    iOS 14.0+ • Android 8.0+ • 45-50MB
+                    {tr(
+                      "iOS 14.0+ · Android 8.0+ · 45-50MB",
+                      "iOS 14.0+ · Android 8.0+ · 45-50MB"
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-1">
                     <Button
@@ -175,10 +184,10 @@ export default function DownloadSectionDialog({
               </div>
             </div>
 
-            {/* Desktop Apps */}
+            {/* 桌面端 */}
             <div className="space-y-2">
               <h4 className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                Desktop Apps
+                {tr("Desktop Apps", "桌面端")}
               </h4>
 
               {/* macOS */}
@@ -191,7 +200,7 @@ export default function DownloadSectionDialog({
                         macOS
                       </p>
                       <p className="text-xs text-gray-600 dark:text-gray-400">
-                        Desktop App
+                        {tr("Desktop App", "桌面应用")}
                       </p>
                     </div>
                   </div>
@@ -204,20 +213,20 @@ export default function DownloadSectionDialog({
                     }`}
                     onClick={() => {
                       if (selectedPlatform?.platform === "macos") {
-                        onPlatformSelect(""); // Clear selection
+                        onPlatformSelect("");
                       } else {
                         onPlatformSelect("macos", "intel");
                       }
                     }}
                   >
                     {selectedPlatform?.platform === "macos"
-                      ? "Selected"
-                      : "Select"}
+                      ? tr("Selected", "已选择")
+                      : tr("Select", "选择")}
                   </Button>
                 </div>
                 <div className="space-y-1">
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    macOS 11.0+ • 65MB
+                    macOS 11.0+ · 65MB
                   </div>
                   <div className="flex flex-wrap gap-1">
                     <Button
@@ -231,7 +240,7 @@ export default function DownloadSectionDialog({
                       }`}
                       onClick={() => onPlatformSelect("macos", "intel")}
                     >
-                      Intel
+                      {tr("macOS (Intel)", "macOS（Intel）")}
                     </Button>
                     <Button
                       size="sm"
@@ -244,7 +253,7 @@ export default function DownloadSectionDialog({
                       }`}
                       onClick={() => onPlatformSelect("macos", "m")}
                     >
-                      M Series
+                      {tr("macOS (Apple Silicon)", "macOS（Apple 芯片）")}
                     </Button>
                   </div>
                 </div>
@@ -260,7 +269,7 @@ export default function DownloadSectionDialog({
                         Windows
                       </p>
                       <p className="text-xs text-gray-600 dark:text-gray-400">
-                        Desktop App
+                        {tr("Desktop App", "桌面应用")}
                       </p>
                     </div>
                   </div>
@@ -273,20 +282,20 @@ export default function DownloadSectionDialog({
                     }`}
                     onClick={() => {
                       if (selectedPlatform?.platform === "windows") {
-                        onPlatformSelect(""); // Clear selection
+                        onPlatformSelect("");
                       } else {
                         onPlatformSelect("windows", "x64");
                       }
                     }}
                   >
                     {selectedPlatform?.platform === "windows"
-                      ? "Selected"
-                      : "Select"}
+                      ? tr("Selected", "已选择")
+                      : tr("Select", "选择")}
                   </Button>
                 </div>
                 <div className="space-y-1">
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Windows 10+ • 60MB
+                    Windows 10+ · 60MB
                   </div>
                   <div className="flex flex-wrap gap-1">
                     <Button
@@ -342,7 +351,7 @@ export default function DownloadSectionDialog({
                         Linux
                       </p>
                       <p className="text-xs text-gray-600 dark:text-gray-400">
-                        Desktop App
+                        {tr("Desktop App", "桌面应用")}
                       </p>
                     </div>
                   </div>
@@ -355,20 +364,20 @@ export default function DownloadSectionDialog({
                     }`}
                     onClick={() => {
                       if (selectedPlatform?.platform === "linux") {
-                        onPlatformSelect(""); // Clear selection
+                        onPlatformSelect("");
                       } else {
                         onPlatformSelect("linux", "deb");
                       }
                     }}
                   >
                     {selectedPlatform?.platform === "linux"
-                      ? "Selected"
-                      : "Select"}
+                      ? tr("Selected", "已选择")
+                      : tr("Select", "选择")}
                   </Button>
                 </div>
                 <div className="space-y-1">
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Ubuntu 20.04+ • 55MB
+                    Ubuntu 20.04+ · 55MB
                   </div>
                   <div className="flex flex-wrap gap-1">
                     <Button
@@ -382,7 +391,7 @@ export default function DownloadSectionDialog({
                       }`}
                       onClick={() => onPlatformSelect("linux", "deb")}
                     >
-                      .deb
+                      {tr("Debian/Ubuntu (.deb)", "Debian/Ubuntu (.deb)")}
                     </Button>
                     <Button
                       size="sm"
@@ -441,10 +450,10 @@ export default function DownloadSectionDialog({
               </div>
             </div>
 
-            {/* Browser Extensions */}
+            {/* 浏览器扩展 */}
             <div className="space-y-2">
               <h4 className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                Browser Extensions
+                {tr("Browser Extensions", "浏览器扩展")}
               </h4>
 
               <div className="p-2 bg-gray-50 dark:bg-[#565869] rounded-lg">
@@ -453,51 +462,36 @@ export default function DownloadSectionDialog({
                     <Globe className="w-4 h-4 text-indigo-600" />
                     <div>
                       <p className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
-                        Browser Extensions
+                        {tr("Browser Extensions", "浏览器扩展")}
                       </p>
                       <p className="text-xs text-gray-600 dark:text-gray-400">
-                        All Major Browsers
+                        {tr("All Major Browsers", "适配主流浏览器")}
                       </p>
                     </div>
                   </div>
                   <Button
                     size="sm"
                     className={`text-xs h-7 px-2 ${
-                      selectedPlatform &&
-                      ["chrome", "firefox", "edge", "opera", "safari"].includes(
-                        selectedPlatform.platform
-                      )
+                      isBrowser(selectedPlatform?.platform || "")
                         ? "bg-indigo-700 border-2 border-indigo-300"
                         : "bg-indigo-600 hover:bg-indigo-700"
                     }`}
                     onClick={() => {
-                      if (
-                        selectedPlatform &&
-                        [
-                          "chrome",
-                          "firefox",
-                          "edge",
-                          "opera",
-                          "safari",
-                        ].includes(selectedPlatform.platform)
-                      ) {
-                        onPlatformSelect(""); // Clear selection
+                      if (isBrowser(selectedPlatform?.platform)) {
+                        onPlatformSelect("");
                       } else {
                         onPlatformSelect("chrome");
                       }
                     }}
                   >
-                    {selectedPlatform &&
-                    ["chrome", "firefox", "edge", "opera", "safari"].includes(
-                      selectedPlatform.platform
-                    )
-                      ? "Selected"
-                      : "Select"}
+                    {isBrowser(selectedPlatform?.platform || "")
+                      ? tr("Selected", "已选择")
+                      : tr("Select", "选择")}
                   </Button>
                 </div>
                 <div className="space-y-1">
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Free • All Major Browsers
+                    {tr("Free · All Major Browsers", "免费 · 适配主流浏览器")}
                   </div>
                   <div className="flex flex-wrap gap-1">
                     <Button
@@ -566,12 +560,12 @@ export default function DownloadSectionDialog({
             </div>
           </div>
 
-          {/* Ads Section (for all users) */}
+          {/* 广告设置 */}
           {appUser && (
             <div className="space-y-3 pt-4 border-t border-gray-200 dark:border-[#565869]">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
-                  Advertisement
+                  {tr("Advertisement", "广告设置")}
                 </h3>
                 <Switch
                   checked={appUser?.settings?.adsEnabled ?? false}
@@ -585,18 +579,21 @@ export default function DownloadSectionDialog({
                   <div className="flex items-start space-x-2 mb-2">
                     <Crown className="w-4 h-4 text-yellow-600" />
                     <span className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
-                      Upgrade
+                      {tr("Upgrade", "升级")}
                     </span>
                   </div>
                   <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                    Remove ads and unlock premium features
+                    {tr(
+                      "Remove ads and unlock premium features",
+                      "移除广告并解锁高级功能"
+                    )}
                   </p>
                   <Button
                     size="sm"
                     className="w-full bg-yellow-600 hover:bg-yellow-700"
                     onClick={onUpgradeFromAds}
                   >
-                    Upgrade Now
+                    {tr("Upgrade Now", "立即升级")}
                   </Button>
                 </div>
               )}
@@ -609,7 +606,7 @@ export default function DownloadSectionDialog({
               onClick={() => onOpenChange(false)}
               className="flex-1 border-gray-300 dark:border-[#565869]"
             >
-              Close
+              {tr("Close", "关闭")}
             </Button>
           </div>
         </div>

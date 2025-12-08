@@ -20,6 +20,33 @@ function isDomesticRequest(req: NextRequest) {
   return langIsZh || hasCloudToken;
 }
 
+const getDailyLimit = () => {
+  const raw = process.env.NEXT_PUBLIC_FREE_DAILY_LIMIT || "10";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 10;
+  return Math.min(1000, n);
+};
+
+const getMonthlyLimit = () => {
+  const raw = process.env.NEXT_PUBLIC_BASIC_MONTHLY_LIMIT || "100";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 100;
+  return Math.min(100000, n);
+};
+
+function getPlanInfo(meta: any) {
+  const rawPlan =
+    (meta?.plan as string | undefined) ||
+    (meta?.subscriptionTier as string | undefined) ||
+    "";
+  const planLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
+  const isProFlag = !!meta?.pro && planLower !== "free" && planLower !== "basic";
+  const isBasic = planLower === "basic";
+  const isPro = planLower === "pro" || planLower === "enterprise" || isProFlag;
+  const isFree = !isPro && !isBasic;
+  return { planLower, isPro, isBasic, isFree };
+}
+
 // Get messages for a conversation
 export async function GET(
   req: NextRequest,
@@ -63,6 +90,12 @@ export async function GET(
   // domestic -> CloudBase
   const user = await getDomesticUser(req);
   if (!user) return new Response("Unauthorized", { status: 401 });
+  const plan = getPlanInfo(user.metadata);
+
+  // Free 用户或本地会话不返回历史
+  if (plan.isFree || conversationId.startsWith("local-")) {
+    return Response.json([]);
+  }
 
   const connector = new CloudBaseConnector();
   await connector.initialize();
@@ -123,6 +156,7 @@ export async function POST(
       return new Response("Unauthorized", { status: 401 });
     }
     const userId = userData.user.id;
+    let missingQuotaTable = false;
     const userPlan =
       (userData.user.user_metadata as any)?.plan ||
       ((userData.user.user_metadata as any)?.pro ? "Pro" : null);
@@ -256,12 +290,96 @@ export async function POST(
   // domestic -> CloudBase
   const user = await getDomesticUser(req);
   if (!user) return new Response("Unauthorized", { status: 401 });
+  const plan = getPlanInfo(user.metadata);
 
   const connector = new CloudBaseConnector();
   await connector.initialize();
   const db = connector.getClient();
 
   try {
+    // Quota enforcement for Free/Basic users on user messages
+    if (role === "user" && (plan.isFree || plan.isBasic)) {
+      const now = new Date();
+      const todayStr = now.toISOString().split("T")[0];
+      const monthStart = new Date(todayStr);
+      monthStart.setDate(1);
+      const monthStr = monthStart.toISOString().split("T")[0];
+
+      const limit = plan.isBasic ? getMonthlyLimit() : getDailyLimit();
+      const collectionName = plan.isBasic ? "basic_quotas" : "free_quotas";
+      const periodField = plan.isBasic ? "month" : "day";
+      const periodValue = plan.isBasic ? monthStr : todayStr;
+
+      const quotaColl = db.collection(collectionName);
+      const existing = await quotaColl
+        .where({ userId: user.id, [periodField]: periodValue })
+        .limit(1)
+        .get();
+      const quotaRow = existing?.data?.[0];
+      const used = quotaRow?.used ?? 0;
+
+      if (used >= limit) {
+        return new Response(
+          JSON.stringify({
+            error: "Daily quota reached",
+            remaining: 0,
+            limit,
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      const newUsed = used + 1;
+      const payload: any = {
+        userId: user.id,
+        [periodField]: periodValue,
+        used: newUsed,
+        updatedAt: now.toISOString(),
+      };
+      if (plan.isBasic) {
+        payload.limit_per_month = limit;
+      } else {
+        payload.limit_per_day = limit;
+      }
+
+      console.log(
+        "[cloudbase] quota before update",
+        plan.isBasic ? "basic" : "free",
+        "user",
+        user.id,
+        "period",
+        periodValue,
+        "used",
+        used,
+        "limit",
+        limit,
+      );
+
+      if (quotaRow?._id) {
+        await quotaColl.doc(quotaRow._id).update(payload);
+      } else {
+        await quotaColl.add(payload);
+      }
+
+      console.log(
+        "[cloudbase] quota update",
+        plan.isBasic ? "basic" : "free",
+        "user",
+        user.id,
+        "period",
+        periodValue,
+        "used",
+        newUsed,
+        "limit",
+        limit,
+      );
+    }
+
+    // Free 用户或本地会话：不落库，仅返回成功
+    if (plan.isFree || conversationId.startsWith("local-")) {
+      return new Response(null, { status: 201 });
+    }
+
     const now = new Date().toISOString();
     const addRes = await db.collection("messages").add({
       conversationId,

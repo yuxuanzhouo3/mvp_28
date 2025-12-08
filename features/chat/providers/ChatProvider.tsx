@@ -36,6 +36,7 @@ import {
 } from "@/utils";
 import { useLanguage } from "@/context/LanguageContext";
 import { createLocalizedTextGetter } from "@/lib/localization";
+import { IS_DOMESTIC_VERSION } from "@/config";
 
 const FREE_DAILY_LIMIT = (() => {
   const raw = process.env.NEXT_PUBLIC_FREE_DAILY_LIMIT || "10";
@@ -754,8 +755,12 @@ const loadMessagesForConversation = useCallback(
     let mounted = true;
 
     const syncSession = async () => {
-      if (isDomestic) {
-        // 每次挂载都尝试同步，避免初次 401 后不再重试
+      const hasCloudToken =
+        typeof document !== "undefined" &&
+        /(^|; )auth-token=/.test(document.cookie || "");
+
+      // 优先尝试 CloudBase 会话（国内版或持有 cloud token）
+      if (isDomestic || hasCloudToken) {
         const res = await fetch("/api/auth/me", { credentials: "include" });
         if (!mounted) return;
         if (res.ok) {
@@ -766,11 +771,13 @@ const loadMessagesForConversation = useCallback(
             id: user.id,
             email: user.email || "",
             name: user.name || user.email || "User",
-            isPro: !!user.metadata?.pro,
+            // Basic 不是无限制，忽略 pro 标记
+            isPro: !!user.metadata?.pro && (user.metadata?.plan || "").toLowerCase?.() !== "basic",
             isPaid: !!user.metadata?.pro,
             plan: user.metadata?.plan || undefined,
             planExp: planExp || undefined,
           };
+          isDomesticSessionRef.current = true;
           setAppUser(mappedUser);
           setIsLoggedIn(true);
           if (mappedUser.plan) {
@@ -780,66 +787,59 @@ const loadMessagesForConversation = useCallback(
               localStorage.setItem("morngpt_current_plan_exp", mappedUser.planExp);
             }
           }
+          await refreshQuota(mappedUser);
           await loadConversations(mappedUser);
-        } else {
-          setAppUser(null);
-          setIsLoggedIn(false);
-          setChatSessions([]);
-          setMessages([]);
-          setCurrentChatId("");
-          setShowAuthDialog(true);
-          setCurrentPlan(null);
-          hasLoadedConversationsRef.current = false;
-          loadConversationsPendingRef.current = false;
-          loadedConversationsForUserRef.current = null;
-        }
-      } else {
-        const { data, error } = await supabase.auth.getSession();
-        if (!mounted) return;
-        if (error) {
-          console.error("Supabase session error", error);
           return;
         }
-        if (data.session?.user) {
-          const user = data.session.user;
-          const mappedUser: AppUser = {
-            id: user.id,
-            email: user.email || "",
-            name:
-              (user.user_metadata as any)?.full_name ||
-              user.email?.split("@")[0] ||
-              "User",
-            isPro: false,
-            isPaid: false,
-            plan: (user.user_metadata as any)?.plan,
-            planExp: (user.user_metadata as any)?.plan_exp,
-          };
-          setAppUser(mappedUser);
-          setIsLoggedIn(true);
-          const planMeta = (user.user_metadata as any)?.plan;
-          if (planMeta) {
-            setCurrentPlan(planMeta as "Basic" | "Pro" | "Enterprise");
-            localStorage.setItem("morngpt_current_plan", planMeta);
-            const expMeta = (user.user_metadata as any)?.plan_exp;
-            if (expMeta) {
-              localStorage.setItem("morngpt_current_plan_exp", expMeta);
-            }
-          } else if (mappedUser.isPro) {
-            setCurrentPlan("Pro");
+      }
+
+      // Supabase（国际版）
+      const { data, error } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (error) {
+        console.error("Supabase session error", error);
+        return;
+      }
+      if (data.session?.user) {
+        const user = data.session.user;
+        const mappedUser: AppUser = {
+          id: user.id,
+          email: user.email || "",
+          name:
+            (user.user_metadata as any)?.full_name ||
+            user.email?.split("@")[0] ||
+            "User",
+          isPro: false,
+          isPaid: false,
+          plan: (user.user_metadata as any)?.plan,
+          planExp: (user.user_metadata as any)?.plan_exp,
+        };
+        isDomesticSessionRef.current = false;
+        setAppUser(mappedUser);
+        setIsLoggedIn(true);
+        const planMeta = (user.user_metadata as any)?.plan;
+        if (planMeta) {
+          setCurrentPlan(planMeta as "Basic" | "Pro" | "Enterprise");
+          localStorage.setItem("morngpt_current_plan", planMeta);
+          const expMeta = (user.user_metadata as any)?.plan_exp;
+          if (expMeta) {
+            localStorage.setItem("morngpt_current_plan_exp", expMeta);
           }
-          await loadConversations(mappedUser);
-        } else {
-          setAppUser(null);
-          setIsLoggedIn(false);
-          setChatSessions([]);
-          setMessages([]);
-          setCurrentChatId("");
-          setShowAuthDialog(true);
-          setCurrentPlan(null);
-          hasLoadedConversationsRef.current = false;
-          loadConversationsPendingRef.current = false;
-          loadedConversationsForUserRef.current = null;
+        } else if (mappedUser.isPro) {
+          setCurrentPlan("Pro");
         }
+        await loadConversations(mappedUser);
+      } else {
+        setAppUser(null);
+        setIsLoggedIn(false);
+        setChatSessions([]);
+        setMessages([]);
+        setCurrentChatId("");
+        setShowAuthDialog(true);
+        setCurrentPlan(null);
+        hasLoadedConversationsRef.current = false;
+        loadConversationsPendingRef.current = false;
+        loadedConversationsForUserRef.current = null;
       }
     };
 
@@ -994,6 +994,7 @@ const loadMessagesForConversation = useCallback(
   const bookmarkScrollRef = useRef<HTMLDivElement>(null);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
   const appUserRef = useRef<AppUser | null>(null);
+  const isDomesticSessionRef = useRef<boolean>(IS_DOMESTIC_VERSION);
   const currentChatIdRef = useRef<string>("");
   const messagesLoadTokenRef = useRef<number>(0);
   const loadConversationsPendingRef = useRef<boolean>(false);
@@ -1012,50 +1013,85 @@ const loadMessagesForConversation = useCallback(
 
   const getToday = () => new Date().toISOString().split("T")[0];
 
-  useEffect(() => {
-    const today = getToday();
-    setFreeQuotaDate(today);
+  const refreshQuota = useCallback(
+    async (userOverride?: AppUser | null) => {
+      const today = getToday();
+      setFreeQuotaDate(today);
 
-    if (!appUser?.id || appUser.isPro) {
-      setFreeQuotaUsed(0);
-      setFreeQuotaLimit(FREE_DAILY_LIMIT);
-      setBasicQuotaUsed(0);
-      setBasicQuotaLimit(
-        Number.parseInt(process.env.NEXT_PUBLIC_BASIC_MONTHLY_LIMIT || "100", 10) || 100
-      );
-      setBasicQuotaPeriod("");
-      return;
-    }
-
-    const fetchQuota = async () => {
-      try {
-        const res = await fetch("/api/account/quota", { credentials: "include" });
-        if (!res.ok) throw new Error(`quota ${res.status}`);
-        const data = await res.json();
-        if (data?.plan === "basic") {
-          setBasicQuotaUsed(data.used ?? 0);
-          setBasicQuotaLimit(data.limit ?? basicQuotaLimit);
-          setBasicQuotaPeriod(data.period ?? "");
-          // 清空 free 计数，避免误显示
-          setFreeQuotaUsed(0);
-          setFreeQuotaLimit(FREE_DAILY_LIMIT);
-        } else {
-          setFreeQuotaUsed(data.used ?? 0);
-          setFreeQuotaLimit(data.limit ?? FREE_DAILY_LIMIT);
-          setBasicQuotaUsed(0);
-          setBasicQuotaPeriod("");
-        }
-      } catch {
-        // fallback: keep defaults
+      const targetUser = userOverride ?? appUserRef.current ?? appUser;
+      console.log("[quota] refreshQuota start", {
+        targetUserId: targetUser?.id,
+        targetPlan: targetUser?.plan,
+        currentPlan,
+        isPro: targetUser?.isPro,
+      });
+      const planLower = (targetUser?.plan || "").toLowerCase?.() || "";
+      const isUnlimited = !!targetUser?.isPro && planLower !== "basic";
+      if (!targetUser?.id || isUnlimited) {
         setFreeQuotaUsed(0);
         setFreeQuotaLimit(FREE_DAILY_LIMIT);
         setBasicQuotaUsed(0);
+        setBasicQuotaLimit(
+          Number.parseInt(process.env.NEXT_PUBLIC_BASIC_MONTHLY_LIMIT || "100", 10) || 100
+        );
         setBasicQuotaPeriod("");
+        return;
       }
-    };
 
-    void fetchQuota();
-  }, [appUser?.id, appUser?.isPro, currentPlan, basicQuotaLimit]);
+      try {
+        const res = await fetch("/api/account/quota", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error(`quota ${res.status}`);
+        const data = await res.json();
+        console.log("[quota] refreshQuota response", data);
+        if (data?.plan === "basic") {
+          const usedVal =
+            typeof data.used === "number"
+              ? data.used
+              : typeof data.limit === "number" && typeof data.remaining === "number"
+                ? data.limit - data.remaining
+                : 0;
+          setBasicQuotaUsed((prev) => Math.max(prev, usedVal));
+          setBasicQuotaLimit(data.limit ?? basicQuotaLimit);
+          setBasicQuotaPeriod(data.period ?? "");
+          setFreeQuotaUsed(0);
+          setFreeQuotaLimit(FREE_DAILY_LIMIT);
+          console.log("[quota] refreshQuota applied basic", {
+            used: usedVal,
+            limit: data.limit ?? basicQuotaLimit,
+            period: data.period,
+          });
+        } else {
+          const usedVal =
+            typeof data.used === "number"
+              ? data.used
+              : typeof data.limit === "number" && typeof data.remaining === "number"
+                ? data.limit - data.remaining
+                : 0;
+          setFreeQuotaUsed((prev) => Math.max(prev, usedVal));
+          setFreeQuotaLimit(data.limit ?? FREE_DAILY_LIMIT);
+          setBasicQuotaUsed(0);
+          setBasicQuotaPeriod("");
+          console.log("[quota] refreshQuota applied free", {
+            used: usedVal,
+            limit: data.limit ?? FREE_DAILY_LIMIT,
+            period: data.period,
+          });
+        }
+      } catch (err) {
+        // 失败时保持当前显示，避免误将额度重置为 0 导致进度条回弹
+        console.warn("[quota] refresh failed", err);
+        console.warn("[quota] keeping previous quota state");
+      }
+    },
+    [appUser, basicQuotaLimit, currentPlan],
+  );
+
+  useEffect(() => {
+    void refreshQuota(appUserRef.current);
+  }, [refreshQuota, currentPlan, appUser?.id]);
 
   const requireLogin = useCallback(() => {
     setAuthMode("login");
@@ -1079,7 +1115,12 @@ const loadMessagesForConversation = useCallback(
         setShowUpgradeDialog(true);
         return false;
       }
-      setBasicQuotaUsed((prev) => prev + 1);
+      setBasicQuotaUsed((prev) => {
+        const next = Math.min(limit, prev + 1);
+        console.log("[quota] local basic consume", { prev, next, limit });
+        return next;
+      });
+      void refreshQuota();
       return true;
     } else {
       const today = getToday();
@@ -1096,6 +1137,7 @@ const loadMessagesForConversation = useCallback(
       const nextUsed = baseUsed + 1;
       setFreeQuotaDate(today);
       setFreeQuotaUsed(nextUsed);
+      void refreshQuota();
       return true;
     }
   }, [
@@ -1107,6 +1149,7 @@ const loadMessagesForConversation = useCallback(
     basicQuotaLimit,
     basicQuotaUsed,
     setShowUpgradeDialog,
+    refreshQuota,
   ]);
 
   // reset conversation loading guards when user switches
@@ -1228,7 +1271,8 @@ const loadMessagesForConversation = useCallback(
       externalModels,
       supabase,
       requireLogin,
-      consumeFreeQuota
+      consumeFreeQuota,
+      refreshQuota
     );
 
   // Guest session timeout management
@@ -2041,8 +2085,8 @@ const loadMessagesForConversation = useCallback(
     e.preventDefault();
     if (!appUser || !selectedPlan) return;
 
-    if (selectedPaymentMethod === "paypal" && !isDomestic) {
-      // Real PayPal checkout for international users
+    if (selectedPaymentMethod === "paypal") {
+      // PayPal checkout (international + domestic)
       (async () => {
         try {
           const res = await fetch("/api/payment/paypal/create", {
@@ -2072,7 +2116,7 @@ const loadMessagesForConversation = useCallback(
       return;
     }
 
-    // fallback: simulate success (other methods not implemented)
+    // fallback: simulate success for non-PayPal methods (still unsupported)
     const updatedUser = { ...appUser, isPro: true, isPaid: true };
     setAppUser(updatedUser);
     setCurrentPlan(selectedPlan.name as "Basic" | "Pro" | "Enterprise");
@@ -2738,11 +2782,24 @@ const loadMessagesForConversation = useCallback(
     );
     if (appUser && editingChatId) {
       try {
-        await supabase
-          .from("conversations")
-          .update({ title: editingTitle })
-          .eq("id", editingChatId)
-          .eq("user_id", appUser.id);
+        if (isDomestic) {
+          const res = await fetch(`/api/conversations/${editingChatId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ title: editingTitle }),
+          });
+          if (!res.ok) {
+            const msg = await res.text();
+            throw new Error(msg || `HTTP ${res.status}`);
+          }
+        } else {
+          await supabase
+            .from("conversations")
+            .update({ title: editingTitle })
+            .eq("id", editingChatId)
+            .eq("user_id", appUser.id);
+        }
       } catch (err) {
         console.error("Failed to update title", err);
       }

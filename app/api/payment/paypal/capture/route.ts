@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { addDays, isAfter } from "date-fns";
 import { capturePayPalOrder, paypalErrorResponse } from "@/lib/paypal";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { IS_DOMESTIC_VERSION } from "@/config";
+import { CloudBaseConnector } from "@/lib/cloudbase/connector";
 
 const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
 const CYCLE_DAYS: Record<"monthly" | "annual", number> = {
@@ -33,6 +35,77 @@ function parsePlanPeriod(customId?: string | null, description?: string | null) 
 
   plan = plan.trim() || "Pro";
   return { plan, period };
+}
+
+async function upsertCloudbaseSubscription(params: {
+  userId: string;
+  plan: string;
+  period: "monthly" | "annual";
+  provider: string;
+  providerOrderId: string;
+  expiresAt: Date;
+  startedAt: Date;
+  amount: number;
+  currency: string;
+  status: string;
+}) {
+  const connector = new CloudBaseConnector();
+  await connector.initialize();
+  const db = connector.getClient();
+  const {
+    userId,
+    plan,
+    period,
+    provider,
+    providerOrderId,
+    expiresAt,
+    startedAt,
+    amount,
+    currency,
+    status,
+  } = params;
+
+  // subscriptions: update if same user+provider+plan exists, else add
+  const subsColl = db.collection("subscriptions");
+  const existing = await subsColl
+    .where({ userId, provider, plan })
+    .limit(1)
+    .get();
+  const nowIso = new Date().toISOString();
+  const subPayload = {
+    userId,
+    plan,
+    period,
+    status,
+    provider,
+    providerOrderId,
+    startedAt: startedAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+    updatedAt: nowIso,
+  };
+  if (existing?.data?.[0]?._id) {
+    await subsColl.doc(existing.data[0]._id).update(subPayload);
+  } else {
+    await subsColl.add({ ...subPayload, createdAt: nowIso });
+  }
+
+  // payments: always insert
+  const payColl = db.collection("payments");
+  await payColl.add({
+    userId,
+    provider,
+    providerOrderId,
+    amount,
+    currency,
+    status,
+    plan,
+    period,
+    createdAt: nowIso,
+  });
+
+  // return all active subscriptions for ranking
+  const all = await subsColl.where({ userId, provider }).get();
+  return all?.data || [];
 }
 
 export async function POST(request: NextRequest) {
@@ -74,9 +147,10 @@ export async function POST(request: NextRequest) {
   let effectivePlan = plan;
   let effectivePeriod: "monthly" | "annual" = period;
   let expiresAt = period === "annual" ? addDays(new Date(), 365) : addDays(new Date(), 30);
+  let isProFlag = effectivePlan.toLowerCase() !== "basic";
 
   // Persist subscription & payment
-  if (supabaseAdmin && userId) {
+  if (!IS_DOMESTIC_VERSION && supabaseAdmin && userId) {
     const now = new Date();
     // fetch all existing subs for this user/provider
     const { data: existingSubs } = await supabaseAdmin
@@ -137,13 +211,61 @@ export async function POST(request: NextRequest) {
       expiresAt = top.expires_at ? new Date(top.expires_at) : expiresAt;
     }
 
-    // mark user metadata as pro (for quick client reads)
+    // mark user metadata (Pro only for non-Basic)
+    isProFlag = effectivePlan.toLowerCase() !== "basic";
     await supabaseAdmin.auth.admin.updateUserById(userId, {
       user_metadata: {
-        pro: true,
+        pro: isProFlag,
         plan: effectivePlan,
         plan_exp: expiresAt.toISOString(),
       },
+    });
+  }
+
+  // Domestic版：写入 CloudBase
+  if (IS_DOMESTIC_VERSION && userId) {
+    const now = new Date();
+    // fetch and upsert in CloudBase
+    const subs = await upsertCloudbaseSubscription({
+      userId,
+      plan,
+      period,
+      provider: "paypal",
+      providerOrderId: orderId,
+      expiresAt,
+      startedAt: now,
+      amount: amountValue,
+      currency,
+      status: status || "COMPLETED",
+    });
+
+    // determine highest active plan
+    const nowIso = new Date();
+    const active = (subs || []).filter(
+      (s: any) =>
+        !s.expiresAt || isAfter(new Date(s.expiresAt), nowIso),
+    );
+    if (active.length > 0) {
+      active.sort(
+        (a: any, b: any) => (PLAN_RANK[b.plan] || 0) - (PLAN_RANK[a.plan] || 0),
+      );
+      const top = active[0];
+      effectivePlan = top.plan || plan;
+      effectivePeriod = (top.period as "monthly" | "annual") || period;
+      expiresAt = top.expiresAt ? new Date(top.expiresAt) : expiresAt;
+    }
+
+    // update user document with plan info
+    isProFlag = effectivePlan.toLowerCase() !== "basic";
+    const connector = new CloudBaseConnector();
+    await connector.initialize();
+    const db = connector.getClient();
+    await db.collection("users").doc(userId).update({
+      pro: isProFlag,
+      plan: effectivePlan,
+      plan_exp: expiresAt.toISOString(),
+      subscriptionTier: effectivePlan,
+      updatedAt: new Date().toISOString(),
     });
   }
 

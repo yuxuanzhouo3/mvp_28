@@ -90,28 +90,47 @@ export default function Header({
   basicQuotaRemaining,
   basicQuotaLimit,
 }: HeaderProps) {
-  const tier =
-    appUser ? currentPlan || (appUser?.isPro ? "Pro" : null) : null;
-  const tierDisplay = tier || (appUser ? "Free" : "Guest User");
+  const planLower = (
+    currentPlan ||
+    appUserPlan ||
+    (appUser?.isPro ? "Pro" : "")
+  )
+    .toLowerCase();
+
+  const tierDisplay = (() => {
+    if (!appUser) return "Guest User";
+    if (planLower === "enterprise") return "Enterprise";
+    if (planLower === "pro") return "Pro";
+    if (planLower === "basic") return "Basic";
+    return "Free";
+  })();
+
   const tierClass =
-    tier === "Enterprise"
+    planLower === "enterprise"
       ? "bg-purple-600 text-white"
-      : tier === "Pro"
+      : planLower === "pro"
       ? "bg-blue-600 text-white"
-      : tier === "Basic"
+      : planLower === "basic"
       ? "bg-amber-500 text-white"
       : "bg-gray-200 text-gray-800";
-
-  const planLower = (tier || appUserPlan || "").toLowerCase();
-  const isFreeUser = !!appUser && !tier && planLower !== "basic";
   const isBasicUser = !!appUser && planLower === "basic";
-  const isUnlimited = !!appUser && isUnlimitedPlan;
+  const isUnlimited =
+    !!appUser &&
+    !isBasicUser &&
+    (planLower === "pro" ||
+      planLower === "enterprise" ||
+      (isUnlimitedPlan && planLower !== "free" && planLower !== ""));
+  const isFreeUser =
+    !!appUser &&
+    !isUnlimited &&
+    !isBasicUser &&
+    (planLower === "" || planLower === "free");
 
   const quotaLimit = isUnlimited
     ? 1
     : isBasicUser
-    ? basicQuotaLimit || 100
-    : freeQuotaLimit || 10;
+    ? basicQuotaLimit ?? 100
+    : freeQuotaLimit ?? 10;
   const quotaRemaining = (() => {
     if (isUnlimited) return Infinity;
     if (isBasicUser) {
@@ -128,7 +147,12 @@ export default function Header({
   })();
   const quotaPercent = isUnlimited
     ? 100
-    : Math.min(100, Math.max(0, (quotaRemaining / quotaLimit) * 100));
+    : quotaLimit > 0
+    ? Math.min(100, Math.max(0, (quotaRemaining / quotaLimit) * 100))
+    : 0;
+  const quotaText = isUnlimited
+    ? "∞/∞"
+    : `${Math.max(0, Math.min(quotaLimit, Math.ceil(quotaRemaining)))} / ${quotaLimit}`;
 
   return (
     <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#40414f] shadow-sm transition-colors">
@@ -155,38 +179,50 @@ export default function Header({
                 <TooltipContent side="bottom" className="text-xs">
                   {appUser ? (
                     isUnlimited ? (
-                      <div className="space-y-2 w-56">
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-gray-900 dark:text-gray-50">
-                            {tierDisplay}
-                          </span>
-                          <span className="text-gray-700 dark:text-gray-200 font-semibold">
-                            ∞/∞
-                          </span>
-                        </div>
-                        <div className="h-2.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-emerald-400 via-teal-400 to-blue-500"
-                            style={{ width: "100%" }}
-                          />
-                        </div>
-                        <div className="text-[11px] text-gray-600 dark:text-gray-300">
-                          Unlimited messages on your plan.
-                        </div>
-                        <div className="text-[11px] text-gray-600 dark:text-gray-300">
-                          {planExp
-                            ? `Expires: ${new Date(planExp).toLocaleString()}`
-                            : "Active subscription"}
+                    <div className="space-y-2 w-56">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-gray-900 dark:text-gray-50">
+                          {tierDisplay}
+                        </span>
+                        <span className="text-gray-700 dark:text-gray-200 font-semibold">
+                          ∞/∞
+                        </span>
+                      </div>
+                      <div className="h-2.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-emerald-400 via-teal-400 to-blue-500"
+                          style={{ width: "100%" }}
+                        />
+                      </div>
+                      <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                        {selectedLanguage === "zh"
+                          ? "无限制消息额度"
+                          : "Unlimited messages on your plan."}
+                      </div>
+                      <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                        {planExp
+                          ? `${selectedLanguage === "zh" ? "到期" : "Expires"}: ${new Date(
+                              planExp,
+                            ).toLocaleString()}`
+                            : selectedLanguage === "zh"
+                              ? "订阅中"
+                              : "Active subscription"}
                         </div>
                       </div>
                     ) : isFreeUser || isBasicUser ? (
                       <div className="space-y-2 w-56">
                         <div className="flex items-center justify-between">
                           <span className="font-semibold text-gray-900 dark:text-gray-50">
-                            {isBasicUser ? "Basic Plan" : "Free Plan"}
+                            {selectedLanguage === "zh"
+                              ? isBasicUser
+                                ? "基础版"
+                                : "Free"
+                              : isBasicUser
+                                ? "Basic Plan"
+                                : "Free"}
                           </span>
                           <span className="text-gray-700 dark:text-gray-200 font-semibold">
-                            {quotaRemaining}/{quotaLimit}
+                            {quotaText}
                           </span>
                         </div>
                         <div className="h-2.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
@@ -196,13 +232,23 @@ export default function Header({
                           />
                         </div>
                         <div className="text-[11px] text-gray-600 dark:text-gray-300">
-                          Daily chat quota (renews daily)
+                          {selectedLanguage === "zh"
+                            ? isBasicUser
+                              ? "月度聊天额度（每月重置）"
+                              : "每日聊天额度（每日重置）"
+                            : isBasicUser
+                              ? "Monthly chat quota (renews monthly)"
+                              : "Daily chat quota (renews daily)"}
                         </div>
                         {isBasicUser && (
                           <div className="text-[11px] text-gray-600 dark:text-gray-300">
                             {planExp
-                              ? `Expires: ${new Date(planExp).toLocaleString()}`
-                              : "Active subscription"}
+                              ? `${selectedLanguage === "zh" ? "到期" : "Expires"}: ${new Date(
+                                  planExp,
+                                ).toLocaleString()}`
+                              : selectedLanguage === "zh"
+                                ? "订阅中"
+                                : "Active subscription"}
                           </div>
                         )}
                       </div>
@@ -213,18 +259,21 @@ export default function Header({
                         </div>
                         {planExp ? (
                           <div className="text-gray-600 dark:text-gray-300">
-                            Expires: {new Date(planExp).toLocaleString()}
+                            {selectedLanguage === "zh" ? "到期" : "Expires"}:{" "}
+                            {new Date(planExp).toLocaleString()}
                           </div>
                         ) : (
                           <div className="text-gray-600 dark:text-gray-300">
-                            Active subscription
+                            {selectedLanguage === "zh" ? "订阅中" : "Active subscription"}
                           </div>
                         )}
                       </div>
                     )
                   ) : (
                     <div className="text-gray-700 dark:text-gray-200">
-                      Guest session (data not saved)
+                      {selectedLanguage === "zh"
+                        ? "游客模式（不会保存数据）"
+                        : "Guest session (data not saved)"}
                     </div>
                   )}
                 </TooltipContent>
@@ -312,15 +361,22 @@ export default function Header({
                 <Moon className="w-4 h-4" />
               )}
             </Button>
-            {appUser && !isDomestic && (
+            {appUser && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setShowUpgradeDialog(true)}
                 className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700"
-                title={getLocalizedText("Choose Your MornGPT Plan")}
+                title={
+                  selectedLanguage === "zh"
+                    ? "开通订阅，解锁更多用量与高级模型"
+                    : getLocalizedText("Choose Your MornGPT Plan")
+                }
               >
                 <Crown className="w-4 h-4" />
+                <span className="ml-2 text-xs">
+                  {selectedLanguage === "zh" ? "开通订阅" : "Upgrade"}
+                </span>
               </Button>
             )}
             {appUser ? (

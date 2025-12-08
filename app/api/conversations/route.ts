@@ -14,6 +14,20 @@ async function getDomesticUser(req: NextRequest) {
   return await auth.validateToken(token);
 }
 
+function getPlanInfo(meta: any) {
+  const rawPlan =
+    (meta?.plan as string | undefined) ||
+    (meta?.plan_exp && meta?.plan) || // keep plan if present alongside plan_exp
+    (meta?.subscriptionTier as string | undefined) ||
+    "";
+  const planLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
+  const isProFlag = !!meta?.pro && planLower !== "free" && planLower !== "basic";
+  const isBasic = planLower === "basic";
+  const isPro = planLower === "pro" || planLower === "enterprise" || isProFlag;
+  const isFree = !isPro && !isBasic;
+  return { planLower, isPro, isBasic, isFree };
+}
+
 // 动态判定是否走国内逻辑：环境为 zh 或请求携带 auth-token 即视为国内
 function isDomesticRequest(req: NextRequest) {
   const langIsZh = IS_DOMESTIC_VERSION;
@@ -59,6 +73,12 @@ export async function GET(req: NextRequest) {
   // domestic -> CloudBase
   const user = await getDomesticUser(req);
   if (!user) return new Response("Unauthorized", { status: 401 });
+  const plan = getPlanInfo(user.metadata);
+
+  // Free 用户不返回历史记录，保持与国际版一致
+  if (plan.isFree) {
+    return Response.json([]);
+  }
 
   const connector = new CloudBaseConnector();
   await connector.initialize();
@@ -148,8 +168,22 @@ export async function POST(req: NextRequest) {
   // domestic -> CloudBase
   const user = await getDomesticUser(req);
   if (!user) return new Response("Unauthorized", { status: 401 });
+  const plan = getPlanInfo(user.metadata);
 
   const { title, model } = await req.json();
+
+  // Free 用户：不落库，返回本地临时会话 ID
+  if (plan.isFree) {
+    const now = new Date().toISOString();
+    return Response.json({
+      id: `local-${Date.now()}`,
+      title: title || "新对话",
+      model: model || null,
+      created_at: now,
+      updated_at: now,
+    });
+  }
+
   const now = new Date().toISOString();
 
   const connector = new CloudBaseConnector();

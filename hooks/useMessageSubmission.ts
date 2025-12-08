@@ -46,7 +46,8 @@ export const useMessageSubmission = (
   externalModels: Array<{ id: string; name: string; provider: string; description: string; category: string; type: string; price: string; }>,
   supabaseClient?: SupabaseClient | null,
   onRequireAuth?: () => void,
-  consumeFreeQuota?: () => boolean
+  consumeFreeQuota?: () => boolean,
+  refreshQuota?: () => void,
 ) => {
   const [forceUpdate, setForceUpdate] = useState(0);
   const supabase = useMemo(() => supabaseClient || createClient(), [supabaseClient]);
@@ -306,6 +307,8 @@ export const useMessageSubmission = (
           return;
         }
         if (!res.ok) throw new Error(`Save message failed ${res.status}`);
+        // refresh quota after server accepted the user message
+        refreshQuota?.();
       } catch (err) {
         console.error("Failed to persist user message", err);
         alert(

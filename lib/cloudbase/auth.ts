@@ -19,7 +19,10 @@ export interface CloudBaseUser {
   lastLoginAt: string;
   pro: boolean;
   region: "CN";
-  subscriptionTier: string;
+  subscriptionTier?: string;
+  plan?: string | null;
+  plan_exp?: string | null;
+  planExp?: string | null;
   paymentMethod: string | null;
 }
 
@@ -38,6 +41,8 @@ export interface CloudBaseAuthUser {
   metadata: {
     pro: boolean;
     region: "CN";
+    plan?: string | null;
+    plan_exp?: string | null;
   };
 }
 
@@ -118,13 +123,15 @@ export class CloudBaseAuthService {
         pro: false,
         region: "CN",
         subscriptionTier: "free",
+        plan: "free",
+        plan_exp: null,
         paymentMethod: null,
       };
 
       const result = await this.db.collection("users").add(userData);
 
-      const authUser = this.mapUser(result.id, userData);
-      const session = await this.createSession(result.id);
+    const authUser = this.mapUser(result.id, userData);
+    const session = await this.createSession(result.id);
 
       return { user: authUser, session };
     } catch (error) {
@@ -207,6 +214,8 @@ export class CloudBaseAuthService {
             pro: false,
             region: "CN",
             subscriptionTier: "free",
+            plan: "free",
+            plan_exp: null,
             paymentMethod: null,
             wechatOpenId: openid,
             wechatUnionId: unionid || null,
@@ -255,9 +264,9 @@ export class CloudBaseAuthService {
     });
     console.log("[cloudbase] session created", { userId, token, expiresAt });
 
-    const users = await this.db.collection("users").doc(userId).get();
-    const user = users.data[0] as CloudBaseUser;
-    const authUser = this.mapUser(userId, user);
+      const users = await this.db.collection("users").doc(userId).get();
+      const user = users.data[0] as CloudBaseUser;
+      const authUser = this.mapUser(userId, user);
 
     return {
       access_token: token,
@@ -267,6 +276,15 @@ export class CloudBaseAuthService {
   }
 
   private mapUser(id: string, user: CloudBaseUser): CloudBaseAuthUser {
+    const plan =
+      (user.plan as string | undefined) ||
+      (user.subscriptionTier as string | undefined) ||
+      (user.pro ? "pro" : "free");
+    const planLower = typeof plan === "string" ? plan.toLowerCase() : "free";
+    // Basic 不视为 pro（国际版逻辑一致），其余使用 user.pro 标记
+    const isProEffective = !!user.pro && planLower !== "basic";
+    const planExp = (user.plan_exp as string | null | undefined) ?? user.planExp ?? null;
+
     return {
       id,
       email: user.email,
@@ -274,8 +292,10 @@ export class CloudBaseAuthService {
       avatar: user.avatar,
       createdAt: new Date(user.createdAt),
       metadata: {
-        pro: user.pro,
+        pro: isProEffective,
         region: "CN",
+        plan,
+        plan_exp: planExp,
       },
     };
   }

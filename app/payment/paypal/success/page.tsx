@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { DEFAULT_LANGUAGE } from "@/config";
 
 export default function PayPalSuccessPage() {
   const searchParams = useSearchParams();
@@ -38,10 +39,12 @@ export default function PayPalSuccessPage() {
         // Mark user as Pro locally (client-side persistence)
         try {
           const stored = localStorage.getItem("morngpt_user");
+          const isProPlan =
+            (data.plan || "Pro").toLowerCase() !== "basic";
           if (stored) {
             const user = JSON.parse(stored);
-            user.isPro = true;
-            user.isPaid = true;
+            user.isPro = isProPlan;
+            user.isPaid = isProPlan;
             if (data.plan) user.plan = data.plan;
             if (data.expiresAt) user.planExp = data.expiresAt;
             localStorage.setItem("morngpt_user", JSON.stringify(user));
@@ -55,9 +58,11 @@ export default function PayPalSuccessPage() {
             localStorage.setItem("morngpt_current_plan", "Pro");
           }
 
-          // Refresh Supabase user metadata so the session picks up new plan/exp
-          const supabase = createClient();
-          await supabase.auth.getUser();
+          // Refresh Supabase user metadata only在国际版
+          if (DEFAULT_LANGUAGE === "en") {
+            const supabase = createClient();
+            await supabase.auth.getUser();
+          }
         } catch (err) {
           // ignore localStorage errors
         }

@@ -57,6 +57,34 @@ async function deleteDomesticAccount(req: NextRequest) {
     errors.push(e?.message || "delete sessions failed");
   }
 
+  // delete quotas (free/basic)
+  try {
+    const fq = await db.collection("free_quotas").where({ userId: uid }).get();
+    for (const q of fq?.data || []) {
+      await db.collection("free_quotas").doc(q._id).remove();
+    }
+    const bq = await db.collection("basic_quotas").where({ userId: uid }).get();
+    for (const q of bq?.data || []) {
+      await db.collection("basic_quotas").doc(q._id).remove();
+    }
+  } catch (e: any) {
+    errors.push(e?.message || "delete quotas failed");
+  }
+
+  // delete payments & subscriptions
+  try {
+    const pays = await db.collection("payments").where({ userId: uid }).get();
+    for (const p of pays?.data || []) {
+      await db.collection("payments").doc(p._id).remove();
+    }
+    const subs = await db.collection("subscriptions").where({ userId: uid }).get();
+    for (const s of subs?.data || []) {
+      await db.collection("subscriptions").doc(s._id).remove();
+    }
+  } catch (e: any) {
+    errors.push(e?.message || "delete payments/subscriptions failed");
+  }
+
   // delete user
   try {
     await db.collection("users").doc(uid).remove();

@@ -19,8 +19,9 @@ async function getDomesticUser(req: NextRequest) {
   return await auth.validateToken(token);
 }
 
-function isDomesticRequest() {
-  return IS_DOMESTIC_VERSION;
+function isDomesticRequest(req: NextRequest) {
+  const hasToken = !!req.cookies.get("auth-token");
+  return IS_DOMESTIC_VERSION || hasToken;
 }
 
 // Delete a conversation (cascade messages)
@@ -30,7 +31,7 @@ export async function DELETE(
 ) {
   const { id } = await paramsPromise;
 
-  if (!isDomesticRequest()) {
+  if (!isDomesticRequest(req)) {
     const supabase = await createClient();
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData?.user) {
@@ -82,5 +83,65 @@ export async function DELETE(
   } catch (error) {
     console.error("CloudBase delete conversation error", error);
     return new Response("Failed to delete conversation", { status: 500 });
+  }
+}
+
+// Update conversation title
+export async function PATCH(
+  req: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await paramsPromise;
+  const { title } = await req.json();
+
+  if (!title || typeof title !== "string") {
+    return new Response("Title required", { status: 400 });
+  }
+
+  if (!isDomesticRequest(req)) {
+    const supabase = await createClient();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData?.user) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    const userId = userData.user.id;
+
+    const { error } = await supabase
+      .from("conversations")
+      .update({ title, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Update conversation title error", error);
+      return new Response("Failed to update", { status: 500 });
+    }
+
+    return Response.json({ success: true });
+  }
+
+  const user = await getDomesticUser(req);
+  if (!user) return new Response("Unauthorized", { status: 401 });
+
+  const connector = new CloudBaseConnector();
+  await connector.initialize();
+  const db = connector.getClient();
+
+  try {
+    const conv = await db.collection("conversations").doc(id).get();
+    const data = conv.data?.[0];
+    if (!data || data.userId !== user.id) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    await db.collection("conversations").doc(id).update({
+      title,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return Response.json({ success: true });
+  } catch (error) {
+    console.error("CloudBase update conversation error", error);
+    return new Response("Failed to update", { status: 500 });
   }
 }

@@ -14,6 +14,7 @@ import {
   AppUser,
   BookmarkedMessage,
   BookmarkFolder,
+  AttachmentItem,
 } from "@/types";
 import {
   mornGPTCategories,
@@ -627,6 +628,8 @@ const loadMessagesForConversation = useCallback(
           role: m.role as Message["role"],
           content: m.content,
           timestamp: new Date(m.created_at),
+          images: m.imageFileIds || m.images || [],
+          videos: m.videoFileIds || m.videos || [],
         })) || [];
 
       setMessages(fetchedMessages);
@@ -911,12 +914,146 @@ const loadMessagesForConversation = useCallback(
   const {
     uploadedFiles,
     setUploadedFiles,
-    filePreviews,
-    setFilePreviews,
     fileInputRef,
-    handleFileUpload: handleFileUploadHook,
-    removeFile,
   } = fileAttachments;
+
+  // Upload size limits (exposed to client via NEXT_PUBLIC_*, fallback to server vars)
+  const rawImageLimit =
+    Number(process.env.NEXT_PUBLIC_MAX_IMAGE_UPLOAD_MB ?? process.env.MAX_IMAGE_UPLOAD_MB ?? 6) || 0;
+  const IMAGE_LIMIT_MB = Number.isFinite(rawImageLimit) ? rawImageLimit : 6;
+  const IMAGE_LIMIT_BYTES = Math.max(0, IMAGE_LIMIT_MB * 1024 * 1024);
+  const IMAGE_UPLOAD_DISABLED = IMAGE_LIMIT_MB <= 0;
+
+  const rawVideoLimit =
+    Number(process.env.NEXT_PUBLIC_MAX_VIDEO_UPLOAD_MB ?? process.env.MAX_VIDEO_UPLOAD_MB ?? 200) || 0;
+  const VIDEO_LIMIT_MB = Number.isFinite(rawVideoLimit) ? rawVideoLimit : 200;
+  const VIDEO_LIMIT_BYTES = Math.max(0, VIDEO_LIMIT_MB * 1024 * 1024);
+  const VIDEO_UPLOAD_DISABLED = VIDEO_LIMIT_MB <= 0;
+
+  const uploadToCloudbase = async (file: File, kind: "image" | "video") => {
+    const endpoint =
+      kind === "video" ? "/api/domestic/video/upload" : "/api/domestic/upload";
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(endpoint, {
+      method: "POST",
+      body: form,
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(text || "upload failed");
+    }
+    return (await res.json()) as { fileId: string; tempUrl?: string };
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files) return;
+    const incoming = Array.from(files);
+    if (uploadedFiles.length >= MAX_FILES) {
+      setUploadError(
+        `Maximum ${MAX_FILES} files reached. Please remove some files first.`
+      );
+      event.target.value = "";
+      return;
+    }
+    const availableSlots = Math.max(0, MAX_FILES - uploadedFiles.length);
+    const slice = incoming.slice(0, availableSlots);
+
+    for (const file of slice) {
+      const isImage = file.type.startsWith("image/");
+      const isVideo = file.type.startsWith("video/");
+      const baseItem: AttachmentItem = {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        name: file.name,
+        size: file.size,
+        type: file.type || "application/octet-stream",
+        kind: isImage ? "image" : isVideo ? "video" : "file",
+        file,
+      };
+
+      if (isImage) {
+        if (IMAGE_UPLOAD_DISABLED) {
+          setUploadError("图片上传已禁用，请调整 MAX_IMAGE_UPLOAD_MB。");
+          continue;
+        }
+        if (file.size > IMAGE_LIMIT_BYTES) {
+          setUploadError(`图片大小超出限制（最大 ${IMAGE_LIMIT_MB} MB）`);
+          continue;
+        }
+        const preview = URL.createObjectURL(file);
+        setIsUploading(true);
+        try {
+          const { fileId, tempUrl } = await uploadToCloudbase(file, "image");
+          setUploadedFiles((prev) => [
+            ...prev,
+            { ...baseItem, fileId, preview: tempUrl || preview },
+          ]);
+        } catch (err) {
+          URL.revokeObjectURL(preview);
+          setUploadError("图片上传失败，请重试。");
+        } finally {
+          setIsUploading(false);
+        }
+      } else if (isVideo) {
+        if (VIDEO_UPLOAD_DISABLED) {
+          setUploadError("视频上传已禁用，请调整 MAX_VIDEO_UPLOAD_MB。");
+          continue;
+        }
+        if (file.size > VIDEO_LIMIT_BYTES) {
+          setUploadError(`视频大小超出限制（最大 ${VIDEO_LIMIT_MB} MB）`);
+          continue;
+        }
+        const preview = URL.createObjectURL(file);
+        setIsUploading(true);
+        try {
+          const { fileId, tempUrl } = await uploadToCloudbase(file, "video");
+          setUploadedFiles((prev) => [
+            ...prev,
+            { ...baseItem, fileId, preview: tempUrl || preview },
+          ]);
+        } catch (err) {
+          URL.revokeObjectURL(preview);
+          setUploadError("视频上传失败，请重试。");
+        } finally {
+          setIsUploading(false);
+        }
+      } else {
+        setUploadedFiles((prev) => [...prev, baseItem]);
+      }
+    }
+
+    event.target.value = "";
+  };
+
+  const removeAttachment = async (index: number) => {
+    const target = uploadedFiles[index];
+    if (!target) return;
+
+    // Clean remote file if uploaded
+    try {
+      if (target.fileId && target.kind === "image") {
+        await fetch(
+          `/api/domestic/upload?fileId=${encodeURIComponent(target.fileId)}`,
+          { method: "DELETE", credentials: "include" }
+        );
+      } else if (target.fileId && target.kind === "video") {
+        await fetch(
+          `/api/domestic/video/upload?fileId=${encodeURIComponent(target.fileId)}`,
+          { method: "DELETE", credentials: "include" }
+        );
+      }
+    } catch (err) {
+      if(false) console.warn("Failed to delete remote file", err);
+    }
+
+    if (target.preview?.startsWith("blob:")) {
+      URL.revokeObjectURL(target.preview);
+    }
+
+    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const {
     isListening,
@@ -1019,7 +1156,7 @@ const loadMessagesForConversation = useCallback(
       setFreeQuotaDate(today);
 
       const targetUser = userOverride ?? appUserRef.current ?? appUser;
-      console.log("[quota] refreshQuota start", {
+      if(false) console.log("/*quota*/ refreshQuota start", {
         targetUserId: targetUser?.id,
         targetPlan: targetUser?.plan,
         currentPlan,
@@ -1045,7 +1182,7 @@ const loadMessagesForConversation = useCallback(
         });
         if (!res.ok) throw new Error(`quota ${res.status}`);
         const data = await res.json();
-        console.log("[quota] refreshQuota response", data);
+        if(false) console.log("/*quota*/ refreshQuota response", data);
         if (data?.plan === "basic") {
           const usedVal =
             typeof data.used === "number"
@@ -1058,7 +1195,7 @@ const loadMessagesForConversation = useCallback(
           setBasicQuotaPeriod(data.period ?? "");
           setFreeQuotaUsed(0);
           setFreeQuotaLimit(FREE_DAILY_LIMIT);
-          console.log("[quota] refreshQuota applied basic", {
+          if(false) console.log("/*quota*/ refreshQuota applied basic", {
             used: usedVal,
             limit: data.limit ?? basicQuotaLimit,
             period: data.period,
@@ -1074,7 +1211,7 @@ const loadMessagesForConversation = useCallback(
           setFreeQuotaLimit(data.limit ?? FREE_DAILY_LIMIT);
           setBasicQuotaUsed(0);
           setBasicQuotaPeriod("");
-          console.log("[quota] refreshQuota applied free", {
+          if(false) console.log("/*quota*/ refreshQuota applied free", {
             used: usedVal,
             limit: data.limit ?? FREE_DAILY_LIMIT,
             period: data.period,
@@ -1082,8 +1219,8 @@ const loadMessagesForConversation = useCallback(
         }
       } catch (err) {
         // 失败时保持当前显示，避免误将额度重置为 0 导致进度条回弹
-        console.warn("[quota] refresh failed", err);
-        console.warn("[quota] keeping previous quota state");
+        if(false) console.warn("/*quota*/ refresh failed", err);
+        if(false) console.warn("/*quota*/ keeping previous quota state");
       }
     },
     [appUser, basicQuotaLimit, currentPlan],
@@ -1117,7 +1254,7 @@ const loadMessagesForConversation = useCallback(
       }
       setBasicQuotaUsed((prev) => {
         const next = Math.min(limit, prev + 1);
-        console.log("[quota] local basic consume", { prev, next, limit });
+        if(false) console.log("/*quota*/ local basic consume", { prev, next, limit });
         return next;
       });
       void refreshQuota();
@@ -2007,7 +2144,7 @@ const loadMessagesForConversation = useCallback(
   };
 
   const handleLogout = async () => {
-    console.log("handleLogout called"); // Debug log
+    if(false) console.log("handleLogout called"); // Debug log
     if (isDomestic) {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     } else {
@@ -2160,7 +2297,7 @@ const loadMessagesForConversation = useCallback(
   };
 
   const confirmLogout = () => {
-    console.log("confirmLogout called"); // Debug log
+    if(false) console.log("confirmLogout called"); // Debug log
     setShowLogoutConfirmDialog(true);
   };
 
@@ -2345,7 +2482,7 @@ const loadMessagesForConversation = useCallback(
           address = data.display_name;
         }
       } catch (error) {
-        console.log("Could not get address, using coordinates only");
+        if(false) console.log("Could not get address, using coordinates only");
       }
 
       const location = { latitude, longitude, address };
@@ -3109,52 +3246,52 @@ const loadMessagesForConversation = useCallback(
   // Missing functions that need to be added
   const generateShareLink = async () => {
     // Implementation for generating share link
-    console.log("generateShareLink called");
+    if(false) console.log("generateShareLink called");
   };
 
   const copyShareLink = () => {
     // Implementation for copying share link
-    console.log("copyShareLink called");
+    if(false) console.log("copyShareLink called");
   };
 
   const copyShareSecret = () => {
     // Implementation for copying share secret
-    console.log("copyShareSecret called");
+    if(false) console.log("copyShareSecret called");
   };
 
   const regenerateSecretKey = () => {
     // Implementation for regenerating secret key
-    console.log("regenerateSecretKey called");
+    if(false) console.log("regenerateSecretKey called");
   };
 
   const shareToSocialMedia = () => {
     // Implementation for sharing to social media
-    console.log("shareToSocialMedia called");
+    if(false) console.log("shareToSocialMedia called");
   };
 
   const handleResetCancel = () => {
     // Implementation for reset cancel
-    console.log("handleResetCancel called");
+    if(false) console.log("handleResetCancel called");
   };
 
   const handleResetConfirm = () => {
     // Implementation for reset confirm
-    console.log("handleResetConfirm called");
+    if(false) console.log("handleResetConfirm called");
   };
 
   const showResetConfirmation = () => {
     // Implementation for showing reset confirmation
-    console.log("showResetConfirmation called");
+    if(false) console.log("showResetConfirmation called");
   };
 
   const handleUpgradeFromAds = () => {
     // Implementation for upgrade from ads
-    console.log("handleUpgradeFromAds called");
+    if(false) console.log("handleUpgradeFromAds called");
   };
 
   const handleSpecializedProductSelect = () => {
     // Implementation for specialized product select
-    console.log("handleSpecializedProductSelect called");
+    if(false) console.log("handleSpecializedProductSelect called");
   };
 
   const freeQuotaRemaining = useMemo(() => {
@@ -3425,9 +3562,9 @@ const loadMessagesForConversation = useCallback(
     setUploadedFiles,
     MAX_FILES,
     MAX_TOTAL_SIZE,
-    handleFileUpload: handleFileUploadHook,
+    handleFileUpload,
     isUploading,
-    removeFile,
+    removeFile: removeAttachment,
     formatFileSize,
     getFileIcon,
     isRecording,
@@ -3642,3 +3779,5 @@ const loadMessagesForConversation = useCallback(
     </ChatUIContext.Provider>
   );
 }
+
+

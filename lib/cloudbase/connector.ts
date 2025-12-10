@@ -68,4 +68,12 @@ export class CloudBaseConnector {
     }
     return cachedDb || this.client.database();
   }
+
+  // Raw SDK instance, used for storage (uploadFile/getTempFileURL/deleteFile)
+  getApp(): any {
+    if (!this.client || !this.initialized) {
+      throw new Error("CloudBase client not initialized");
+    }
+    return cachedClient || this.client;
+  }
 }

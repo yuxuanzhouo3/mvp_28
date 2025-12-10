@@ -7,6 +7,7 @@ import { CloudBaseConnector } from "@/lib/cloudbase/connector";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+const QUOTA_LOG = false;
 
 const getDailyLimit = () => {
   const raw = process.env.NEXT_PUBLIC_FREE_DAILY_LIMIT || "10";
@@ -46,19 +47,19 @@ export async function GET(req: NextRequest) {
       req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
       null;
     if (!token) {
-      console.warn("[quota] no token for domestic request");
+      if(QUOTA_LOG) console.warn("[quota] no token for domestic request");
       return new Response("Unauthorized", { status: 401 });
     }
 
     const auth = new CloudBaseAuthService();
     const user = await auth.validateToken(token);
     if (!user) {
-      console.warn("[quota] token invalid / user not found");
+      if(QUOTA_LOG) console.warn("[quota] token invalid / user not found");
       return new Response("Unauthorized", { status: 401 });
     }
 
     const plan = getPlanInfo(user.metadata);
-    console.log("[quota] user", user.id, "plan", plan.planLower, "isBasic", plan.isBasic, "isPro", plan.isPro, "isFree", plan.isFree);
+    if(QUOTA_LOG) console.log("[quota] user", user.id, "plan", plan.planLower, "isBasic", plan.isBasic, "isPro", plan.isPro, "isFree", plan.isFree);
     const today = new Date().toISOString().split("T")[0];
     const dailyLimit = getDailyLimit();
     const monthlyLimit = getMonthlyLimit();
@@ -90,13 +91,13 @@ export async function GET(req: NextRequest) {
         .get();
 
       const quotaRow = res?.data?.[0] || null;
-      console.log("[quota] basic row", quotaRow);
+      if(QUOTA_LOG) console.log("[quota] basic row", quotaRow);
       const used = quotaRow?.used ?? 0;
       const limit = Number.isFinite(monthlyLimit)
         ? monthlyLimit
         : quotaRow?.limit_per_month ?? 100;
 
-      console.log("[quota] basic response", {
+      if(QUOTA_LOG) console.log("[quota] basic response", {
         userId: user.id,
         plan: plan.planLower || "basic",
         period: monthStr,
@@ -122,13 +123,13 @@ export async function GET(req: NextRequest) {
       .get();
 
     const quotaRow = res?.data?.[0] || null;
-    console.log("[quota] free row", quotaRow);
+    if(QUOTA_LOG) console.log("[quota] free row", quotaRow);
     const used = quotaRow?.used ?? 0;
     const limit = Number.isFinite(dailyLimit)
       ? dailyLimit
       : quotaRow?.limit_per_day ?? 10;
 
-    console.log("[quota] free response", {
+    if(QUOTA_LOG) console.log("[quota] free response", {
       userId: user.id,
       plan: "free",
       period: today,
@@ -220,3 +221,4 @@ export async function GET(req: NextRequest) {
     remaining: Math.max(0, limit - used),
   });
 }
+

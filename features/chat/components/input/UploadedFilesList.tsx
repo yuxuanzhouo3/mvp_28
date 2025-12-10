@@ -3,12 +3,13 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
+import type { AttachmentItem } from "@/types";
 
 interface UploadedFilesListProps {
-  uploadedFiles: File[];
+  uploadedFiles: AttachmentItem[];
   maxFiles: number;
   formatFileSize: (bytes: number) => string;
-  setUploadedFiles: React.Dispatch<React.SetStateAction<File[]>>;
+  setUploadedFiles: React.Dispatch<React.SetStateAction<AttachmentItem[]>>;
   removeFile: (index: number) => void;
   getFileIcon: (type: string) => string;
 }
@@ -44,7 +45,7 @@ export function UploadedFilesList({
       <div className="grid grid-cols-10 gap-1 max-h-12 overflow-hidden">
         {uploadedFiles.map((file, index) => (
           <div
-            key={index}
+            key={file.id}
             className="group relative bg-gray-50 dark:bg-[#565869] border border-gray-200 dark:border-[#565869] rounded px-1 py-0.5 text-xs flex items-center"
             title={`${file.name} (${formatFileSize(file.size)})`}
           >

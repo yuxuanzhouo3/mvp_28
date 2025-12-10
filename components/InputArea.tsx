@@ -56,6 +56,7 @@ import { useCamera } from "@/hooks";
 import { UploadedFilesList } from "@/features/chat/components/input/UploadedFilesList";
 import { StatusIndicators } from "@/features/chat/components/input/StatusIndicators";
 import { CameraPanel } from "@/features/chat/components/input/CameraPanel";
+import type { AttachmentItem } from "@/types";
 
 interface InputAreaProps {
   prompt: string;
@@ -72,8 +73,8 @@ interface InputAreaProps {
   checkHotkeyMatch: (e: React.KeyboardEvent<HTMLTextAreaElement>, hotkey: string) => boolean;
   handleQuickAction: (action: string) => void;
   getLocalizedText: (key: string) => string;
-  uploadedFiles: File[];
-  setUploadedFiles: React.Dispatch<React.SetStateAction<File[]>>;
+  uploadedFiles: AttachmentItem[];
+  setUploadedFiles: React.Dispatch<React.SetStateAction<AttachmentItem[]>>;
   MAX_FILES: number;
   MAX_TOTAL_SIZE: number;
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -342,6 +343,38 @@ const InputArea = React.memo(function InputArea({
       (model) => model.provider.toLowerCase() === api.name.toLowerCase()
     )
   );
+
+  const domesticMultimodalModels = isDomesticVersion
+    ? filteredExternalModels.filter((model) => model.modality === "multimodal")
+    : [];
+
+  const domesticTextModels = isDomesticVersion
+    ? filteredExternalModels.filter((model) => model.modality !== "multimodal")
+    : [];
+
+  const renderExternalModelButton = (model: any) => (
+    <button
+      key={model.id}
+      onClick={() =>
+        handleModelSelect("external", undefined, model.id)
+      }
+      className="w-full text-left px-2 py-1 rounded hover:bg-white dark:hover:bg-[#3a3b44] transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-600"
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium text-gray-900 dark:text-[#ececf1]">
+          {model.name}
+        </span>
+        <span className="text-[10px] text-gray-500 dark:text-gray-400">
+          {model.provider}
+        </span>
+      </div>
+      {model.description && (
+        <p className="text-[9px] text-gray-500 dark:text-gray-400 truncate">
+          {model.description}
+        </p>
+      )}
+    </button>
+  );
   
   return (
     <div className="border-t border-gray-200 dark:border-[#565869] bg-white dark:bg-[#40414f] flex-shrink-0 p-6 sticky bottom-0">
@@ -512,6 +545,7 @@ const InputArea = React.memo(function InputArea({
                     id="file-upload"
                     accept={[
                       "image/*",
+                      "video/*",
                       "text/*",
                       "application/pdf",
                       ".doc",
@@ -1233,29 +1267,21 @@ const InputArea = React.memo(function InputArea({
                               <div className="text-[10px] font-semibold text-gray-700 dark:text-gray-200 mb-1">
                                 {isDomesticVersion ? "可用外部模型（国内版）" : "Available External Models (International)"}
                               </div>
-                              {filteredExternalModels.map((model) => (
-                                <button
-                                  key={model.id}
-                                  onClick={() =>
-                                    handleModelSelect("external", undefined, model.id)
-                                  }
-                                  className="w-full text-left px-2 py-1 rounded hover:bg-white dark:hover:bg-[#3a3b44] transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-600"
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-[11px] font-medium text-gray-900 dark:text-[#ececf1]">
-                                      {model.name}
-                                    </span>
-                                    <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                                      {model.provider}
-                                    </span>
+                              {isDomesticVersion ? (
+                                <>
+                                  <div className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 mt-1">
+                                    多模态模型
                                   </div>
-                                  {model.description && (
-                                    <p className="text-[9px] text-gray-500 dark:text-gray-400 truncate">
-                                      {model.description}
-                                    </p>
-                                  )}
-                                </button>
-                              ))}
+                                  {domesticMultimodalModels.map(renderExternalModelButton)}
+
+                                  <div className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 mt-2">
+                                    文本模型
+                                  </div>
+                                  {domesticTextModels.map(renderExternalModelButton)}
+                                </>
+                              ) : (
+                                filteredExternalModels.map(renderExternalModelButton)
+                              )}
                             </div>
                           </TabsContent>
                         </Tabs>

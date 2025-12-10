@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef } from "react";
 import { IS_DOMESTIC_VERSION } from "../config";
-import { Message, ChatSession, ExternalModel } from "../types";
+import { Message, ChatSession, ExternalModel, AttachmentItem } from "../types";
 import { simulateMultiGPTResponse } from "../services";
 import { apiService } from "../lib/api";
 import { detectLanguage, getSelectedModelDisplay } from "../utils";
@@ -10,8 +10,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export const useMessageSubmission = (
   prompt: string,
   setPrompt: React.Dispatch<React.SetStateAction<string>>,
-  uploadedFiles: File[],
-  setUploadedFiles: React.Dispatch<React.SetStateAction<File[]>>,
+  uploadedFiles: AttachmentItem[],
+  setUploadedFiles: React.Dispatch<React.SetStateAction<AttachmentItem[]>>,
   messages: Message[],
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
   isLoading: boolean,
@@ -157,7 +157,15 @@ export const useMessageSubmission = (
       return;
     }
 
-    // Create message content with files
+    // Collect uploaded media IDs (CloudBase fileId); only images/videos are sent to the model
+    const imageFileIds = uploadedFiles
+      .filter((f) => f.kind === "image" && f.fileId)
+      .map((f) => f.fileId as string);
+    const videoFileIds = uploadedFiles
+      .filter((f) => f.kind === "video" && f.fileId)
+      .map((f) => f.fileId as string);
+
+    // Create message content with files (for display only)
     let messageContent = prompt;
     if (uploadedFiles.length > 0) {
       const fileList = uploadedFiles
@@ -178,6 +186,8 @@ export const useMessageSubmission = (
       role: "user",
       content: messageContent,
       timestamp: new Date(),
+      images: imageFileIds,
+      videos: videoFileIds,
     };
     const currentModel = selectedModel || getSelectedModelDisplayLocal();
     const currentChat = chatSessions.find((c) => c.id === currentChatId);
@@ -278,8 +288,10 @@ export const useMessageSubmission = (
 
     // 准备上下文（用户与助手消息）用于流式接口
     const historyMessages = [...messages, userMessage].map((msg) => ({
-      role: msg.role,
+      role: msg.role as "user" | "assistant" | "system",
       content: msg.content,
+      images: msg.images,
+      videos: msg.videos,
     }));
 
     // Persist user message via API
@@ -293,6 +305,8 @@ export const useMessageSubmission = (
             role: "user",
             content: userMessage.content,
             client_id: userMessage.id,
+            images: userMessage.images || [],
+            videos: userMessage.videos || [],
           }),
         });
         if (res.status === 402) {
@@ -437,15 +451,20 @@ export const useMessageSubmission = (
         setIsStreaming(false);
       } else {
         // Use real API calls for external models
-        let modelId = "llama3.1-8b"; // default model
+        let modelId = "llama3.1-8b"; // fallback
 
-        // Map selected model to backend model ID
+        // Prefer selected external model
         if (selectedModelType === "external" && selectedModel) {
-          // Find the model in externalModels array and use its ID
           const model = externalModels.find((m) => m.id === selectedModel);
           if (model) {
             modelId = model.id;
           }
+        }
+
+        // If包含图片/视频，强制用多模态模型（对标 Qwen Demo）
+        const hasMedia = uploadedFiles.some((f) => f.kind === "image" || f.kind === "video");
+        if (hasMedia) {
+          modelId = "qwen3-omni-flash";
         }
 
         // Create message ID for tracking
@@ -473,6 +492,14 @@ export const useMessageSubmission = (
         setIsStreaming(true);
         // Keep isLoading true to show thinking indicator until first chunk arrives
 
+        // Minimal terminal log to help diagnose media payload
+        console.log("[media][client] sendMessageStream payload", {
+          modelId,
+          images: userMessage.images?.length || 0,
+          videos: userMessage.videos?.length || 0,
+          historyCount: historyMessages.length,
+        });
+
         try {
           await apiService.sendMessageStream(
             userMessage.content,
@@ -481,6 +508,8 @@ export const useMessageSubmission = (
             undefined,
             detectedLanguage,
             historyMessages,
+            userMessage.images,
+            userMessage.videos,
             // onChunk callback
             (chunk: string) => {
               streamedContent += chunk;
@@ -499,14 +528,10 @@ export const useMessageSubmission = (
                 };
                 setMessages((prev) => [...prev, initialMessage]);
                 messageCreated = true;
-                console.log(
-                  "Created initial message with content:",
-                  streamedContent
-                );
               } else {
                 // Update existing message
                 setMessages((prev) => {
-                  const updated = prev.map((msg) =>
+                  return prev.map((msg) =>
                     msg.id === aiMessageId
                       ? {
                           ...msg,
@@ -520,8 +545,6 @@ export const useMessageSubmission = (
                         }
                       : msg
                   );
-                  console.log("Updated messages:", updated);
-                  return updated;
                 });
               }
 
@@ -815,3 +838,10 @@ export const useMessageSubmission = (
     forceUpdate,
   };
 };
+
+
+
+
+
+
+

@@ -1,9 +1,9 @@
-// FileUploadPanel component - handles file upload UI
+// FileUploadPanel component - handles file upload UI (optional modal)
 import React from "react";
+import type { AttachmentItem } from "@/types";
 
 interface FileUploadPanelProps {
-  uploadedFiles: File[];
-  filePreviews: string[];
+  uploadedFiles: AttachmentItem[];
   fileInputRef: React.RefObject<HTMLInputElement>;
   onFileUpload: (files: FileList | null) => void;
   onRemoveFile: (index: number) => void;
@@ -12,7 +12,6 @@ interface FileUploadPanelProps {
 
 export const FileUploadPanel: React.FC<FileUploadPanelProps> = ({
   uploadedFiles,
-  filePreviews,
   fileInputRef,
   onFileUpload,
   onRemoveFile,
@@ -27,6 +26,7 @@ export const FileUploadPanel: React.FC<FileUploadPanelProps> = ({
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600"
+              aria-label="close upload panel"
             >
               ✕
             </button>
@@ -38,18 +38,18 @@ export const FileUploadPanel: React.FC<FileUploadPanelProps> = ({
               ref={fileInputRef}
               type="file"
               multiple
-              accept="image/*,text/*,.pdf,.doc,.docx"
+              accept="image/*,video/*,text/*,.pdf,.doc,.docx"
               onChange={(e) => onFileUpload(e.target.files)}
               className="hidden"
             />
             <div className="space-y-4">
-              <div className="text-4xl">📁</div>
+              <div className="text-4xl">📎</div>
               <div>
                 <p className="text-lg font-medium text-gray-700">
                   Drop files here or click to browse
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
-                  Supports images, documents, and text files (max 10MB each)
+                  Supports images, videos and documents.
                 </p>
               </div>
               <button
@@ -68,15 +68,23 @@ export const FileUploadPanel: React.FC<FileUploadPanelProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {uploadedFiles.map((file, index) => (
                   <div
-                    key={index}
+                    key={file.id}
                     className="border border-gray-200 rounded-lg p-4 flex items-center space-x-3"
                   >
-                    {filePreviews[index] ? (
-                      <img
-                        src={filePreviews[index]}
-                        alt={file.name}
-                        className="w-12 h-12 object-cover rounded"
-                      />
+                    {file.preview ? (
+                      file.kind === "video" ? (
+                        <video
+                          src={file.preview}
+                          className="w-12 h-12 object-cover rounded"
+                          muted
+                        />
+                      ) : (
+                        <img
+                          src={file.preview}
+                          alt={file.name}
+                          className="w-12 h-12 object-cover rounded"
+                        />
+                      )
                     ) : (
                       <div className="w-12 h-12 bg-gray-100 rounded flex items-center justify-center">
                         📄
@@ -93,6 +101,7 @@ export const FileUploadPanel: React.FC<FileUploadPanelProps> = ({
                     <button
                       onClick={() => onRemoveFile(index)}
                       className="text-red-500 hover:text-red-700"
+                      aria-label="remove file"
                     >
                       ✕
                     </button>

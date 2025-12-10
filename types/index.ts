@@ -64,6 +64,20 @@ export interface Message {
     model: string;
     response: string;
   }>;
+  images?: string[];
+  videos?: string[];
+}
+
+// Generic attachment item used by the chat input & upload pipeline
+export interface AttachmentItem {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  kind: "image" | "video" | "file";
+  file?: File;
+  preview?: string;
+  fileId?: string; // CloudBase fileID after upload
 }
 
 export interface ChatSession {
@@ -123,6 +137,7 @@ export interface ExternalModel {
   provider: string;
   description: string;
   category: string;
+  modality?: "multimodal" | "text";
   type: "free" | "premium" | "popular" | "paid";
   price: string;
 }

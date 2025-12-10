@@ -1,3 +1,5 @@
+import { CloudBaseConnector } from "@/lib/cloudbase/connector";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -19,7 +21,6 @@ const getDashScopeProvider = (modelId: string) => {
 function extractDelta(data: any): string {
   const choice = data?.choices?.[0];
   if (!choice) return "";
-
   const delta = choice.delta?.content ?? choice.message?.content;
   if (Array.isArray(delta)) {
     return delta.map((c: any) => c.text ?? "").join("");
@@ -27,39 +28,139 @@ function extractDelta(data: any): string {
   return delta || "";
 }
 
-export async function POST(req: Request) {
-  try {
-    // Accept both "model" (preferred) and legacy "modelId" for compatibility
-    const { model, modelId, messages = [], message, language } = await req.json();
-    const modelName = model || modelId;
-    const provider = getDashScopeProvider(modelName);
+const buildOpenAIMessages = (
+  mergedMessages: any[],
+  resolveImageUrl: (id: string) => string | null,
+  resolveVideoUrl: (id: string) => string | null
+) => {
+  return mergedMessages.map((m) => {
+    const urls = (m.images || []).map((id: string) => resolveImageUrl(id)).filter(Boolean) as string[];
+    const videoUrls = (m.videos || []).map((id: string) => resolveVideoUrl(id)).filter(Boolean) as string[];
 
-    if (!provider) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Unsupported model or missing API key",
-        }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+    if (!urls.length && !videoUrls.length) {
+      return { role: m.role, content: m.content };
+    }
+    if (urls.length && videoUrls.length) {
+      throw new Error("同一条消息暂不支持同时包含图片和视频，请分开发送。");
     }
 
-    const finalMessages =
+    return {
+      role: m.role,
+      content: [
+        { type: "text", text: m.content },
+        ...videoUrls.map((url) => ({ type: "video_url", video_url: { url } })),
+        ...urls.map((url) => ({ type: "image_url", image_url: { url, detail: "high" as const } })),
+      ],
+    };
+  });
+};
+
+export async function POST(req: Request) {
+  try {
+    type IncomingMessage = { role: string; content: string; images?: string[]; videos?: string[] };
+    const { model, modelId, messages = [], message, language, images = [], videos = [] } =
+      (await req.json()) as {
+        model?: string;
+        modelId?: string;
+        messages?: IncomingMessage[];
+        message?: string;
+        language?: string;
+        images?: string[];
+        videos?: string[];
+      };
+
+    const hasMediaPayload =
+      (Array.isArray(images) && images.length > 0) ||
+      (Array.isArray(videos) && videos.length > 0) ||
+      (Array.isArray(messages) && messages.some((m) => (m?.images || m?.videos || []).length > 0));
+
+    console.log("[media][stream] incoming", {
+      model,
+      modelId,
+      images: Array.isArray(images) ? images.length : 0,
+      videos: Array.isArray(videos) ? videos.length : 0,
+      msgCount: Array.isArray(messages) ? messages.length : 0,
+    });
+
+    const modelName = hasMediaPayload ? "qwen3-omni-flash" : model || modelId || "qwen3-omni-flash";
+    const provider = getDashScopeProvider(modelName);
+    if (!provider) {
+      return new Response(JSON.stringify({ success: false, error: "Unsupported model or missing API key" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const mergedMessages: IncomingMessage[] =
       Array.isArray(messages) && messages.length > 0
-        ? messages
-        : [{ role: "user", content: message }];
+        ? [...messages]
+        : [{ role: "user", content: message || "", images, videos }];
+
+    if ((images?.length || videos?.length) && mergedMessages.length > 0) {
+      const lastUserIdx = [...mergedMessages].reverse().findIndex((m) => m.role === "user");
+      if (lastUserIdx !== -1) {
+        const realIdx = mergedMessages.length - 1 - lastUserIdx;
+        mergedMessages[realIdx] = {
+          ...mergedMessages[realIdx],
+          images: Array.from(new Set([...(mergedMessages[realIdx].images || []), ...(images || [])])),
+          videos: Array.from(new Set([...(mergedMessages[realIdx].videos || []), ...(videos || [])])),
+        };
+      }
+    }
+
+    const allImageIds = mergedMessages
+      .flatMap((m) => m.images || [])
+      .filter((v) => typeof v === "string" && !v.startsWith("http"));
+    const allVideoIds = mergedMessages
+      .flatMap((m) => m.videos || [])
+      .filter((v) => typeof v === "string" && !v.startsWith("http"));
+
+    let tempUrlMap: Record<string, string> = {};
+    const needIds = Array.from(new Set([...allImageIds, ...allVideoIds]));
+    if (needIds.length) {
+      const connector = new CloudBaseConnector();
+      await connector.initialize();
+      const app = connector.getApp();
+      const tempRes = await app.getTempFileURL({
+        fileList: needIds.map((id: string) => ({ fileID: id, maxAge: 600 })),
+      });
+      tempUrlMap = Object.fromEntries(
+        (tempRes.fileList || []).map((f: { fileID: string; tempFileURL: string }) => [f.fileID, f.tempFileURL])
+      );
+
+      console.log("[media][stream] resolved temp URLs", {
+        requested: needIds.length,
+        resolved: Object.keys(tempUrlMap).length,
+      });
+    }
+
+    const resolveImageUrl = (v: string) => (v.startsWith("http") ? v : tempUrlMap[v] || null);
+    const resolveVideoUrl = (v: string) => (v.startsWith("http") ? v : tempUrlMap[v] || null);
+
+    let openaiMessages: any[];
+    try {
+      openaiMessages = buildOpenAIMessages(mergedMessages, resolveImageUrl, resolveVideoUrl);
+      const firstUser = openaiMessages.find((m: any) => m.role === "user");
+      console.log("[media][stream] openaiMessages sample", {
+        count: openaiMessages.length,
+        firstUser,
+      });
+    } catch (err) {
+      return new Response(JSON.stringify({ success: false, error: (err as Error).message }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     const upstream = await fetch(provider.url, {
       method: "POST",
       headers: {
         ...provider.headers,
-        ...(language === "zh"
-          ? { "Accept-Language": "zh-CN,zh;q=0.9" }
-          : {}),
+        ...(language === "zh" ? { "Accept-Language": "zh-CN,zh;q=0.9" } : {}),
       },
       body: JSON.stringify({
         model: provider.model,
-        messages: finalMessages,
+        messages: openaiMessages,
         stream: true,
         temperature: 0.7,
       }),
@@ -67,13 +168,10 @@ export async function POST(req: Request) {
 
     if (!upstream.ok || !upstream.body) {
       const errText = await upstream.text();
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: errText || "Upstream error",
-        }),
-        { status: upstream.status || 500, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: errText || "Upstream error" }), {
+        status: upstream.status || 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const stream = new TransformStream();
@@ -81,7 +179,6 @@ export async function POST(req: Request) {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
-    // Stateful filter to drop <think>...</think> blocks from streaming chunks
     const THINK_OPEN = "<think>";
     const THINK_CLOSE = "</think>";
     let thinkBuffer = "";
@@ -114,10 +211,8 @@ export async function POST(req: Request) {
         }
       }
 
-      // Remove any stray tags that slipped through
       output = output.replace(/<\/?think>/gi, "");
 
-      // On first meaningful content, trim leading whitespace/newlines
       if (!firstContentEmitted) {
         output = output.replace(/^[\s\u00A0]+/, "");
         if (output.trim().length > 0) {
@@ -125,7 +220,6 @@ export async function POST(req: Request) {
         }
       }
 
-      // Collapse excessive blank lines within chunk
       output = output.replace(/\n{3,}/g, "\n\n");
       return output;
     };
@@ -153,9 +247,7 @@ export async function POST(req: Request) {
         closed = true;
         try {
           await writer.close();
-        } catch {
-          // ignore double-close errors
-        }
+        } catch {}
       };
       try {
         while (true) {
@@ -168,25 +260,18 @@ export async function POST(req: Request) {
           for (const rawLine of lines) {
             const line = rawLine.trim();
             if (!line.startsWith("data:")) continue;
-
             const data = line.slice(5).trim();
             if (data === "[DONE]") {
               await sendDone();
               await closeWriter();
               return;
             }
-
             try {
               const parsed = JSON.parse(data);
               const delta = extractDelta(parsed);
               const cleaned = filterThinkContent(delta);
-              // Skip if chunk is only whitespace after filtering
               if (cleaned && cleaned.trim().length > 0) {
-                await safeWrite(
-                  encoder.encode(
-                    `data: ${JSON.stringify({ chunk: cleaned })}\n\n`
-                  )
-                );
+                await safeWrite(encoder.encode(`data: ${JSON.stringify({ chunk: cleaned })}\n\n`));
               }
             } catch {
               // ignore malformed chunk
@@ -197,10 +282,7 @@ export async function POST(req: Request) {
         await safeWrite(
           encoder.encode(
             `data: ${JSON.stringify({
-              chunk:
-                language === "zh"
-                  ? "抱歉，流式响应中断。"
-                  : "Stream interrupted.",
+              chunk: language === "zh" ? "抱歉，流式响应中断。" : "Stream interrupted.",
             })}\n\n`
           )
         );
@@ -219,11 +301,9 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      }),
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }
+

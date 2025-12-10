@@ -12,7 +12,7 @@ import { Copy, Share, Download, Star, Zap, Bot, User } from "lucide-react";
 import { Message } from "../types";
 import type { ReactNode } from "react";
 import { externalModels } from "@/constants";
-import { useState, memo } from "react";
+import { useState, memo, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -82,6 +82,75 @@ function ChatInterface({
   onDeleteMessage,
 }: ChatInterfaceProps) {
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+  const [mediaPreviewMap, setMediaPreviewMap] = useState<Record<string, string>>({});
+  const resolvingIdsRef = useRef<Set<string>>(new Set());
+
+  const isDirectUrl = (val: string) =>
+    /^https?:\/\//i.test(val || "") || (val || "").startsWith("blob:");
+
+  const resolveMediaSrc = (val?: string) => {
+    if (!val) return null;
+    if (isDirectUrl(val)) return val;
+    return mediaPreviewMap[val] || null;
+  };
+
+  useEffect(() => {
+    const pending: string[] = [];
+
+    messages.forEach((m) => {
+      const needImages = !(m as any).imagePreviews || (m as any).imagePreviews?.length === 0;
+      const needVideos = !(m as any).videoPreviews || (m as any).videoPreviews?.length === 0;
+
+      if (needImages) {
+        (m.images || []).forEach((id) => {
+          if (
+            typeof id === "string" &&
+            id &&
+            !isDirectUrl(id) &&
+            !mediaPreviewMap[id] &&
+            !resolvingIdsRef.current.has(id)
+          ) {
+            pending.push(id);
+          }
+        });
+      }
+
+      if (needVideos) {
+        (m.videos || []).forEach((id) => {
+          if (
+            typeof id === "string" &&
+            id &&
+            !isDirectUrl(id) &&
+            !mediaPreviewMap[id] &&
+            !resolvingIdsRef.current.has(id)
+          ) {
+            pending.push(id);
+          }
+        });
+      }
+    });
+
+    if (!pending.length) return;
+
+    const unique = Array.from(new Set(pending));
+    unique.forEach((id) => resolvingIdsRef.current.add(id));
+
+    fetch("/api/domestic/media/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ ids: unique }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.data) return;
+        setMediaPreviewMap((prev) => ({ ...prev, ...data.data }));
+      })
+      .catch((err) => console.warn("[media][resolve] failed", err))
+      .finally(() => {
+        unique.forEach((id) => resolvingIdsRef.current.delete(id));
+      });
+  }, [messages, mediaPreviewMap]);
 
   // Normalize common AI 输出的“[\\vec{F} = m \\vec{a}]”或“\\[ ... \\]”为 math 块，仅在原文完全没有 $ 时执行，避免重复渲染
   const normalizeMathContent = (text: string) => {
@@ -102,6 +171,27 @@ function ChatInterface({
     out = out.replace(/\[(\\[^\]]+)\]/g, (_m, inner) => `$${inner}$`);
 
     return out;
+  };
+
+  const stripAttachmentSummary = (text: string) => {
+    if (!text) return "";
+
+    // If the message contains a trailing attachment section (with or without **bold**),
+    // drop everything from that line to the end so only the main text is shown.
+    const lines = text.split(/\r?\n/);
+    const attachmentLineIdx = lines.findIndex((line) => {
+      const trimmed = line.trim().replace(/^\*\*|\*\*$/g, "");
+      return /^附件文件[:：]?/i.test(trimmed) || /^attached files[:：]?/i.test(trimmed);
+    });
+
+    if (attachmentLineIdx !== -1) {
+      return lines.slice(0, attachmentLineIdx).join("\n").trimEnd();
+    }
+
+    // Fallback: remove markdown "**附件文件:**" style blocks if present
+    return text
+      .replace(/\n\n[^\n]*\*\*(附件文件|Attached Files)\*\*[:：]?\s*\n[\s\S]*$/i, "")
+      .trimEnd();
   };
 
   const markdownComponents = {
@@ -275,6 +365,35 @@ function ChatInterface({
                       hour: "2-digit",
                       minute: "2-digit",
                     });
+                    const baseImages =
+                      (message.imagePreviews && message.imagePreviews.length
+                        ? message.imagePreviews
+                        : message.images) || [];
+                    const baseVideos =
+                      (message.videoPreviews && message.videoPreviews.length
+                        ? message.videoPreviews
+                        : message.videos) || [];
+                    const resolvedImages = Array.from(
+                      new Set(
+                        (baseImages as string[])
+                          .map((src) => resolveMediaSrc(src))
+                          .filter((v): v is string => !!v),
+                      ),
+                    );
+                    const resolvedVideos = Array.from(
+                      new Set(
+                        (baseVideos as string[])
+                          .map((src) => resolveMediaSrc(src))
+                          .filter((v): v is string => !!v),
+                      ),
+                    );
+                    const unresolvedMedia = Array.from(
+                      new Set(
+                        [...baseImages, ...baseVideos].filter(
+                          (src) => typeof src === "string" && !resolveMediaSrc(src),
+                        ) as string[],
+                      ),
+                    );
 
                     const bubble = (
                       <div
@@ -313,7 +432,7 @@ function ChatInterface({
                         )}
                         {isUser ? (
                           <p className="whitespace-pre-wrap leading-relaxed">
-                            {message.content}
+                            {stripAttachmentSummary(message.content)}
                             {message.isStreaming && (
                               <span className="inline-block w-0.5 h-4 bg-white/90 ml-1 animate-pulse"></span>
                             )}
@@ -330,6 +449,50 @@ function ChatInterface({
                             </ReactMarkdown>
                             {message.isStreaming && (
                               <span className="inline-block w-0.5 h-4 bg-gray-900 dark:bg-[#ececf1] ml-1 animate-pulse"></span>
+                            )}
+                          </div>
+                        )}
+                        {(resolvedImages.length > 0 ||
+                          resolvedVideos.length > 0 ||
+                          unresolvedMedia.length > 0) && (
+                          <div className="mt-3 space-y-2">
+                            {(resolvedImages.length > 0 || resolvedVideos.length > 0) && (
+                              <div className="flex flex-wrap gap-3">
+                                {resolvedImages.map((src) => (
+                                  <img
+                                    key={src}
+                                    src={src}
+                                    alt="attachment"
+                                    className="max-h-44 rounded-lg border border-gray-200 dark:border-[#4a4c5c] object-cover bg-black/5"
+                                  />
+                                ))}
+                                {resolvedVideos.map((src, idx) => (
+                                  <video
+                                    key={`${src}-${idx}`}
+                                    controls
+                                    src={src}
+                                    className="h-44 rounded-lg border border-gray-200 dark:border-[#4a4c5c] bg-black"
+                                  >
+                                    {getLocalizedText("videoNotSupported") || "Video not supported"}
+                                  </video>
+                                ))}
+                              </div>
+                            )}
+                            {unresolvedMedia.length > 0 && (
+                              <div
+                                className={`flex flex-wrap gap-2 text-xs ${
+                                  isUser ? "text-white/80" : "text-gray-500 dark:text-gray-400"
+                                }`}
+                              >
+                                {unresolvedMedia.map((id) => (
+                                  <span
+                                    key={id}
+                                    className="px-2 py-1 rounded border border-current/40 bg-white/10 dark:bg-white/5"
+                                  >
+                                    {id.split("/").pop()?.slice(-24) || id.slice(-18)}
+                                  </span>
+                                ))}
+                              </div>
                             )}
                           </div>
                         )}

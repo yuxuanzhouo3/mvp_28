@@ -369,11 +369,9 @@ export default function ChatProvider({
   const camera = useCamera();
   const defaultExternalModelId = useMemo(() => {
     const targetCategory = isDomesticVersion ? "domestic" : "international";
-    return (
-      externalModels.find((m) => m.category === targetCategory)?.id ||
-      externalModels[0]?.id ||
-      "qwen3-max"
-    );
+    const candidates = externalModels.filter((m) => m.category === targetCategory);
+    const multi = candidates.find((m) => m.modality === "multimodal");
+    return multi?.id || candidates[0]?.id || "qwen3-omni-flash";
   }, [externalModels, isDomesticVersion]);
 
   // Destructure camera state
@@ -2849,29 +2847,34 @@ const loadMessagesForConversation = useCallback(
   };
 
   async function deleteChat(chatId: string) {
+    const isLocalChat = chatId.startsWith("local-");
+
     try {
-      if (appUser) {
-        if (isDomestic) {
-          const res = await fetch(`/api/conversations/${chatId}`, {
-            method: "DELETE",
-            credentials: "include",
-          });
-          if (!res.ok) {
-            const msg = await res.text();
-            throw new Error(`Delete failed ${res.status}: ${msg || "unknown"}`);
-          }
-        } else {
-          const { error } = await supabase
-            .from("conversations")
-            .delete()
-            .eq("id", chatId)
-            .eq("user_id", appUser.id);
-          if (error) throw error;
-        }
-      } else {
+      if (!appUser) {
         // guests are not allowed to manage conversations; prompt login
         requireLogin();
         return;
+      }
+
+      // Local-only conversations (free quota) are never persisted; skip remote delete
+      if (isLocalChat) {
+        // no remote call needed
+      } else if (isDomestic) {
+        const res = await fetch(`/api/conversations/${chatId}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const msg = await res.text();
+          throw new Error(`Delete failed ${res.status}: ${msg || "unknown"}`);
+        }
+      } else {
+        const { error } = await supabase
+          .from("conversations")
+          .delete()
+          .eq("id", chatId)
+          .eq("user_id", appUser.id);
+        if (error) throw error;
       }
     } catch (err) {
       console.error("Failed to delete conversation", err);

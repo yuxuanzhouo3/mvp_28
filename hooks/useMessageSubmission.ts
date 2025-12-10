@@ -165,21 +165,16 @@ export const useMessageSubmission = (
       .filter((f) => f.kind === "video" && f.fileId)
       .map((f) => f.fileId as string);
 
-    // Create message content with files (for display only)
-    let messageContent = prompt;
-    if (uploadedFiles.length > 0) {
-      const fileList = uploadedFiles
-        .map(
-          (file) =>
-            `${getFileIcon(file.type)} ${file.name} (${formatFileSize(
-              file.size
-            )})`
-        )
-        .join("\n");
-      messageContent = `${prompt}\n\n📎 **${getLocalizedText(
-        "attachedFiles"
-      )}:**\n${fileList}`;
-    }
+    // Keep text clean; media previews are shown separately in the UI
+    const messageContent = prompt || uploadedFiles.map((f) => f.name).join(", ");
+    const imagePreviews = uploadedFiles
+      .filter((f) => f.kind === "image")
+      .map((f) => f.preview || f.fileId || "")
+      .filter(Boolean);
+    const videoPreviews = uploadedFiles
+      .filter((f) => f.kind === "video")
+      .map((f) => f.preview || f.fileId || "")
+      .filter(Boolean);
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -188,6 +183,8 @@ export const useMessageSubmission = (
       timestamp: new Date(),
       images: imageFileIds,
       videos: videoFileIds,
+      imagePreviews,
+      videoPreviews,
     };
     const currentModel = selectedModel || getSelectedModelDisplayLocal();
     const currentChat = chatSessions.find((c) => c.id === currentChatId);

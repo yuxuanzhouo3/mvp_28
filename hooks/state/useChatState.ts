@@ -5,11 +5,14 @@ import { externalModels } from "../../constants";
 
 export const useChatState = () => {
   const currentModelConfig = getCurrentModelConfig();
-  // When default language is non-en (e.g., zh/ch), pick the first external model as default
-  const defaultModelId =
-    DEFAULT_LANGUAGE === "en"
-      ? currentModelConfig.defaultModel
-      : externalModels[0]?.id || currentModelConfig.defaultModel;
+  // Prefer a multimodal model when available; fall back to config default
+  const pickDefaultModel = () => {
+    const targetCategory = DEFAULT_LANGUAGE === "en" ? "international" : "domestic";
+    const candidates = externalModels.filter((m) => m.category === targetCategory);
+    const multi = candidates.find((m) => m.modality === "multimodal");
+    return multi?.id || candidates[0]?.id || currentModelConfig.defaultModel;
+  };
+  const defaultModelId = pickDefaultModel();
   const [messages, setMessages] = useState<Message[]>([]);
   const [prompt, setPrompt] = useState("");
   const [isLoading, setIsLoading] = useState(false);

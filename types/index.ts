@@ -66,6 +66,8 @@ export interface Message {
   }>;
   images?: string[];
   videos?: string[];
+  imagePreviews?: string[];
+  videoPreviews?: string[];
 }
 
 // Generic attachment item used by the chat input & upload pipeline

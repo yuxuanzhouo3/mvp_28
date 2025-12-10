@@ -8,15 +8,8 @@ RUN npm install -g pnpm
 WORKDIR /app
 
 # ========== 构建时环境变量声明 ==========
-# 只声明必须在构建时使用的变量
 ARG NODE_ENV=production
-
-# 将 ARG 转换为 ENV，使构建过程能访问这些变量
 ENV NODE_ENV=$NODE_ENV
-
-# ⚠️ 重要：移除所有其他 ARG 和 ENV 声明
-# 所有与应用配置相关的变量（数据库、API密钥、认证等）
-# 都应该在运行时由部署平台动态注入，不应该在构建时硬编码到镜像中
 
 # 复制包管理文件
 COPY package.json pnpm-lock.yaml ./
@@ -27,17 +20,21 @@ RUN pnpm install --frozen-lockfile
 # 复制源代码
 COPY . .
 
-# 1. 声明构建参数 (ARG)
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
-# 如果需要 Service Role Key 也在这里声明
-# ARG SUPABASE_SERVICE_ROLE_KEY
+# 1. 声明构建参数 (ARG) 并提供【默认占位符】
+# 关键修改：添加 =... 默认值。
+# 这样即使腾讯云构建时不传这些参数，Docker 构建也能通过，
+# 从而满足 Next.js 构建时对 process.env 的基本检查。
+ARG NEXT_PUBLIC_SUPABASE_URL=https://build-placeholder.supabase.co
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=build-placeholder-key
 
-# 2. 将 ARG 转为环境变量 (ENV)，这样 Next.js 构建时才能读取到
+# 2. 将 ARG 转为 ENV
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-# 构建应用（此时环境变量已可用）
+# 构建应用
+# 此时 Next.js 会使用上面的假值完成构建。
+# 只要你的代码里没有在 import 阶段就发起网络请求（通常是在组件 useEffect 或 Server Component 内部发起），
+# 使用假值构建是完全安全的。
 RUN pnpm build
 
 # 生产阶段
@@ -49,32 +46,9 @@ RUN npm install -g pnpm
 # 设置工作目录
 WORKDIR /app
 
-# ========== 运行时环境变量声明 ==========
-# 所有配置变量都应该在运行时由部署平台注入，不在 Dockerfile 中指定
-#
-# 部署平台（腾讯云、Vercel等）需要在运行时注入以下变量：
-# 
-# 前端配置（通过 /api/auth/config API 读取）：
-# - MY_NEXT_PUBLIC_APP_URL
-# - MY_NEXT_PUBLIC_SUPABASE_URL
-# - MY_NEXT_PUBLIC_SUPABASE_ANON_KEY
-# - MY_NEXT_PUBLIC_WECHAT_CLOUDBASE_ID
-# - MY_NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-# - MY_NEXT_PUBLIC_ALIPAY_APP_ID
-#
-# 后端密钥（服务端 API 使用）：
-# - WECHAT_APP_SECRET
-# - WECHAT_PAY_API_V3_KEY
-# - WECHAT_PAY_PRIVATE_KEY
-# - DEEPSEEK_API_KEY
-# - OPENAI_API_KEY
-# - ANTHROPIC_API_KEY
-# - 等其他 API 密钥
-#
-# ⚠️ 关键原则：
-# 1. 构建时不硬编码任何配置
-# 2. 所有配置在运行时由部署环境提供
-# 3. 这样同一个镜像可以用于不同的环境（开发、测试、生产等）
+# ========== 运行时配置说明 ==========
+# 你的思路是正确的：真实的配置通过环境变量注入到容器中，
+# 然后前端通过 /api/auth/config 接口在运行时获取这些 MY_NEXT_PUBLIC_... 变量。
 
 ARG PORT=3000
 ENV PORT=$PORT

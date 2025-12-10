@@ -11,7 +11,21 @@ export async function GET(request: NextRequest) {
       process.env.WECHAT_APP_ID ||
       process.env.NEXT_PUBLIC_WECHAT_APP_ID ||
       process.env.WECHAT_CLOUDBASE_APP_ID;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+
+    // 优先使用环境变量配置的域名；若未配置，则回落到请求头推断
+    const envAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const forwardedProto = request.headers.get("x-forwarded-proto");
+    const forwardedHost = request.headers.get("x-forwarded-host");
+    const host = forwardedHost || request.headers.get("host") || "";
+    const scheme =
+      envAppUrl?.startsWith("http") ||
+      host.includes("localhost") ||
+      host.startsWith("127.0.0.1")
+        ? null
+        : forwardedProto || "https";
+    const inferredUrl =
+      host && scheme ? `${scheme}://${host}` : host ? `http://${host}` : null;
+    const appUrl = (envAppUrl || inferredUrl || "").replace(/\/$/, "");
 
     if (!appId || !appUrl) {
       return NextResponse.json(
@@ -23,7 +37,7 @@ export async function GET(request: NextRequest) {
     const next = request.nextUrl.searchParams.get("next") || "/";
     const statePayload = JSON.stringify({ next });
     const state = Buffer.from(statePayload).toString("base64url");
-    const redirectUri = `${appUrl.replace(/\/$/, "")}/auth/callback`;
+    const redirectUri = `${appUrl}/auth/callback`;
 
     const qrcodeUrl = `https://open.weixin.qq.com/connect/qrconnect?appid=${appId}&redirect_uri=${encodeURIComponent(
       redirectUri

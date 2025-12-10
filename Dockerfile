@@ -27,6 +27,16 @@ RUN pnpm install --frozen-lockfile
 # 复制源代码
 COPY . .
 
+# 1. 声明构建参数 (ARG)
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+# 如果需要 Service Role Key 也在这里声明
+# ARG SUPABASE_SERVICE_ROLE_KEY
+
+# 2. 将 ARG 转为环境变量 (ENV)，这样 Next.js 构建时才能读取到
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+
 # 构建应用（此时环境变量已可用）
 RUN pnpm build
 

@@ -1,6 +1,8 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Volume2, Video, MapPin, X } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
+import { createLocalizedTextGetter } from "@/lib/localization";
 
 interface StatusIndicatorsProps {
   isRecording: boolean;
@@ -21,6 +23,9 @@ export function StatusIndicators({
   currentLocation,
   clearLocation,
 }: StatusIndicatorsProps) {
+  const { currentLanguage } = useLanguage();
+  const t = React.useMemo(() => createLocalizedTextGetter(currentLanguage), [currentLanguage]);
+
   return (
     <>
       {/* Voice Recording Indicator */}
@@ -43,7 +48,7 @@ export function StatusIndicators({
               <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
               <Volume2 className="w-3 h-3 text-purple-600 dark:text-purple-400" />
               <p className="text-xs text-purple-600 dark:text-purple-400">
-                Pro Voice Chat active... AI is listening
+                {t("proVoiceChat")} {currentLanguage === "zh" ? "进行中，AI 正在聆听" : "active... AI is listening"}
               </p>
             </div>
             <Button
@@ -51,7 +56,7 @@ export function StatusIndicators({
               variant="ghost"
               onClick={stopProVoiceChat}
               className="h-4 w-4 p-0 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/30"
-              title="Stop Pro Voice Chat"
+              title={t("stopProVoiceChat")}
             >
               <X className="w-2 h-2" />
             </Button>
@@ -67,7 +72,8 @@ export function StatusIndicators({
               <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
               <Video className="w-3 h-3 text-purple-600 dark:text-purple-400" />
               <p className="text-xs text-purple-600 dark:text-purple-400">
-                Pro Video Chat active... AI is watching and listening
+                {t("proVideoChat")}{" "}
+                {currentLanguage === "zh" ? "进行中，AI 正在观看并聆听" : "active... AI is watching and listening"}
               </p>
             </div>
             <Button
@@ -75,7 +81,7 @@ export function StatusIndicators({
               variant="ghost"
               onClick={stopProVideoChat}
               className="h-4 w-4 p-0 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/30"
-              title="Stop Pro Video Chat"
+              title={t("stopProVideoChat")}
             >
               <X className="w-2 h-2" />
             </Button>
@@ -90,7 +96,7 @@ export function StatusIndicators({
             <div className="flex items-center space-x-2">
               <MapPin className="w-3 h-3 text-green-600 dark:text-green-400" />
               <p className="text-xs text-green-600 dark:text-green-400">
-                Location added to prompt
+                {currentLanguage === "zh" ? "已添加位置信息" : "Location added to prompt"}
               </p>
             </div>
             <Button
@@ -98,7 +104,7 @@ export function StatusIndicators({
               variant="ghost"
               onClick={clearLocation}
               className="h-4 w-4 p-0 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30"
-              title="Remove location"
+              title={currentLanguage === "zh" ? "移除定位" : "Remove location"}
             >
               <X className="w-2 h-2" />
             </Button>

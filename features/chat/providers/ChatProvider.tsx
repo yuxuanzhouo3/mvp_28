@@ -515,6 +515,20 @@ export default function ChatProvider({
     setIsSidebarLoading,
   } = uiState;
 
+  // Auto-clear upload error after 5s to avoid lingering prompts
+  useEffect(() => {
+    if (!uploadError) return;
+    const timer = setTimeout(() => setUploadError(""), 5000);
+    return () => clearTimeout(timer);
+  }, [uploadError, setUploadError]);
+
+  // Auto-clear Pro voice/video error after 5s
+  useEffect(() => {
+    if (!proChatError) return;
+    const timer = setTimeout(() => setProChatError(""), 5000);
+    return () => clearTimeout(timer);
+  }, [proChatError, setProChatError]);
+
   const {
     appUser,
     setAppUser,
@@ -930,6 +944,10 @@ const loadMessagesForConversation = useCallback(
   const VIDEO_LIMIT_BYTES = Math.max(0, VIDEO_LIMIT_MB * 1024 * 1024);
   const VIDEO_UPLOAD_DISABLED = VIDEO_LIMIT_MB <= 0;
 
+  const rawMaxFiles =
+    Number(process.env.NEXT_PUBLIC_MAX_FILE_COUNT ?? process.env.MAX_FILE_COUNT ?? MAX_FILES) || MAX_FILES;
+  const MAX_FILES_LIMIT = Number.isFinite(rawMaxFiles) ? Math.max(1, rawMaxFiles) : MAX_FILES;
+
   const rawAudioLimit =
     Number(process.env.NEXT_PUBLIC_MAX_AUDIO_UPLOAD_MB ?? process.env.MAX_AUDIO_UPLOAD_MB ?? 100) || 0;
   const AUDIO_LIMIT_MB = Number.isFinite(rawAudioLimit) ? rawAudioLimit : 100;
@@ -961,15 +979,23 @@ const loadMessagesForConversation = useCallback(
     const files = event.target.files;
     if (!files) return;
     const incoming = Array.from(files);
-    if (uploadedFiles.length >= MAX_FILES) {
+    if (uploadedFiles.length >= MAX_FILES_LIMIT) {
       setUploadError(
-        `Maximum ${MAX_FILES} files reached. Please remove some files first.`
+        `Maximum ${MAX_FILES_LIMIT} files reached. Please remove some files first.`
       );
       event.target.value = "";
       return;
     }
-    const availableSlots = Math.max(0, MAX_FILES - uploadedFiles.length);
+    const availableSlots = Math.max(0, MAX_FILES_LIMIT - uploadedFiles.length);
     const slice = incoming.slice(0, availableSlots);
+
+    // Enforce single media category at a time
+    const existingKind = uploadedFiles[0]?.kind ?? null;
+    let sessionKind: AttachmentItem["kind"] | null = existingKind ?? null;
+    const typeMismatchMessage =
+      activeLanguage === "zh"
+        ? "不同类型的文件不能同时上传，请先清空已选文件。"
+        : "Please upload only one media type at a time. Clear existing files first.";
 
     for (const file of slice) {
       const isImage = file.type.startsWith("image/");
@@ -983,6 +1009,23 @@ const loadMessagesForConversation = useCallback(
         kind: isImage ? "image" : isVideo ? "video" : isAudio ? "audio" : "file",
         file,
       };
+
+      const currentKind = baseItem.kind;
+      if (!["image", "video", "audio"].includes(currentKind)) {
+        setUploadError(
+          activeLanguage === "zh"
+            ? "仅支持上传图片、视频或音频文件。"
+            : "Only image, video, or audio files are allowed."
+        );
+        continue;
+      }
+
+      if (!sessionKind) {
+        sessionKind = currentKind;
+      } else if (currentKind !== sessionKind) {
+        setUploadError(typeMismatchMessage);
+        continue;
+      }
 
       if (isAudio) {
         if (!allowAudioUpload) {
@@ -1029,7 +1072,7 @@ const loadMessagesForConversation = useCallback(
         continue;
       }
 
-      // 非音频时，如已存在音频，阻止混发
+      // 非音频时，如已存在音频，阻止混发（已在上方 sessionKind 保障，此处保留文案）
       if (uploadedFiles.some((f) => f.kind === "audio")) {
         setUploadError("当前已选择音频，请先移除音频再上传其他文件。");
         continue;
@@ -2643,7 +2686,7 @@ const loadMessagesForConversation = useCallback(
         setMessages((prev) => [...prev, newMessage]);
       }, 2000);
     } catch (error) {
-      setProChatError("Failed to access microphone. Please check permissions.");
+      setProChatError(getLocalizedText("proVoiceError"));
     }
   };
 
@@ -2685,9 +2728,7 @@ const loadMessagesForConversation = useCallback(
         setMessages((prev) => [...prev, newMessage]);
       }, 2000);
     } catch (error) {
-      setProChatError(
-        "Failed to access camera and microphone. Please check permissions."
-      );
+      setProChatError(getLocalizedText("proVideoError"));
     }
   };
 
@@ -3633,7 +3674,7 @@ const loadMessagesForConversation = useCallback(
     getLocalizedText,
     uploadedFiles,
     setUploadedFiles,
-    MAX_FILES,
+    MAX_FILES: MAX_FILES_LIMIT,
     MAX_TOTAL_SIZE,
     handleFileUpload,
     isUploading,

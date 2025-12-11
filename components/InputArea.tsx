@@ -27,8 +27,6 @@ import {
   MicOff,
   X,
   Camera,
-  Sun,
-  Moon,
   Clock,
   Mic,
   Video,
@@ -276,6 +274,28 @@ const InputArea = React.memo(function InputArea({
     isCapturing,
   } = useCamera();
 
+  const allowedTypesHint =
+    selectedLanguage === "zh"
+      ? "支持：图片、视频、音频（不可混合类型上传）"
+      : "Allowed: image, video, or audio only (single type at a time)";
+
+  const attachmentButtonTitle = React.useMemo(() => {
+    const base =
+      uploadedFiles.length >= MAX_FILES
+        ? getLocalizedText("maximumFilesReached").replace("{count}", MAX_FILES.toString())
+        : isUploading
+        ? getLocalizedText("uploading")
+        : getLocalizedText("uploadFilesMaxCount").replace("{count}", MAX_FILES.toString());
+    return `${base}\n${allowedTypesHint}`;
+  }, [
+    uploadedFiles.length,
+    MAX_FILES,
+    isUploading,
+    getLocalizedText,
+    MAX_TOTAL_SIZE,
+    allowedTypesHint,
+  ]);
+
   const focusTextarea = React.useCallback(() => {
     if (textareaRef?.current) {
       textareaRef.current.focus();
@@ -438,7 +458,7 @@ const InputArea = React.memo(function InputArea({
                   <button
                     onClick={copySelectedText}
                     className="p-1 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors"
-                    title="Copy selected text"
+                    title={getLocalizedText("copySelection")}
                   >
                     <svg
                       className="w-4 h-4"
@@ -457,7 +477,7 @@ const InputArea = React.memo(function InputArea({
                   <button
                     onClick={deleteSelectedText}
                     className="p-1 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 rounded transition-colors"
-                    title="Delete selected text"
+                    title={getLocalizedText("deleteSelection")}
                   >
                     <svg
                       className="w-4 h-4"
@@ -545,59 +565,16 @@ const InputArea = React.memo(function InputArea({
                     onChange={handleFileUpload}
                     className="hidden"
                     id="file-upload"
-                    accept={[
-                      "image/*",
-                      "video/*",
-                      "audio/*",
-                      "text/*",
-                      "application/pdf",
-                      ".doc",
-                      ".docx",
-                      ".xls",
-                      ".xlsx",
-                      ".ppt",
-                      ".pptx",
-                      ".txt",
-                      ".md",
-                      ".json",
-                      ".xml",
-                      ".csv",
-                      ".tsv",
-                      ".log",
-                    ].join(",")}
+                    accept={["image/*", "video/*", "audio/*"].join(",")}
                     disabled={isUploading}
                   />
-                  {allowAudioUpload && (
-                    <input
-                      type="file"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                      id="audio-upload"
-                      accept="audio/*"
-                      disabled={isUploading}
-                    />
-                  )}
                   <Button
                     size="sm"
                     variant="ghost"
                     className={`h-7 w-7 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
                       isUploading ? "animate-pulse" : ""
                     }`}
-                    title={
-                      uploadedFiles.length >= MAX_FILES
-                        ? getLocalizedText("maximumFilesReached").replace(
-                            "{count}",
-                            MAX_FILES.toString()
-                          )
-                        : isUploading
-                        ? getLocalizedText("uploading")
-                        : getLocalizedText("uploadFilesMax")
-                            .replace("{count}", MAX_FILES.toString())
-                            .replace(
-                              "{size}",
-                              (MAX_TOTAL_SIZE / (1024 * 1024)).toString()
-                            )
-                    }
+                    title={attachmentButtonTitle}
                     type="button"
                     disabled={isUploading}
                     onClick={() => {
@@ -617,31 +594,6 @@ const InputArea = React.memo(function InputArea({
                       <Paperclip className="w-3 h-3" />
                     )}
                   </Button>
-                  {allowAudioUpload && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869]"
-                      title="上传音频文件"
-                      type="button"
-                      disabled={isUploading}
-                      onClick={() => {
-                        if (uploadedFiles.some((f) => f.kind !== "audio") && uploadedFiles.length > 0) {
-                          setUploadError("音频暂不支持与图片/视频/其他文件同时发送，请先清空附件。");
-                          setTimeout(() => setUploadError(""), 2500);
-                          return;
-                        }
-                        if (uploadedFiles.some((f) => f.kind === "audio")) {
-                          setUploadError("已选择音频，如需替换请先删除当前音频。");
-                          setTimeout(() => setUploadError(""), 2500);
-                          return;
-                        }
-                        document.getElementById("audio-upload")?.click();
-                      }}
-                    >
-                      <Mic className="w-3 h-3" />
-                    </Button>
-                  )}
 
                   {/* Voice Input Button */}
                   <Button
@@ -654,8 +606,8 @@ const InputArea = React.memo(function InputArea({
                     }`}
                     title={
                       isRecording
-                        ? "Stop voice recording"
-                        : "Start voice recording"
+                        ? getLocalizedText("stopVoiceRecording")
+                        : getLocalizedText("startVoiceRecording")
                     }
                     type="button"
                     onClick={toggleVoiceRecording}
@@ -672,8 +624,8 @@ const InputArea = React.memo(function InputArea({
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 w-7 p-0 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all duration-200 rounded-full border border-orange-300 dark:border-orange-600"
-                      title="Reset voice recording (if stuck)"
+                    className="h-7 w-7 p-0 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all duration-200 rounded-full border border-orange-300 dark:border-orange-600"
+                      title={getLocalizedText("resetVoiceRecording")}
                       type="button"
                       onClick={resetVoiceRecording}
                     >
@@ -694,10 +646,10 @@ const InputArea = React.memo(function InputArea({
                     }`}
                     title={
                       !isCameraSupported
-                        ? "Camera not available in this browser/device."
+                        ? getLocalizedText("cameraUnavailable")
                         : isCameraActive
-                        ? "Close camera"
-                        : "Open camera"
+                        ? getLocalizedText("cameraClose")
+                        : getLocalizedText("cameraOpen")
                     }
                     type="button"
                     onClick={isCameraSupported ? toggleCamera : undefined}
@@ -719,37 +671,14 @@ const InputArea = React.memo(function InputArea({
                     }`}
                     title={
                       currentLocation
-                        ? "Location added - Click to get new location"
-                        : "Get current location"
+                        ? getLocalizedText("locationAdded")
+                        : getLocalizedText("getLocation")
                     }
                   >
                     {isGettingLocation ? (
                       <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
                     ) : (
                       <MapPin className="w-3 h-3" />
-                    )}
-                  </Button>
-
-                  {/* Dark Mode Toggle Button */}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={toggleTheme}
-                    className={`h-7 w-7 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
-                      isDarkMode
-                        ? "text-yellow-600 dark:text-yellow-400"
-                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869]"
-                    }`}
-                    title={
-                      isDarkMode
-                        ? "Switch to light mode"
-                        : "Switch to dark mode"
-                    }
-                  >
-                    {isDarkMode ? (
-                      <Sun className="w-3 h-3" />
-                    ) : (
-                      <Moon className="w-3 h-3" />
                     )}
                   </Button>
 
@@ -760,7 +689,7 @@ const InputArea = React.memo(function InputArea({
                         size="sm"
                         variant="ghost"
                         className="h-7 w-7 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full border border-gray-300 dark:border-[#565869]"
-                        title="Navigate conversation"
+                        title={getLocalizedText("navigateConversation")}
                         disabled={!appUser}
                       >
                         <Clock className="w-3 h-3" />
@@ -1107,15 +1036,15 @@ const InputArea = React.memo(function InputArea({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className={`h-9 w-9 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
+                    className={`h-7 w-7 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
                       isProVoiceChatActive
                         ? "text-purple-600 dark:text-purple-400 animate-pulse"
                         : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869]"
                     }`}
                     title={
                       isProVoiceChatActive
-                        ? "Stop Pro Voice Chat"
-                        : "Pro Voice Chat"
+                        ? getLocalizedText("stopProVoiceChat")
+                        : getLocalizedText("proVoiceChat")
                     }
                     type="button"
                     onClick={
@@ -1139,15 +1068,15 @@ const InputArea = React.memo(function InputArea({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className={`h-9 w-9 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
+                    className={`h-7 w-7 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
                       isProVideoChatActive
                         ? "text-purple-600 dark:text-purple-400 animate-pulse"
                         : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869]"
                     }`}
                     title={
                       isProVideoChatActive
-                        ? "Stop Pro Video Chat"
-                        : "Pro Video Chat"
+                        ? getLocalizedText("stopProVideoChat")
+                        : getLocalizedText("proVideoChat")
                     }
                     type="button"
                     onClick={
@@ -1173,13 +1102,13 @@ const InputArea = React.memo(function InputArea({
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 px-2 text-xs border-gray-300 dark:border-[#565869] hover:border-gray-400 dark:hover:border-gray-500 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] rounded-md transition-all duration-200"
+                        className="h-8 px-3 text-xs border-gray-300 dark:border-[#565869] hover:border-gray-400 dark:hover:border-gray-500 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] rounded-md transition-all duration-200 min-w-[140px]"
                         disabled={isModelLocked}
                         title={getLocalizedText("selectModel")}
                       >
                         <div className="flex items-center space-x-1">
                           {getModelIcon()}
-                          <span className="max-w-16 truncate">
+                          <span className="max-w-24 truncate">
                             {getSelectedModelDisplay()}
                           </span>
                           {!isModelLocked && (

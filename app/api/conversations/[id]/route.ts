@@ -69,14 +69,32 @@ export async function DELETE(
       return new Response("Not found", { status: 404 });
     }
 
+    // collect media fileIds for cleanup
+    const msgs = await db.collection("messages").where({ conversationId: id }).get();
+    const fileIds: string[] = Array.from(
+      new Set(
+        (msgs.data || []).flatMap((m: any) => [
+          ...(m.imageFileIds || []),
+          ...(m.videoFileIds || []),
+          ...(m.audioFileIds || []),
+        ]),
+      ),
+    ).filter((v: any): v is string => typeof v === "string" && v);
+
     await db.collection("conversations").doc(id).remove();
     // cascade delete messages
-    const msgs = await db
-      .collection("messages")
-      .where({ conversationId: id })
-      .get();
     for (const m of msgs.data || []) {
       await db.collection("messages").doc(m._id).remove();
+    }
+
+    // delete files quietly
+    if (fileIds.length) {
+      try {
+        const app = connector.getApp();
+        await app.deleteFile({ fileList: fileIds });
+      } catch (err) {
+        console.warn("[conversation delete] delete file skipped", err);
+      }
     }
 
     return new Response(null, { status: 204 });

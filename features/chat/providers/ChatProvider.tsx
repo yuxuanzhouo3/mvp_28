@@ -628,6 +628,7 @@ const loadMessagesForConversation = useCallback(
           timestamp: new Date(m.created_at),
           images: m.imageFileIds || m.images || [],
           videos: m.videoFileIds || m.videos || [],
+          audios: (m.audioFileIds || (m as any).audios || []) as any,
         })) || [];
 
       setMessages(fetchedMessages);
@@ -914,6 +915,7 @@ const loadMessagesForConversation = useCallback(
     setUploadedFiles,
     fileInputRef,
   } = fileAttachments;
+  const allowAudioUpload = isDomestic;
 
   // Upload size limits (exposed to client via NEXT_PUBLIC_*, fallback to server vars)
   const rawImageLimit =
@@ -923,14 +925,24 @@ const loadMessagesForConversation = useCallback(
   const IMAGE_UPLOAD_DISABLED = IMAGE_LIMIT_MB <= 0;
 
   const rawVideoLimit =
-    Number(process.env.NEXT_PUBLIC_MAX_VIDEO_UPLOAD_MB ?? process.env.MAX_VIDEO_UPLOAD_MB ?? 200) || 0;
-  const VIDEO_LIMIT_MB = Number.isFinite(rawVideoLimit) ? rawVideoLimit : 200;
+    Number(process.env.NEXT_PUBLIC_MAX_VIDEO_UPLOAD_MB ?? process.env.MAX_VIDEO_UPLOAD_MB ?? 256) || 0;
+  const VIDEO_LIMIT_MB = Number.isFinite(rawVideoLimit) ? rawVideoLimit : 256;
   const VIDEO_LIMIT_BYTES = Math.max(0, VIDEO_LIMIT_MB * 1024 * 1024);
   const VIDEO_UPLOAD_DISABLED = VIDEO_LIMIT_MB <= 0;
 
-  const uploadToCloudbase = async (file: File, kind: "image" | "video") => {
+  const rawAudioLimit =
+    Number(process.env.NEXT_PUBLIC_MAX_AUDIO_UPLOAD_MB ?? process.env.MAX_AUDIO_UPLOAD_MB ?? 100) || 0;
+  const AUDIO_LIMIT_MB = Number.isFinite(rawAudioLimit) ? rawAudioLimit : 100;
+  const AUDIO_LIMIT_BYTES = Math.max(0, AUDIO_LIMIT_MB * 1024 * 1024);
+  const AUDIO_UPLOAD_DISABLED = AUDIO_LIMIT_MB <= 0;
+
+  const uploadToCloudbase = async (file: File, kind: "image" | "video" | "audio") => {
     const endpoint =
-      kind === "video" ? "/api/domestic/video/upload" : "/api/domestic/upload";
+      kind === "video"
+        ? "/api/domestic/video/upload"
+        : kind === "audio"
+          ? "/api/domestic/audio/upload"
+          : "/api/domestic/upload";
     const form = new FormData();
     form.append("file", file);
     const res = await fetch(endpoint, {
@@ -962,14 +974,66 @@ const loadMessagesForConversation = useCallback(
     for (const file of slice) {
       const isImage = file.type.startsWith("image/");
       const isVideo = file.type.startsWith("video/");
+      const isAudio = file.type.startsWith("audio/");
       const baseItem: AttachmentItem = {
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         name: file.name,
         size: file.size,
         type: file.type || "application/octet-stream",
-        kind: isImage ? "image" : isVideo ? "video" : "file",
+        kind: isImage ? "image" : isVideo ? "video" : isAudio ? "audio" : "file",
         file,
       };
+
+      if (isAudio) {
+        if (!allowAudioUpload) {
+          setUploadError("当前环境仅国内版支持音频上传。");
+          continue;
+        }
+        if (AUDIO_UPLOAD_DISABLED) {
+          setUploadError("音频上传已禁用，请调整 MAX_AUDIO_UPLOAD_MB。");
+          continue;
+        }
+        const existingAudio = uploadedFiles.some((f) => f.kind === "audio");
+        const hasOtherMedia = uploadedFiles.some((f) => f.kind === "image" || f.kind === "video");
+        if (existingAudio) {
+          setUploadError("一次仅支持添加一个音频文件，请先移除已选音频。");
+          continue;
+        }
+        if (hasOtherMedia) {
+          setUploadError("音频暂不支持与图片/视频同时发送，请先移除其他附件。");
+          continue;
+        }
+        if (file.size > AUDIO_LIMIT_BYTES) {
+          setUploadError(`音频大小超出限制（最大 ${AUDIO_LIMIT_MB} MB）`);
+          continue;
+        }
+        const preview = URL.createObjectURL(file);
+        setIsUploading(true);
+        try {
+          const { fileId, tempUrl } = await uploadToCloudbase(file, "audio");
+          setUploadedFiles((prev) => [
+            ...prev,
+            {
+              ...baseItem,
+              fileId,
+              preview: tempUrl || preview,
+              format: file.name.split(".").pop()?.toLowerCase(),
+            },
+          ]);
+        } catch (err) {
+          URL.revokeObjectURL(preview);
+          setUploadError("音频上传失败，请重试。");
+        } finally {
+          setIsUploading(false);
+        }
+        continue;
+      }
+
+      // 非音频时，如已存在音频，阻止混发
+      if (uploadedFiles.some((f) => f.kind === "audio")) {
+        setUploadError("当前已选择音频，请先移除音频再上传其他文件。");
+        continue;
+      }
 
       if (isImage) {
         if (IMAGE_UPLOAD_DISABLED) {
@@ -1039,6 +1103,11 @@ const loadMessagesForConversation = useCallback(
       } else if (target.fileId && target.kind === "video") {
         await fetch(
           `/api/domestic/video/upload?fileId=${encodeURIComponent(target.fileId)}`,
+          { method: "DELETE", credentials: "include" }
+        );
+      } else if (target.fileId && target.kind === "audio") {
+        await fetch(
+          `/api/domestic/audio/upload?fileId=${encodeURIComponent(target.fileId)}`,
           { method: "DELETE", credentials: "include" }
         );
       }
@@ -3490,6 +3559,7 @@ const loadMessagesForConversation = useCallback(
     appUser,
     isGeneratingLink,
     selectedLanguage,
+    isDomestic,
     setSelectedLanguage,
     currentPlan,
     planExp: appUser?.planExp || null,
@@ -3641,6 +3711,7 @@ const loadMessagesForConversation = useCallback(
     locationError,
     proChatError,
     selectedLanguage,
+    allowAudioUpload,
   };
 
   const modalProps = {
@@ -3782,5 +3853,3 @@ const loadMessagesForConversation = useCallback(
     </ChatUIContext.Provider>
   );
 }
-
-

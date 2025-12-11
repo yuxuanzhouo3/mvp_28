@@ -157,13 +157,32 @@ export const useMessageSubmission = (
       return;
     }
 
-    // Collect uploaded media IDs (CloudBase fileId); only images/videos are sent to the model
+    // Collect uploaded media IDs (CloudBase fileId); only images/videos/audios are sent to the model
     const imageFileIds = uploadedFiles
       .filter((f) => f.kind === "image" && f.fileId)
       .map((f) => f.fileId as string);
     const videoFileIds = uploadedFiles
       .filter((f) => f.kind === "video" && f.fileId)
       .map((f) => f.fileId as string);
+    const audioFileIds = uploadedFiles
+      .filter((f) => f.kind === "audio" && f.fileId)
+      .map((f) => f.fileId as string);
+
+    // 限制：音频不可与图片/视频混合，同一条消息仅支持一个音频
+    if (audioFileIds.length > 0) {
+      if (audioFileIds.length > 1) {
+        setIsLoading(false);
+        alert("一次仅支持发送一个音频文件，请移除多余音频。");
+        releaseLock();
+        return;
+      }
+      if (imageFileIds.length || videoFileIds.length) {
+        setIsLoading(false);
+        alert("音频暂不支持与图片或视频同时发送，请分开发送。");
+        releaseLock();
+        return;
+      }
+    }
 
     // Keep text clean; media previews are shown separately in the UI
     const messageContent = prompt || uploadedFiles.map((f) => f.name).join(", ");
@@ -173,6 +192,10 @@ export const useMessageSubmission = (
       .filter(Boolean);
     const videoPreviews = uploadedFiles
       .filter((f) => f.kind === "video")
+      .map((f) => f.preview || f.fileId || "")
+      .filter(Boolean);
+    const audioPreviews = uploadedFiles
+      .filter((f) => f.kind === "audio")
       .map((f) => f.preview || f.fileId || "")
       .filter(Boolean);
 
@@ -185,6 +208,8 @@ export const useMessageSubmission = (
       videos: videoFileIds,
       imagePreviews,
       videoPreviews,
+      audios: audioFileIds,
+      audioPreviews,
     };
     const currentModel = selectedModel || getSelectedModelDisplayLocal();
     const currentChat = chatSessions.find((c) => c.id === currentChatId);
@@ -289,6 +314,7 @@ export const useMessageSubmission = (
       content: msg.content,
       images: msg.images,
       videos: msg.videos,
+      audios: (msg as any).audios,
     }));
 
     // Persist user message via API
@@ -304,6 +330,7 @@ export const useMessageSubmission = (
             client_id: userMessage.id,
             images: userMessage.images || [],
             videos: userMessage.videos || [],
+            audios: (userMessage as any).audios || [],
           }),
         });
         if (res.status === 402) {
@@ -459,7 +486,9 @@ export const useMessageSubmission = (
         }
 
         // If包含图片/视频，强制用多模态模型（对标 Qwen Demo）
-        const hasMedia = uploadedFiles.some((f) => f.kind === "image" || f.kind === "video");
+        const hasMedia = uploadedFiles.some(
+          (f) => f.kind === "image" || f.kind === "video" || f.kind === "audio",
+        );
         if (hasMedia) {
           modelId = "qwen3-omni-flash";
         }
@@ -507,6 +536,7 @@ export const useMessageSubmission = (
             historyMessages,
             userMessage.images,
             userMessage.videos,
+            (userMessage as any).audios,
             // onChunk callback
             (chunk: string) => {
               streamedContent += chunk;
@@ -835,8 +865,6 @@ export const useMessageSubmission = (
     forceUpdate,
   };
 };
-
-
 
 
 

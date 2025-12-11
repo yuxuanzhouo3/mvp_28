@@ -83,6 +83,7 @@ function ChatInterface({
 }: ChatInterfaceProps) {
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [mediaPreviewMap, setMediaPreviewMap] = useState<Record<string, string>>({});
+  const [imagePreviewSrc, setImagePreviewSrc] = useState<string | null>(null);
   const resolvingIdsRef = useRef<Set<string>>(new Set());
 
   const isDirectUrl = (val: string) =>
@@ -94,12 +95,22 @@ function ChatInterface({
     return mediaPreviewMap[val] || null;
   };
 
+  // 关闭大图预览（含 Esc 支持）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setImagePreviewSrc(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   useEffect(() => {
     const pending: string[] = [];
 
     messages.forEach((m) => {
       const needImages = !(m as any).imagePreviews || (m as any).imagePreviews?.length === 0;
       const needVideos = !(m as any).videoPreviews || (m as any).videoPreviews?.length === 0;
+      const needAudios = !(m as any).audioPreviews || (m as any).audioPreviews?.length === 0;
 
       if (needImages) {
         (m.images || []).forEach((id) => {
@@ -117,6 +128,20 @@ function ChatInterface({
 
       if (needVideos) {
         (m.videos || []).forEach((id) => {
+          if (
+            typeof id === "string" &&
+            id &&
+            !isDirectUrl(id) &&
+            !mediaPreviewMap[id] &&
+            !resolvingIdsRef.current.has(id)
+          ) {
+            pending.push(id);
+          }
+        });
+      }
+
+      if (needAudios) {
+        (m as any).audios?.forEach((id: string) => {
           if (
             typeof id === "string" &&
             id &&
@@ -197,18 +222,18 @@ function ChatInterface({
   const markdownComponents = {
     h1: ({ ...props }) => (
       <h1
-        className="text-xl font-semibold mt-2 mb-1 leading-snug"
+        className="text-xl font-semibold mt-2 mb-1 leading-snug text-gray-900 dark:text-[#ececf1]"
         {...props}
       />
     ),
     h2: ({ ...props }) => (
       <h2
-        className="text-lg font-semibold mt-2 mb-1 leading-snug"
+        className="text-lg font-semibold mt-2 mb-1 leading-snug text-gray-900 dark:text-[#ececf1]"
         {...props}
       />
     ),
     h3: ({ ...props }) => (
-      <h3 className="font-semibold mt-2 mb-1 leading-snug" {...props} />
+      <h3 className="font-semibold mt-2 mb-1 leading-snug text-gray-900 dark:text-[#ececf1]" {...props} />
     ),
     p: ({ ...props }) => (
       <p className="mb-2 leading-relaxed whitespace-pre-wrap" {...props} />
@@ -373,6 +398,10 @@ function ChatInterface({
                       (message.videoPreviews && message.videoPreviews.length
                         ? message.videoPreviews
                         : message.videos) || [];
+                    const baseAudios =
+                      (message.audioPreviews && message.audioPreviews.length
+                        ? message.audioPreviews
+                        : (message as any).audios) || [];
                     const resolvedImages = Array.from(
                       new Set(
                         (baseImages as string[])
@@ -387,9 +416,16 @@ function ChatInterface({
                           .filter((v): v is string => !!v),
                       ),
                     );
+                    const resolvedAudios = Array.from(
+                      new Set(
+                        (baseAudios as string[])
+                          .map((src) => resolveMediaSrc(src))
+                          .filter((v): v is string => !!v),
+                      ),
+                    );
                     const unresolvedMedia = Array.from(
                       new Set(
-                        [...baseImages, ...baseVideos].filter(
+                        [...baseImages, ...baseVideos, ...baseAudios].filter(
                           (src) => typeof src === "string" && !resolveMediaSrc(src),
                         ) as string[],
                       ),
@@ -454,16 +490,20 @@ function ChatInterface({
                         )}
                         {(resolvedImages.length > 0 ||
                           resolvedVideos.length > 0 ||
+                          resolvedAudios.length > 0 ||
                           unresolvedMedia.length > 0) && (
                           <div className="mt-3 space-y-2">
-                            {(resolvedImages.length > 0 || resolvedVideos.length > 0) && (
+                            {(resolvedImages.length > 0 ||
+                              resolvedVideos.length > 0 ||
+                              resolvedAudios.length > 0) && (
                               <div className="flex flex-wrap gap-3">
                                 {resolvedImages.map((src) => (
                                   <img
                                     key={src}
                                     src={src}
                                     alt="attachment"
-                                    className="max-h-44 rounded-lg border border-gray-200 dark:border-[#4a4c5c] object-cover bg-black/5"
+                                    className="max-h-44 rounded-lg border border-gray-200 dark:border-[#4a4c5c] object-cover bg-black/5 cursor-zoom-in"
+                                    onClick={() => setImagePreviewSrc(src)}
                                   />
                                 ))}
                                 {resolvedVideos.map((src, idx) => (
@@ -475,6 +515,16 @@ function ChatInterface({
                                   >
                                     {getLocalizedText("videoNotSupported") || "Video not supported"}
                                   </video>
+                                ))}
+                                {resolvedAudios.map((src, idx) => (
+                                  <audio
+                                    key={`${src}-${idx}`}
+                                    controls
+                                    src={src}
+                                    className="w-64"
+                                  >
+                                    {getLocalizedText("audioNotSupported") || "Audio not supported"}
+                                  </audio>
                                 ))}
                               </div>
                             )}
@@ -614,6 +664,30 @@ function ChatInterface({
             </div>
           </div>
         </ScrollArea>
+      )}
+      {imagePreviewSrc && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setImagePreviewSrc(null)}
+          role="presentation"
+        >
+          <button
+            className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2"
+            onClick={(e) => {
+              e.stopPropagation();
+              setImagePreviewSrc(null);
+            }}
+            aria-label="关闭预览"
+          >
+            ✕
+          </button>
+          <img
+            src={imagePreviewSrc}
+            alt="预览"
+            className="max-h-[90vh] max-w-[90vw] rounded-lg shadow-2xl border border-white/20 object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );

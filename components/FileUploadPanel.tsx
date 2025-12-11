@@ -38,7 +38,7 @@ export const FileUploadPanel: React.FC<FileUploadPanelProps> = ({
               ref={fileInputRef}
               type="file"
               multiple
-              accept="image/*,video/*,text/*,.pdf,.doc,.docx"
+              accept="image/*,video/*,audio/*,text/*,.pdf,.doc,.docx"
               onChange={(e) => onFileUpload(e.target.files)}
               className="hidden"
             />

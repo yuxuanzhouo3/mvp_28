@@ -41,14 +41,15 @@ export const formatFileSize = (bytes: number): string => {
 };
 
 export const getFileIcon = (fileType: string): string => {
-  if (fileType.startsWith("image/")) return "🖼️";
-  if (fileType.includes("pdf")) return "📄";
-  if (fileType.includes("word") || fileType.includes("document")) return "📝";
-  if (fileType.includes("excel") || fileType.includes("spreadsheet"))
-    return "📊";
-  if (fileType.includes("text/") || fileType.includes("markdown")) return "📄";
-  if (fileType.includes("json") || fileType.includes("xml")) return "⚙️";
-  return "📎";
+  if (fileType.startsWith("image/")) return "[img]";
+  if (fileType.startsWith("audio/")) return "[aud]";
+  if (fileType.startsWith("video/")) return "[vid]";
+  if (fileType.includes("pdf")) return "[pdf]";
+  if (fileType.includes("word") || fileType.includes("document")) return "[doc]";
+  if (fileType.includes("excel") || fileType.includes("spreadsheet")) return "[xls]";
+  if (fileType.startsWith("text/") || fileType.includes("markdown")) return "[txt]";
+  if (fileType.includes("json") || fileType.includes("xml")) return "[data]";
+  return "[file]";
 };
 
 // Clipboard functions

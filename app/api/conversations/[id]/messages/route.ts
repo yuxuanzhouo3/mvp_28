@@ -129,6 +129,7 @@ export async function GET(
         created_at: m.createdAt,
         imageFileIds: m.imageFileIds || [],
         videoFileIds: m.videoFileIds || [],
+        audioFileIds: (m as any).audioFileIds || [],
       }))
       .sort(
         (a: any, b: any) =>
@@ -150,7 +151,18 @@ export async function POST(
 ) {
   const { id: conversationId } = await paramsPromise;
   const reqBody = await req.json();
-  const { role, content, client_id, tokens, images, imageFileIds, videos, videoFileIds } = reqBody;
+  const {
+    role,
+    content,
+    client_id,
+    tokens,
+    images,
+    imageFileIds,
+    videos,
+    videoFileIds,
+    audios,
+    audioFileIds,
+  } = reqBody;
 
   if (!isDomesticRequest(req)) {
     const supabase = await createClient();
@@ -402,6 +414,11 @@ export async function POST(
         : Array.isArray(videoFileIds)
           ? videoFileIds
           : [],
+      audioFileIds: Array.isArray(audios)
+        ? audios
+        : Array.isArray(audioFileIds)
+          ? audioFileIds
+          : [],
     });
 
     // touch conversation
@@ -509,5 +526,3 @@ export async function DELETE(
     return new Response("Failed to delete message", { status: 500 });
   }
 }
-
-

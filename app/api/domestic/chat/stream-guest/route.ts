@@ -31,22 +31,33 @@ function extractDelta(data: any): string {
 const buildOpenAIMessages = (
   mergedMessages: any[],
   resolveImageUrl: (id: string) => string | null,
-  resolveVideoUrl: (id: string) => string | null
+  resolveVideoUrl: (id: string) => string | null,
+  resolveAudioUrl: (id: string) => { url: string; format: string } | null,
 ) => {
   return mergedMessages.map((m) => {
     const urls = (m.images || []).map((id: string) => resolveImageUrl(id)).filter(Boolean) as string[];
     const videoUrls = (m.videos || []).map((id: string) => resolveVideoUrl(id)).filter(Boolean) as string[];
+    const audioUrls = (m.audios || []).map((id: string) => resolveAudioUrl(id)).filter(Boolean) as
+      | { url: string; format: string }[]
+      | [];
 
-    if (!urls.length && !videoUrls.length) {
+    if (!urls.length && !videoUrls.length && !audioUrls.length) {
       return { role: m.role, content: m.content };
     }
     if (urls.length && videoUrls.length) {
       throw new Error("同一条消息暂不支持同时包含图片和视频，请分开发送。");
     }
+    if (audioUrls.length && (urls.length || videoUrls.length)) {
+      throw new Error("同一条消息暂不支持同时包含音频与图片/视频，请分开发送。");
+    }
 
     return {
       role: m.role,
       content: [
+        ...audioUrls.slice(0, 1).map((a) => ({
+          type: "input_audio",
+          input_audio: { data: a.url, format: a.format },
+        })),
         { type: "text", text: m.content },
         ...videoUrls.map((url) => ({ type: "video_url", video_url: { url } })),
         ...urls.map((url) => ({ type: "image_url", image_url: { url, detail: "high" as const } })),
@@ -57,8 +68,8 @@ const buildOpenAIMessages = (
 
 export async function POST(req: Request) {
   try {
-    type IncomingMessage = { role: string; content: string; images?: string[]; videos?: string[] };
-    const { model, modelId, messages = [], message, language, images = [], videos = [] } =
+    type IncomingMessage = { role: string; content: string; images?: string[]; videos?: string[]; audios?: string[] };
+    const { model, modelId, messages = [], message, language, images = [], videos = [], audios = [] } =
       (await req.json()) as {
         model?: string;
         modelId?: string;
@@ -67,18 +78,22 @@ export async function POST(req: Request) {
         language?: string;
         images?: string[];
         videos?: string[];
+        audios?: string[];
       };
 
     const hasMediaPayload =
       (Array.isArray(images) && images.length > 0) ||
       (Array.isArray(videos) && videos.length > 0) ||
-      (Array.isArray(messages) && messages.some((m) => (m?.images || m?.videos || []).length > 0));
+      (Array.isArray(audios) && audios.length > 0) ||
+      (Array.isArray(messages) &&
+        messages.some((m) => (m?.images || m?.videos || m?.audios || []).length > 0));
 
     console.log("[media][stream] incoming", {
       model,
       modelId,
       images: Array.isArray(images) ? images.length : 0,
       videos: Array.isArray(videos) ? videos.length : 0,
+      audios: Array.isArray(audios) ? audios.length : 0,
       msgCount: Array.isArray(messages) ? messages.length : 0,
     });
 
@@ -94,9 +109,9 @@ export async function POST(req: Request) {
     const mergedMessages: IncomingMessage[] =
       Array.isArray(messages) && messages.length > 0
         ? [...messages]
-        : [{ role: "user", content: message || "", images, videos }];
+        : [{ role: "user", content: message || "", images, videos, audios }];
 
-    if ((images?.length || videos?.length) && mergedMessages.length > 0) {
+    if ((images?.length || videos?.length || audios?.length) && mergedMessages.length > 0) {
       const lastUserIdx = [...mergedMessages].reverse().findIndex((m) => m.role === "user");
       if (lastUserIdx !== -1) {
         const realIdx = mergedMessages.length - 1 - lastUserIdx;
@@ -104,6 +119,7 @@ export async function POST(req: Request) {
           ...mergedMessages[realIdx],
           images: Array.from(new Set([...(mergedMessages[realIdx].images || []), ...(images || [])])),
           videos: Array.from(new Set([...(mergedMessages[realIdx].videos || []), ...(videos || [])])),
+          audios: Array.from(new Set([...(mergedMessages[realIdx].audios || []), ...(audios || [])])),
         };
       }
     }
@@ -114,9 +130,23 @@ export async function POST(req: Request) {
     const allVideoIds = mergedMessages
       .flatMap((m) => m.videos || [])
       .filter((v) => typeof v === "string" && !v.startsWith("http"));
+    const allAudioIds = mergedMessages
+      .flatMap((m) => (m as any).audios || [])
+      .filter((v) => typeof v === "string" && !v.startsWith("http"));
+
+    const audioCount = mergedMessages.reduce(
+      (acc, m) => acc + ((m as any).audios?.length || 0),
+      0,
+    );
+    if (audioCount > 1) {
+      return new Response(
+        JSON.stringify({ success: false, error: "音频输入目前仅支持单个文件，请分开发送。" }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
 
     let tempUrlMap: Record<string, string> = {};
-    const needIds = Array.from(new Set([...allImageIds, ...allVideoIds]));
+    const needIds = Array.from(new Set([...allImageIds, ...allVideoIds, ...allAudioIds]));
     if (needIds.length) {
       const connector = new CloudBaseConnector();
       await connector.initialize();
@@ -136,10 +166,18 @@ export async function POST(req: Request) {
 
     const resolveImageUrl = (v: string) => (v.startsWith("http") ? v : tempUrlMap[v] || null);
     const resolveVideoUrl = (v: string) => (v.startsWith("http") ? v : tempUrlMap[v] || null);
+    const resolveAudioUrl = (v: string) => {
+      const url = v.startsWith("http") ? v : tempUrlMap[v];
+      if (!url) return null;
+      const clean = url.split("?")[0].toLowerCase();
+      const ext = clean.match(/\.([a-z0-9]+)$/)?.[1] || "wav";
+      const fmt = ext.replace(/[^a-z0-9]/g, "") || "wav";
+      return { url, format: fmt };
+    };
 
     let openaiMessages: any[];
     try {
-      openaiMessages = buildOpenAIMessages(mergedMessages, resolveImageUrl, resolveVideoUrl);
+      openaiMessages = buildOpenAIMessages(mergedMessages, resolveImageUrl, resolveVideoUrl, resolveAudioUrl);
       const firstUser = openaiMessages.find((m: any) => m.role === "user");
       console.log("[media][stream] openaiMessages sample", {
         count: openaiMessages.length,
@@ -306,4 +344,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

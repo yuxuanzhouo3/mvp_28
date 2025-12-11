@@ -5,13 +5,13 @@ import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const DEFAULT_VIDEO_MB = 256;
-const rawVideoLimit = Number(process.env.MAX_VIDEO_UPLOAD_MB ?? DEFAULT_VIDEO_MB);
-const maxVideoSizeMB = Number.isFinite(rawVideoLimit) ? rawVideoLimit : DEFAULT_VIDEO_MB;
-const maxVideoSizeBytes = maxVideoSizeMB * 1024 * 1024;
-const videoUploadDisabled = maxVideoSizeMB <= 0;
+const DEFAULT_AUDIO_MB = 100;
+const rawAudioLimit = Number(process.env.MAX_AUDIO_UPLOAD_MB ?? DEFAULT_AUDIO_MB);
+const maxAudioSizeMB = Number.isFinite(rawAudioLimit) ? rawAudioLimit : DEFAULT_AUDIO_MB;
+const maxAudioSizeBytes = maxAudioSizeMB * 1024 * 1024;
+const audioUploadDisabled = maxAudioSizeMB <= 0;
 
-async function getUser(req: NextRequest) {
+const getUser = async (req: NextRequest) => {
   const token =
     req.cookies.get("auth-token")?.value ||
     req.headers.get("x-auth-token") ||
@@ -20,15 +20,15 @@ async function getUser(req: NextRequest) {
   if (!token) return null;
   const auth = new CloudBaseAuthService();
   return await auth.validateToken(token);
-}
+};
 
 export async function POST(req: NextRequest) {
   try {
     const user = await getUser(req);
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (videoUploadDisabled) {
+    if (audioUploadDisabled) {
       return NextResponse.json(
-        { error: "video upload disabled (MAX_VIDEO_UPLOAD_MB<=0)" },
+        { error: "audio upload disabled (MAX_AUDIO_UPLOAD_MB<=0)" },
         { status: 403 },
       );
     }
@@ -40,19 +40,17 @@ export async function POST(req: NextRequest) {
     }
 
     const arrayBuf = await file.arrayBuffer();
-    if (arrayBuf.byteLength > maxVideoSizeBytes) {
+    if (arrayBuf.byteLength > maxAudioSizeBytes) {
       return NextResponse.json(
-        { error: `file too large (max ${Math.round(maxVideoSizeBytes / 1024 / 1024)}MB)` },
+        { error: `file too large (max ${Math.round(maxAudioSizeBytes / 1024 / 1024)}MB)` },
         { status: 413 },
       );
     }
 
     const buffer = Buffer.from(arrayBuf);
-    const ext = file.name.split(".").pop() || "mp4";
-    const safeExt = ext.replace(/[^a-zA-Z0-9]/g, "") || "mp4";
-    const cloudPath = `videos/${Date.now()}-${Math.random()
-      .toString(16)
-      .slice(2)}.${safeExt}`;
+    const ext = file.name.split(".").pop() || "wav";
+    const safeExt = ext.replace(/[^a-zA-Z0-9]/g, "") || "wav";
+    const cloudPath = `audios/${Date.now()}-${Math.random().toString(16).slice(2)}.${safeExt}`;
 
     const connector = new CloudBaseConnector();
     await connector.initialize();
@@ -60,7 +58,6 @@ export async function POST(req: NextRequest) {
 
     const uploadRes = await app.uploadFile({ cloudPath, fileContent: buffer });
 
-    // 获取临时访问链接，便于前端预览与模型读取
     let tempUrl: string | null = null;
     try {
       const tmp = await app.getTempFileURL({
@@ -68,19 +65,12 @@ export async function POST(req: NextRequest) {
       });
       tempUrl = tmp?.fileList?.[0]?.tempFileURL || null;
     } catch (err) {
-      console.warn("[video/upload] failed to get temp url", err);
+      console.warn("[audio/upload] failed to get temp url", err);
     }
-
-    console.log("[media][video-upload] file uploaded", {
-      name: file.name,
-      size: file.size,
-      fileId: uploadRes.fileID,
-      tempUrl: !!tempUrl,
-    });
 
     return NextResponse.json({ fileId: uploadRes.fileID, tempUrl });
   } catch (error) {
-    console.error("[video/upload] error", error);
+    console.error("[audio/upload] error", error);
     return NextResponse.json({ error: "upload failed" }, { status: 500 });
   }
 }
@@ -102,13 +92,13 @@ export async function DELETE(req: NextRequest) {
     } catch (err) {
       const msg = (err as any)?.message?.toString?.() || "";
       if (!msg.toLowerCase().includes("not exist")) {
-        console.warn("[video/upload delete] deleteFile non-fatal", err);
+        console.warn("[audio/upload delete] non-fatal", err);
       }
     }
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    console.error("[video/upload delete] error", error);
+    console.error("[audio/upload delete] error", error);
     return NextResponse.json({ error: "delete failed" }, { status: 500 });
   }
 }

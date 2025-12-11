@@ -68,6 +68,8 @@ export interface Message {
   videos?: string[];
   imagePreviews?: string[];
   videoPreviews?: string[];
+  audios?: string[];
+  audioPreviews?: string[];
 }
 
 // Generic attachment item used by the chat input & upload pipeline
@@ -76,10 +78,11 @@ export interface AttachmentItem {
   name: string;
   size: number;
   type: string;
-  kind: "image" | "video" | "file";
+  kind: "image" | "video" | "audio" | "file";
   file?: File;
   preview?: string;
   fileId?: string; // CloudBase fileID after upload
+  format?: string;
 }
 
 export interface ChatSession {

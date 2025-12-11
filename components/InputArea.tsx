@@ -157,6 +157,7 @@ interface InputAreaProps {
   locationError: string;
   proChatError: string;
   selectedLanguage: string;
+  allowAudioUpload: boolean;
 }
 
 const InputArea = React.memo(function InputArea({
@@ -254,6 +255,7 @@ const InputArea = React.memo(function InputArea({
   locationError,
   proChatError,
   selectedLanguage,
+  allowAudioUpload,
 }: InputAreaProps) {
   // Use camera hook
   const {
@@ -546,6 +548,7 @@ const InputArea = React.memo(function InputArea({
                     accept={[
                       "image/*",
                       "video/*",
+                      "audio/*",
                       "text/*",
                       "application/pdf",
                       ".doc",
@@ -564,6 +567,16 @@ const InputArea = React.memo(function InputArea({
                     ].join(",")}
                     disabled={isUploading}
                   />
+                  {allowAudioUpload && (
+                    <input
+                      type="file"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="audio-upload"
+                      accept="audio/*"
+                      disabled={isUploading}
+                    />
+                  )}
                   <Button
                     size="sm"
                     variant="ghost"
@@ -604,6 +617,31 @@ const InputArea = React.memo(function InputArea({
                       <Paperclip className="w-3 h-3" />
                     )}
                   </Button>
+                  {allowAudioUpload && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869]"
+                      title="上传音频文件"
+                      type="button"
+                      disabled={isUploading}
+                      onClick={() => {
+                        if (uploadedFiles.some((f) => f.kind !== "audio") && uploadedFiles.length > 0) {
+                          setUploadError("音频暂不支持与图片/视频/其他文件同时发送，请先清空附件。");
+                          setTimeout(() => setUploadError(""), 2500);
+                          return;
+                        }
+                        if (uploadedFiles.some((f) => f.kind === "audio")) {
+                          setUploadError("已选择音频，如需替换请先删除当前音频。");
+                          setTimeout(() => setUploadError(""), 2500);
+                          return;
+                        }
+                        document.getElementById("audio-upload")?.click();
+                      }}
+                    >
+                      <Mic className="w-3 h-3" />
+                    </Button>
+                  )}
 
                   {/* Voice Input Button */}
                   <Button

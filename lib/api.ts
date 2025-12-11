@@ -108,6 +108,7 @@ class ApiService {
     language?: string,
     images?: string[],
     videos?: string[],
+    audios?: string[],
   ): Promise<ApiResponse<{ response: string; chatId: string; usage?: any }>> {
     // Use guest endpoint for local testing
     const endpoint = token ? '/chat/send' : '/chat/send-guest';
@@ -137,6 +138,7 @@ class ApiService {
           language,
           images,
           videos,
+          audios,
         }),
       }
     );
@@ -149,9 +151,10 @@ class ApiService {
     chatId?: string,
     token?: string,
     language?: string,
-    messages?: Array<{ role: "user" | "assistant" | "system"; content: string; images?: string[]; videos?: string[] }>,
+    messages?: Array<{ role: "user" | "assistant" | "system"; content: string; images?: string[]; videos?: string[]; audios?: string[] }>,
     images?: string[],
     videos?: string[],
+    audios?: string[],
     onChunk?: (chunk: string) => void,
     onEnd?: () => void,
     onError?: (error: string) => void,
@@ -185,6 +188,7 @@ class ApiService {
         language,
         images,
         videos,
+        audios,
       });
 
       const doRequest = async (attempt: number): Promise<void> => {

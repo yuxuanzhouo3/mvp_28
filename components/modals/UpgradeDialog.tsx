@@ -14,8 +14,11 @@ import { pricingPlans as pricingPlansRaw } from "@/constants/pricing";
 
 interface PricingPlan {
   name: string;
+  nameZh?: string;
   price: string;
+  priceZh?: string;
   annualPrice: string;
+  annualPriceZh?: string;
   period: string;
   features: string[];
   popular?: boolean;
@@ -44,8 +47,9 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
   setSelectedPlanInDialog,
   handleUpgradeClick,
 }) => {
-  const { currentLanguage } = useLanguage();
+  const { currentLanguage, isDomesticVersion } = useLanguage();
   const isZh = currentLanguage === "zh";
+  const useRmb = isDomesticVersion;
   const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
 
   const periodLabel = (planPeriod: string) => {
@@ -60,6 +64,8 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
   const localizedPlans = basePlans.map((p) => ({
     ...p,
     name: isZh ? p.nameZh || p.name : p.name,
+    price: useRmb && p.priceZh ? p.priceZh : p.price,
+    annualPrice: useRmb && p.annualPriceZh ? p.annualPriceZh : p.annualPrice,
     features: p.features.map((f) => {
       if (!f.includes("|")) return f;
       const [en, zh] = f.split("|");
@@ -88,12 +94,20 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
                 `This premium model requires a paid subscription. Upgrade now to unlock access to ${selectedPaidModel.name} and other advanced features.`,
                 `该高级模型需要付费订阅。立即升级即可解锁 ${selectedPaidModel.name} 及其它高级功能。`
               )}
-            </DialogDescription>
-          )}
-        </DialogHeader>
+          </DialogDescription>
+        )}
+      </DialogHeader>
 
-        {/* Model Info Section */}
-        {selectedPaidModel && (
+      <div className="mb-4 px-1 text-sm text-gray-700 dark:text-gray-300">
+        <p>
+          {isZh
+            ? "【国内版】可定制方案，请联系：mornscience@gmail.com"
+            : "For custom International plans, contact: mornscience@gmail.com"}
+        </p>
+      </div>
+
+      {/* Model Info Section */}
+      {selectedPaidModel && (
           <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-blue-500 rounded flex items-center justify-center">

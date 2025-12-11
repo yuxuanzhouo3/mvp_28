@@ -17,11 +17,15 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { CreditCard, MessageSquare, Lock } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface PricingPlan {
   name: string;
+  nameZh?: string;
   price: string;
+  priceZh?: string;
   annualPrice: string;
+  annualPriceZh?: string;
   features: string[];
 }
 
@@ -55,8 +59,16 @@ export function PaymentDialog({
   pricingPlans,
   handlePayment,
 }: PaymentDialogProps) {
+  const { currentLanguage, isDomesticVersion } = useLanguage();
+  const isZh = currentLanguage === "zh";
+  const useRmb = isDomesticVersion;
   const annualMonthlyPrice = selectedPlan
-    ? parseFloat(selectedPlan.annualPrice.replace(/[^0-9.]/g, "") || "0")
+    ? parseFloat(
+        (useRmb && selectedPlan.annualPriceZh
+          ? selectedPlan.annualPriceZh
+          : selectedPlan.annualPrice
+        ).replace(/[^0-9.]/g, "") || "0",
+      )
     : 0;
   const annualTotal = (annualMonthlyPrice * 12).toFixed(2);
 
@@ -118,7 +130,7 @@ export function PaymentDialog({
                   <div className="flex justify-between items-center">
                     <div>
                       <h4 className="font-medium text-gray-900 dark:text-[#ececf1]">
-                        {plan.name}
+                        {isZh ? plan.nameZh || plan.name : plan.name}
                       </h4>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
                         {plan.features[0]}
@@ -127,7 +139,11 @@ export function PaymentDialog({
                     <div className="text-right">
                       <div className="text-lg font-bold text-gray-900 dark:text-[#ececf1]">
                         {billingPeriod === "annual"
-                          ? plan.annualPrice
+                          ? useRmb && plan.annualPriceZh
+                            ? plan.annualPriceZh
+                            : plan.annualPrice
+                          : useRmb && plan.priceZh
+                          ? plan.priceZh
                           : plan.price}
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -147,7 +163,8 @@ export function PaymentDialog({
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="font-medium text-gray-900 dark:text-[#ececf1]">
-                      {selectedPlan.name} Plan
+                      {(isZh ? selectedPlan.nameZh || selectedPlan.name : selectedPlan.name) +
+                        (isZh ? " 套餐" : " Plan")}
                     </h3>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       {billingPeriod === "annual"
@@ -158,17 +175,21 @@ export function PaymentDialog({
                   <div className="text-right">
                     <div className="text-2xl font-bold text-gray-900 dark:text-[#ececf1]">
                       {billingPeriod === "annual"
-                        ? selectedPlan.annualPrice
+                        ? useRmb && selectedPlan.annualPriceZh
+                          ? selectedPlan.annualPriceZh
+                          : selectedPlan.annualPrice
+                        : useRmb && selectedPlan.priceZh
+                        ? selectedPlan.priceZh
                         : selectedPlan.price}
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
-                      per {billingPeriod === "annual" ? "month" : "month"}
+                        per {billingPeriod === "annual" ? "month" : "month"}
                     </div>
                     {billingPeriod === "annual" && (
                       <div className="text-xs text-green-600 dark:text-green-400">
-                        Billed annually (Save 30%)
+                        {isZh ? "按年计费（立省30%）" : "Billed annually (Save 30%)"}
                         <span className="block text-[11px] text-gray-500 dark:text-gray-300">
-                          Total ${annualTotal}
+                          {isZh ? `总计 ${annualTotal}` : `Total $${annualTotal}`}
                         </span>
                       </div>
                     )}

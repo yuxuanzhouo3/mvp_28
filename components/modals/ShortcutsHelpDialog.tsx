@@ -22,7 +22,7 @@ import {
   Bot,
   MessageSquare,
 } from "lucide-react";
-import { DEFAULT_LANGUAGE } from "@/config";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface ShortcutConflict {
   shortcut: string;
@@ -64,7 +64,8 @@ export default function ShortcutsHelpDialog({
   onResetPromptsShortcuts,
   renderShortcutDisplay,
 }: ShortcutsHelpDialogProps) {
-  const isZh = DEFAULT_LANGUAGE === "zh";
+  const { currentLanguage } = useLanguage();
+  const isZh = currentLanguage === "zh";
   const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
 
   const navigationShortcuts = [

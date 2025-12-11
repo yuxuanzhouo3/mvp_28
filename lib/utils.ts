@@ -96,21 +96,20 @@ export const getSelectedModelDisplay = (
   mornGPTCategories: any[]
 ) => {
   if (selectedModelType === "general") {
-    return "General";
+    return "General Model";
   }
   if (selectedModelType === "morngpt" && selectedCategory) {
     const category = mornGPTCategories.find((c) => c.id === selectedCategory);
-    return `${category?.name} (${selectedCategory.toUpperCase()}1)`;
+    return category?.name || "General Model";
   }
   if (selectedModelType === "external" && selectedModel) {
-    // 前端 state 存的是模型 id，展示时转成名称
     const model = externalModels.find(
       (m) => m.id === selectedModel || m.name === selectedModel
     );
     if (model) {
-      return `${model.name} (Free)`;
+      return model.name;
     }
     return selectedModel;
   }
-  return "General";
+  return "General Model";
 };

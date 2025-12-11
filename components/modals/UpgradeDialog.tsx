@@ -160,11 +160,11 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {localizedPlans.map((plan) => (
             <div
               key={plan.name}
-              className={`relative p-6 rounded-lg border-2 cursor-pointer transition-all duration-200 hover:shadow-lg flex flex-col h-full ${
+              className={`relative p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 hover:shadow-lg flex flex-col h-full min-h-[380px] w-full max-w-lg mx-auto ${
                 selectedPlanInDialog?.name === plan.name
                   ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-lg"
                   : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#40414f] hover:border-gray-300 dark:hover:border-[#40414f]"
@@ -178,38 +178,31 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
                   </Badge>
                 </div>
               )}
-              <div className="text-center mb-4">
+              <div className="text-center mb-4 space-y-2">
                 <h3 className="text-xl font-bold text-gray-900 dark:text-[#ececf1]">
                   {plan.name}
                 </h3>
-                <div className="mt-2">
-                  <div className="flex items-baseline justify-center">
-                    <span className="text-3xl font-bold text-gray-900 dark:text-[#ececf1]">
-                      {billingPeriod === "annual"
-                        ? plan.annualPrice
-                        : plan.price}
+                <div className="flex flex-col items-center space-y-1">
+                  <div className="flex items-baseline justify-center gap-1">
+                    <span className="text-3xl font-bold text-gray-900 dark:text-[#ececf1] leading-none">
+                      {billingPeriod === "annual" ? plan.annualPrice : plan.price}
                     </span>
-                    <span className="text-gray-500 dark:text-gray-400 ml-1">
-                      /
-                      {billingPeriod === "annual"
-                        ? tr("month", "月")
-                        : periodLabel(plan.period)}
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                      /{billingPeriod === "annual" ? tr("month", "月") : periodLabel(plan.period)}
                     </span>
                   </div>
                   {billingPeriod === "annual" && (
-                    <div className="mt-1">
-                      <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 text-xs">
-                        {tr("Save 30%", "立省 30%")}
-                      </Badge>
-                    </div>
+                    <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 text-xs">
+                      {tr("Save 30%", "立省 30%")}
+                    </Badge>
                   )}
                 </div>
               </div>
               <ul className="space-y-2 mb-6 flex-grow">
                 {plan.features.map((feature, index) => (
-                  <li key={index} className="flex items-center space-x-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span className="text-sm text-gray-900 dark:text-[#ececf1]">
+                  <li key={index} className="flex items-start gap-2">
+                    <Check className="w-4 h-4 mt-0.5 text-green-500 shrink-0" />
+                    <span className="text-sm leading-6 text-gray-900 dark:text-[#ececf1]">
                       {feature}
                     </span>
                   </li>

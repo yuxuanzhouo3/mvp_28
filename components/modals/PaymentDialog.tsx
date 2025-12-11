@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
-import { CreditCard, MessageSquare, Lock } from "lucide-react";
+import { CreditCard, MessageSquare, Lock, Loader2 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 
 interface PricingPlan {
@@ -62,6 +62,7 @@ export function PaymentDialog({
   const { currentLanguage, isDomesticVersion } = useLanguage();
   const isZh = currentLanguage === "zh";
   const useRmb = isDomesticVersion;
+  const [isProcessing, setIsProcessing] = useState(false);
   const localizedPlans = React.useMemo(
     () =>
       pricingPlans.map((p) => ({
@@ -292,8 +293,66 @@ export function PaymentDialog({
                 </div>
               </div>
 
-              {/* Payment Form */}
-              <form onSubmit={handlePayment} className="space-y-2">
+                {/* Payment Form */}
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  
+                  // 对于 Stripe 和 PayPal，使用跳转支付
+                  if (selectedPaymentMethod === "stripe" && selectedPlan) {
+                    setIsProcessing(true);
+                    try {
+                      const res = await fetch("/api/payment/stripe/create", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          planName: selectedPlan.name,
+                          billingPeriod: billingPeriod === "annual" ? "annual" : "monthly",
+                          userId: undefined, // 从 session 获取
+                        }),
+                      });
+                      const data = await res.json();
+                      if (data.success && data.url) {
+                        window.location.href = data.url;
+                      } else {
+                        alert(data.error || (isZh ? "支付创建失败" : "Failed to create payment"));
+                      }
+                    } catch (err) {
+                      alert(isZh ? "网络错误，请重试" : "Network error, please try again");
+                    } finally {
+                      setIsProcessing(false);
+                    }
+                    return;
+                  }
+                  
+                  if (selectedPaymentMethod === "paypal" && selectedPlan) {
+                    setIsProcessing(true);
+                    try {
+                      const res = await fetch("/api/payment/paypal/create", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          planName: selectedPlan.name,
+                          billingPeriod: billingPeriod === "annual" ? "annual" : "monthly",
+                          userId: undefined, // 从 session 获取
+                        }),
+                      });
+                      const data = await res.json();
+                      if (data.success && data.approvalUrl) {
+                        window.location.href = data.approvalUrl;
+                      } else {
+                        alert(data.error || (isZh ? "支付创建失败" : "Failed to create payment"));
+                      }
+                    } catch (err) {
+                      alert(isZh ? "网络错误，请重试" : "Network error, please try again");
+                    } finally {
+                      setIsProcessing(false);
+                    }
+                    return;
+                  }
+                  
+                  // 其他支付方式使用原有处理
+                  handlePayment(e);
+                }} className="space-y-2">
                 {selectedPaymentMethod === "credit-card" && (
                   <>
                     <div>
@@ -392,7 +451,7 @@ export function PaymentDialog({
                 {selectedPaymentMethod === "stripe" && (
                   <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg text-center">
                     <p className="text-sm text-purple-700 dark:text-purple-300">
-                      {isZh ? "由 Stripe 提供安全支付" : "Secure payment powered by Stripe"}
+                      {isZh ? "将跳转至 Stripe 安全支付页面" : "You will be redirected to Stripe secure checkout"}
                     </p>
                   </div>
                 )}
@@ -441,18 +500,29 @@ export function PaymentDialog({
                     type="button"
                     variant="outline"
                     onClick={() => onOpenChange(false)}
+                    disabled={isProcessing}
                     className="flex-1 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869]"
                   >
                     {isZh ? "取消" : "Cancel"}
                   </Button>
                   <Button
                     type="submit"
+                    disabled={isProcessing}
                     className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
                   >
-                    {isZh ? "支付 " : "Pay "}
-                    {billingPeriod === "annual"
-                      ? `${currencySymbol}${annualTotal}`
-                      : selectedPlan.price}
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        {isZh ? "处理中..." : "Processing..."}
+                      </>
+                    ) : (
+                      <>
+                        {isZh ? "支付 " : "Pay "}
+                        {billingPeriod === "annual"
+                          ? `${currencySymbol}${annualTotal}`
+                          : selectedPlan.price}
+                      </>
+                    )}
                   </Button>
                 </div>
               </form>

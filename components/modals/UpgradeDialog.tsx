@@ -73,6 +73,14 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
     }),
   }));
 
+  const customPlanText = isDomesticVersion
+    ? isZh
+      ? "【国内版】可定制方案，请联系：mornscience@gmail.com"
+      : "For custom Domestic plans, contact: mornscience@gmail.com"
+    : isZh
+      ? "【国际版】可定制方案，请联系：mornscience@gmail.com"
+      : "For custom International plans, contact: mornscience@gmail.com";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
@@ -100,9 +108,7 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
 
       <div className="mb-4 px-1 text-sm text-gray-700 dark:text-gray-300">
         <p>
-          {isZh
-            ? "【国内版】可定制方案，请联系：mornscience@gmail.com"
-            : "For custom International plans, contact: mornscience@gmail.com"}
+          {customPlanText}
         </p>
       </div>
 

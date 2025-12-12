@@ -59,6 +59,11 @@ interface HeaderProps {
   freeQuotaLimit?: number;
   basicQuotaRemaining?: number | null;
   basicQuotaLimit?: number;
+  freePhotoRemaining?: number | null;
+  freePhotoLimit?: number | null;
+  freeVideoAudioRemaining?: number | null;
+  freeVideoAudioLimit?: number | null;
+  freeContextLimit?: number | null;
 }
 
 export default function Header({
@@ -89,6 +94,11 @@ export default function Header({
   freeQuotaLimit,
   basicQuotaRemaining,
   basicQuotaLimit,
+  freePhotoRemaining,
+  freePhotoLimit,
+  freeVideoAudioRemaining,
+  freeVideoAudioLimit,
+  freeContextLimit,
 }: HeaderProps) {
   const planLower = (
     currentPlan ||
@@ -150,9 +160,71 @@ export default function Header({
     : quotaLimit > 0
     ? Math.min(100, Math.max(0, (quotaRemaining / quotaLimit) * 100))
     : 0;
-  const quotaText = isUnlimited
-    ? "∞/∞"
-    : `${Math.max(0, Math.min(quotaLimit, Math.ceil(quotaRemaining)))} / ${quotaLimit}`;
+  const quotaText = isUnlimited ? "∞/∞" : null;
+
+  const renderFreeQuotaBars = () => {
+    if (!isFreeUser) return null;
+    const photoLimitSafe = freePhotoLimit ?? 0;
+    const photoRemainingSafe = freePhotoRemaining ?? photoLimitSafe;
+    const videoLimitSafe = freeVideoAudioLimit ?? 0;
+    const videoRemainingSafe = freeVideoAudioRemaining ?? videoLimitSafe;
+    const photoPercent =
+      photoLimitSafe > 0 ? Math.min(100, Math.max(0, (photoRemainingSafe / photoLimitSafe) * 100)) : 0;
+    const videoPercent =
+      videoLimitSafe > 0 ? Math.min(100, Math.max(0, (videoRemainingSafe / videoLimitSafe) * 100)) : 0;
+    const dailyText =
+      quotaLimit > 0 && quotaRemaining !== Infinity
+        ? `${Math.max(0, Math.min(quotaLimit, Math.ceil(quotaRemaining)))} / ${quotaLimit}`
+        : "—";
+
+    return (
+      <div className="space-y-2 pt-1 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-gray-700 dark:text-gray-200">
+            {selectedLanguage === "zh" ? "每日外部模型额度" : "Daily external quota"}
+          </span>
+          <span className="font-semibold text-gray-900 dark:text-gray-50">{dailyText}</span>
+        </div>
+        <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-green-400 via-blue-400 to-blue-600 transition-[width] duration-300"
+            style={{ width: `${quotaPercent}%` }}
+          />
+        </div>
+
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-gray-700 dark:text-gray-200">
+            {selectedLanguage === "zh" ? "本月图片额度" : "Monthly photos"}
+          </span>
+          <span className="font-semibold text-gray-900 dark:text-gray-50">
+            {photoLimitSafe ? `${Math.max(0, photoRemainingSafe)} / ${photoLimitSafe}` : "—"}
+          </span>
+        </div>
+        <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-purple-300 via-purple-400 to-purple-600 transition-[width] duration-300"
+            style={{ width: `${photoPercent}%` }}
+          />
+        </div>
+
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-gray-700 dark:text-gray-200">
+            {selectedLanguage === "zh" ? "本月视频/音频额度" : "Monthly video/audio"}
+          </span>
+          <span className="font-semibold text-gray-900 dark:text-gray-50">
+            {videoLimitSafe ? `${Math.max(0, videoRemainingSafe)} / ${videoLimitSafe}` : "—"}
+          </span>
+        </div>
+        <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-orange-300 via-orange-400 to-red-500 transition-[width] duration-300"
+            style={{ width: `${videoPercent}%` }}
+          />
+        </div>
+
+      </div>
+    );
+  };
 
   return (
     <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#40414f] shadow-sm transition-colors">
@@ -221,27 +293,15 @@ export default function Header({
                                 ? "Basic Plan"
                                 : "Free"}
                           </span>
-                          <span className="text-gray-700 dark:text-gray-200 font-semibold">
-                            {quotaText}
-                          </span>
+                          {quotaText && (
+                            <span className="text-gray-700 dark:text-gray-200 font-semibold">
+                              {quotaText}
+                            </span>
+                          )}
                         </div>
-                        <div className="h-2.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-green-400 via-blue-400 to-blue-600 transition-[width] duration-300"
-                            style={{ width: `${quotaPercent}%` }}
-                          />
-                        </div>
-                        <div className="text-[11px] text-gray-600 dark:text-gray-300">
-                          {selectedLanguage === "zh"
-                            ? isBasicUser
-                              ? "月度聊天额度（每月重置）"
-                              : "每日聊天额度（每日重置）"
-                            : isBasicUser
-                              ? "Monthly chat quota (renews monthly)"
-                              : "Daily chat quota (renews daily)"}
-                        </div>
+                        {renderFreeQuotaBars()}
                         {isBasicUser && (
-                          <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                          <div className="text-[11px] text-gray-600 dark:text-gray-300 pt-1 border-t border-gray-200 dark:border-gray-700">
                             {planExp
                               ? `${selectedLanguage === "zh" ? "到期" : "Expires"}: ${new Date(
                                   planExp,

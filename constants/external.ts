@@ -15,7 +15,7 @@ export const externalAPIs: ExternalApi[] = [
     name: "Qwen",
     description: "阿里通义系列大模型（含 DeepSeek/Kimi/GLM 接入）",
     icon: "??",
-    models: 13,
+    models: 12,
   },
   {
     id: "mistral",
@@ -31,7 +31,6 @@ export const externalModels: ExternalModel[] = [
   { id: "qwen3-max", name: "Qwen3-Max", provider: "Qwen", description: "通义千问旗舰模型", category: "domestic", modality: "text", type: "paid", price: "N/A" },
   { id: "qwen3-omni-flash", name: "Qwen3-Omni-Flash", provider: "Qwen", description: "多模态极速模型", category: "domestic", modality: "multimodal", type: "paid", price: "N/A" },
   { id: "qwen-plus", name: "Qwen-Plus", provider: "Qwen", description: "高性价比通用模型", category: "domestic", modality: "text", type: "paid", price: "N/A" },
-  { id: "qwen-turbo", name: "Qwen-Turbo", provider: "Qwen", description: "快速响应版本", category: "domestic", modality: "text", type: "paid", price: "N/A" },
   { id: "qwen-flash", name: "Qwen-Flash", provider: "Qwen", description: "轻量极速模型", category: "domestic", modality: "text", type: "paid", price: "N/A" },
   { id: "qwen3-coder-plus", name: "Qwen3-Coder-Plus", provider: "Qwen", description: "代码增强版本", category: "domestic", modality: "text", type: "paid", price: "N/A" },
   { id: "qwen3-coder-flash", name: "Qwen3-Coder-Flash", provider: "Qwen", description: "极速代码模型", category: "domestic", modality: "text", type: "paid", price: "N/A" },

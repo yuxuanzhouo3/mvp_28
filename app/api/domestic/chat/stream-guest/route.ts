@@ -1,9 +1,45 @@
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
+import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
+import {
+  getModelCategory,
+  getFreeContextMsgLimit,
+  getFreeDailyLimit,
+  getFreeMonthlyPhotoLimit,
+  getFreeMonthlyVideoAudioLimit,
+  getQuotaExceededMessage,
+  getImageCount,
+  getVideoAudioCount,
+} from "@/utils/model-limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PROVIDER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+
+/**
+ * 获取用户计划信息
+ */
+function getPlanInfo(meta: any) {
+  const rawPlan =
+    (meta?.plan as string | undefined) ||
+    (meta?.subscriptionTier as string | undefined) ||
+    "";
+  const planLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
+  const isProFlag = !!meta?.pro && planLower !== "free" && planLower !== "basic";
+  const isBasic = planLower === "basic";
+  const isPro = planLower === "pro" || planLower === "enterprise" || isProFlag;
+  const isFree = !isPro && !isBasic;
+  return { planLower, isPro, isBasic, isFree };
+}
+
+/**
+ * 截断消息历史以符合上下文限制
+ */
+function truncateContextMessages<T>(messages: T[], limit: number): T[] {
+  if (messages.length <= limit) return messages;
+  // 保留最近 limit 条消息
+  return messages.slice(-limit);
+}
 
 const getDashScopeProvider = (modelId: string) => {
   const apiKey = process.env.DASHSCOPE_API_KEY;
@@ -69,7 +105,17 @@ const buildOpenAIMessages = (
 export async function POST(req: Request) {
   try {
     type IncomingMessage = { role: string; content: string; images?: string[]; videos?: string[]; audios?: string[] };
-    const { model, modelId, messages = [], message, language, images = [], videos = [], audios = [] } =
+    const {
+      model,
+      modelId,
+      messages = [],
+      message,
+      language,
+      images = [],
+      videos = [],
+      audios = [],
+      quotaChecked,
+    } =
       (await req.json()) as {
         model?: string;
         modelId?: string;
@@ -79,7 +125,57 @@ export async function POST(req: Request) {
         images?: string[];
         videos?: string[];
         audios?: string[];
+        quotaChecked?: boolean;
       };
+
+    // ============================================================
+    // Free 用户上下文截断 + 配额校验（要求登录，确保额度入库）
+    // ============================================================
+    let contextTruncated = false;
+    let processedMessages = [...messages];
+    
+    // 需要 auth-token 才允许调用，保证额度可计入数据库
+    const rawToken = req.headers.get("cookie")?.match(/auth-token=([^;]+)/)?.[1];
+    const authToken = rawToken ? decodeURIComponent(rawToken) : null;
+    if (!authToken) {
+      console.warn("[quota][stream] missing auth-token cookie");
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized: auth-token required" }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    let user: any = null;
+    let plan = { isFree: true, isBasic: false, isPro: false, planLower: "free" };
+    try {
+      const auth = new CloudBaseAuthService();
+      user = await auth.validateToken(authToken);
+      if (!user) {
+        console.warn("[quota][stream] auth-token invalid");
+        return new Response(
+          JSON.stringify({ success: false, error: "Unauthorized" }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      plan = getPlanInfo(user.metadata);
+      console.log("[quota][stream] user", user.id, "plan", plan.planLower);
+    } catch {
+      console.warn("[quota][stream] auth validate failed");
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    // Free 用户：截断上下文消息
+    if (plan.isFree && processedMessages.length > 0) {
+      const contextLimit = getFreeContextMsgLimit();
+      if (processedMessages.length > contextLimit) {
+        processedMessages = truncateContextMessages(processedMessages, contextLimit);
+        contextTruncated = true;
+        console.log("[context] Free user messages truncated:", messages.length, "->", processedMessages.length, "limit:", contextLimit);
+      }
+    }
 
     const hasMediaPayload =
       (Array.isArray(images) && images.length > 0) ||
@@ -88,16 +184,8 @@ export async function POST(req: Request) {
       (Array.isArray(messages) &&
         messages.some((m) => (m?.images || m?.videos || m?.audios || []).length > 0));
 
-    console.log("[media][stream] incoming", {
-      model,
-      modelId,
-      images: Array.isArray(images) ? images.length : 0,
-      videos: Array.isArray(videos) ? videos.length : 0,
-      audios: Array.isArray(audios) ? audios.length : 0,
-      msgCount: Array.isArray(messages) ? messages.length : 0,
-    });
-
     const modelName = hasMediaPayload ? "qwen3-omni-flash" : model || modelId || "qwen3-omni-flash";
+    const finalModelId = modelId || modelName;
     const provider = getDashScopeProvider(modelName);
     if (!provider) {
       return new Response(JSON.stringify({ success: false, error: "Unsupported model or missing API key" }), {
@@ -106,9 +194,140 @@ export async function POST(req: Request) {
       });
     }
 
+    // ============================================================
+    // Free 用户配额扣减（未提前扣减时）
+    // ============================================================
+    const connector = new CloudBaseConnector();
+    await connector.initialize();
+    const db = connector.getClient();
+
+    if (plan.isFree && !quotaChecked) {
+      const today = new Date().toISOString().split("T")[0];
+      const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+      const quotaColl = db.collection("free_quotas");
+      const category = getModelCategory(finalModelId);
+      const imageCount = getImageCount({ images });
+      const videoAudioCount = getVideoAudioCount({ videos, audios });
+      console.log("[quota][stream] begin", {
+        user: user.id,
+        modelId: finalModelId,
+        category,
+        today,
+        currentMonth,
+        imageCount,
+        videoAudioCount,
+      });
+
+      const consumeDaily = async () => {
+        const dailyLimit = getFreeDailyLimit();
+        const existing = await quotaColl.where({ userId: user.id, day: today }).limit(1).get();
+        const row = existing?.data?.[0];
+        const used = row?.daily_count ?? row?.used ?? 0;
+        console.log("[quota][stream] daily check", { used, dailyLimit, rowId: row?._id });
+        if (used >= dailyLimit) {
+          return {
+            allowed: false,
+            error: getQuotaExceededMessage("daily", language === "zh" ? "zh" : "en"),
+          };
+        }
+        const payload: any = {
+          userId: user.id,
+          day: today,
+          daily_count: used + 1,
+          updatedAt: new Date().toISOString(),
+        };
+        if (row?._id) {
+          await quotaColl.doc(row._id).update(payload);
+        } else {
+          await quotaColl.add(payload);
+        }
+        console.log("[quota][stream] daily updated", { user: user.id, used: used + 1, dailyLimit });
+        return { allowed: true };
+      };
+
+      if (category === "general") {
+        // 通用模型：无限制
+      } else if (category === "external") {
+        const res = await consumeDaily();
+        if (!res.allowed) {
+          return new Response(JSON.stringify({ success: false, error: res.error }), {
+            status: 402,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      } else if (category === "advanced_multimodal") {
+        const photoLimit = getFreeMonthlyPhotoLimit();
+        const videoAudioLimit = getFreeMonthlyVideoAudioLimit();
+
+        if (imageCount === 0 && videoAudioCount === 0) {
+          const res = await consumeDaily();
+          if (!res.allowed) {
+            return new Response(JSON.stringify({ success: false, error: res.error }), {
+              status: 402,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+        } else {
+          const existing = await quotaColl.where({ userId: user.id, month: currentMonth }).limit(1).get();
+          const row = existing?.data?.[0];
+          const usedPhoto = row?.month_used_photo ?? 0;
+          const usedVideoAudio = row?.month_used_video_audio ?? 0;
+          console.log("[quota][stream] monthly check", {
+            usedPhoto,
+            usedVideoAudio,
+            photoLimit,
+            videoAudioLimit,
+            rowId: row?._id,
+          });
+
+          if (imageCount > 0 && usedPhoto + imageCount > photoLimit) {
+            return new Response(
+              JSON.stringify({ success: false, error: getQuotaExceededMessage("monthly_photo", language === "zh" ? "zh" : "en") }),
+              { status: 402, headers: { "Content-Type": "application/json" } },
+            );
+          }
+          if (videoAudioCount > 0 && usedVideoAudio + videoAudioCount > videoAudioLimit) {
+            return new Response(
+              JSON.stringify({ success: false, error: getQuotaExceededMessage("monthly_video_audio", language === "zh" ? "zh" : "en") }),
+              { status: 402, headers: { "Content-Type": "application/json" } },
+            );
+          }
+
+          const payload: any = {
+            userId: user.id,
+            month: currentMonth,
+            month_used_photo: usedPhoto + imageCount,
+            month_used_video_audio: usedVideoAudio + videoAudioCount,
+            updatedAt: new Date().toISOString(),
+          };
+          if (row?._id) {
+            await quotaColl.doc(row._id).update(payload);
+          } else {
+            await quotaColl.add(payload);
+          }
+          console.log("[quota][stream] monthly updated", {
+            user: user.id,
+            photo: usedPhoto + imageCount,
+            photoLimit,
+            videoAudio: usedVideoAudio + videoAudioCount,
+            videoAudioLimit,
+          });
+        }
+      } else {
+        // 未知模型：按外部模型处理
+        const res = await consumeDaily();
+        if (!res.allowed) {
+          return new Response(JSON.stringify({ success: false, error: res.error }), {
+            status: 402,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
+
     const mergedMessages: IncomingMessage[] =
-      Array.isArray(messages) && messages.length > 0
-        ? [...messages]
+      Array.isArray(processedMessages) && processedMessages.length > 0
+        ? [...processedMessages]
         : [{ role: "user", content: message || "", images, videos, audios }];
 
     if ((images?.length || videos?.length || audios?.length) && mergedMessages.length > 0) {

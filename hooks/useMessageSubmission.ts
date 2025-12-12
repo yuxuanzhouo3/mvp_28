@@ -5,6 +5,8 @@ import { simulateMultiGPTResponse } from "../services";
 import { apiService } from "../lib/api";
 import { detectLanguage, getSelectedModelDisplay } from "../utils";
 import { createClient } from "@/lib/supabase/client";
+import { GENERAL_MODEL_ID } from "@/utils/model-limits";
+import { getFreeContextMsgLimit } from "@/utils/model-limits";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const useMessageSubmission = (
@@ -48,6 +50,7 @@ export const useMessageSubmission = (
   onRequireAuth?: () => void,
   consumeFreeQuota?: () => boolean,
   refreshQuota?: () => void,
+  openUpgrade?: () => void,
 ) => {
   const [forceUpdate, setForceUpdate] = useState(0);
   const supabase = useMemo(() => supabaseClient || createClient(), [supabaseClient]);
@@ -211,7 +214,15 @@ export const useMessageSubmission = (
       audios: audioFileIds,
       audioPreviews,
     };
-    const currentModel = selectedModel || getSelectedModelDisplayLocal();
+    const displayModelName = getSelectedModelDisplayLocal();
+    const persistedModelId =
+      selectedModelType === "general"
+        ? GENERAL_MODEL_ID
+        : selectedModel || "qwen3-omni-flash";
+    const currentModel =
+      selectedModelType === "general"
+        ? displayModelName
+        : selectedModel || displayModelName;
     const currentChat = chatSessions.find((c) => c.id === currentChatId);
     let conversationId = currentChatId || "";
     const newChatCategory = selectedCategory || "general";
@@ -220,14 +231,14 @@ export const useMessageSubmission = (
       if (!currentChat) {
         conversationId = await createServerConversation(
           userMessage.content.slice(0, 30) + "...",
-          selectedModel || currentModel
+          persistedModelId
         );
 
         const newChat: ChatSession = {
           id: conversationId,
           title: userMessage.content.slice(0, 30) + "...",
           messages: [userMessage],
-          model: selectedModel || currentModel,
+          model: persistedModelId,
           modelType: selectedModelType,
           category: newChatCategory,
           lastUpdated: new Date(),
@@ -244,14 +255,14 @@ export const useMessageSubmission = (
       } else if (!currentChat.isModelLocked) {
         conversationId = await createServerConversation(
           userMessage.content.slice(0, 30) + "...",
-          selectedModel || currentModel
+          persistedModelId
         );
 
         const newChat: ChatSession = {
           id: conversationId,
           title: userMessage.content.slice(0, 30) + "...",
           messages: [userMessage],
-          model: selectedModel || currentModel,
+          model: persistedModelId,
           modelType: selectedModelType,
           category: newChatCategory,
           lastUpdated: new Date(),
@@ -309,7 +320,29 @@ export const useMessageSubmission = (
     setIsLoading(true);
 
     // 准备上下文（用户与助手消息）用于流式接口
-    const historyMessages = [...messages, userMessage].map((msg) => ({
+    let preparedHistory = [...messages, userMessage];
+
+    // 上下文截断：Free 用户按环境限制，只保留最近 N 条
+    const planLower = (appUser?.plan || "").toLowerCase?.() || "";
+    const isFreeUser = !appUser?.isPro && planLower !== "basic" && planLower !== "pro" && planLower !== "enterprise";
+    if (isFreeUser) {
+      const ctxLimit = getFreeContextMsgLimit();
+      if (messages.length >= ctxLimit) {
+        openUpgrade?.();
+        alert(
+          selectedLanguage === "zh"
+            ? `上下文已达上限（${ctxLimit}条）。请订阅以提升额度，或新建对话后再试。`
+            : `Context limit reached (${ctxLimit} messages). Subscribe to increase your context size or start a new chat.`
+        );
+        releaseLock();
+        return;
+      }
+      if (preparedHistory.length > ctxLimit) {
+        preparedHistory = preparedHistory.slice(-ctxLimit);
+      }
+    }
+
+    const historyMessages = preparedHistory.map((msg) => ({
       role: msg.role as "user" | "assistant" | "system",
       content: msg.content,
       images: msg.images,
@@ -331,14 +364,27 @@ export const useMessageSubmission = (
             images: userMessage.images || [],
             videos: userMessage.videos || [],
             audios: (userMessage as any).audios || [],
+            modelId: persistedModelId, // 传递模型 ID 用于分级配额
           }),
         });
         if (res.status === 402) {
           const body = await res.json().catch(() => ({}));
-          const msg =
-            selectedLanguage === "zh"
-              ? "今日免费额度已用完，请升级套餐后继续使用。"
-              : body?.error || "Daily free quota reached. Please upgrade to continue.";
+          // 根据配额类型显示不同的错误提示
+          const quotaType = body?.quotaType || "daily";
+          let msg: string;
+          if (quotaType === "monthly_photo") {
+            msg = selectedLanguage === "zh"
+              ? "本月图片配额已用完，请升级套餐或下月再试。"
+              : body?.error || "Monthly photo quota reached. Please upgrade or try next month.";
+          } else if (quotaType === "monthly_video_audio") {
+            msg = selectedLanguage === "zh"
+              ? "本月视频/音频配额已用完，请升级套餐或下月再试。"
+              : body?.error || "Monthly video/audio quota reached. Please upgrade or try next month.";
+          } else {
+            msg = selectedLanguage === "zh"
+              ? "今日免费额度已用完，请升级套餐或切换到通用模型（General Model）继续使用。"
+              : body?.error || "Daily free quota reached. Please upgrade or switch to the General Model.";
+          }
           alert(msg);
           setIsLoading(false);
           releaseLock();
@@ -360,11 +406,13 @@ export const useMessageSubmission = (
       }
     }
 
-    // Consume local quota after server accepts the user message
-    if (consumeFreeQuota && !consumeFreeQuota()) {
-      setIsLoading(false);
-      releaseLock();
-      return;
+    // 国际版：本地预扣免费额度；国内版/通用模型跳过（由服务端或无限制处理）
+    if (!IS_DOMESTIC_VERSION && selectedModelType !== "general") {
+      if (consumeFreeQuota && !consumeFreeQuota()) {
+        setIsLoading(false);
+        releaseLock();
+        return;
+      }
     }
 
     try {
@@ -475,7 +523,8 @@ export const useMessageSubmission = (
         setIsStreaming(false);
       } else {
         // Use real API calls for external models
-        let modelId = "llama3.1-8b"; // fallback
+        let modelId =
+          selectedModelType === "general" ? GENERAL_MODEL_ID : persistedModelId;
 
         // Prefer selected external model
         if (selectedModelType === "external" && selectedModel) {
@@ -483,6 +532,10 @@ export const useMessageSubmission = (
           if (model) {
             modelId = model.id;
           }
+        } else if (selectedModelType === "general") {
+          modelId = GENERAL_MODEL_ID;
+        } else if (selectedModel) {
+          modelId = selectedModel;
         }
 
         // If包含图片/视频，强制用多模态模型（对标 Qwen Demo）
@@ -537,6 +590,7 @@ export const useMessageSubmission = (
             userMessage.images,
             userMessage.videos,
             (userMessage as any).audios,
+            true, // quota already checked & persisted via /messages
             // onChunk callback
             (chunk: string) => {
               streamedContent += chunk;
@@ -865,6 +919,3 @@ export const useMessageSubmission = (
     forceUpdate,
   };
 };
-
-
-

@@ -55,6 +55,7 @@ import { UploadedFilesList } from "@/features/chat/components/input/UploadedFile
 import { StatusIndicators } from "@/features/chat/components/input/StatusIndicators";
 import { CameraPanel } from "@/features/chat/components/input/CameraPanel";
 import type { AttachmentItem } from "@/types";
+import { GENERAL_MODEL_ID } from "@/utils/model-limits";
 
 interface InputAreaProps {
   prompt: string;
@@ -1168,7 +1169,7 @@ const InputArea = React.memo(function InputArea({
                             <div className="h-32 flex items-center justify-center">
                               <div
                                 className="w-full h-full cursor-pointer p-2 rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-[#565869] hover:bg-gray-100 dark:hover:bg-[#444654] transition-all duration-200 hover:shadow-sm flex flex-col items-center justify-center"
-                                onClick={() => handleModelSelect("general")}
+                                onClick={() => handleModelSelect("general", undefined, GENERAL_MODEL_ID)}
                               >
                                 <MessageSquare className="w-4 h-4 mx-auto text-gray-500 dark:text-gray-400 mb-1" />
                                 <h3 className="text-xs font-semibold text-gray-900 dark:text-[#ececf1] mb-1">

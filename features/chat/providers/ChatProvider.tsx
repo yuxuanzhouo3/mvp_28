@@ -35,6 +35,7 @@ import {
   shareMessage,
   downloadMessage,
 } from "@/utils";
+import { GENERAL_MODEL_ID } from "@/utils/model-limits";
 import { useLanguage } from "@/context/LanguageContext";
 import { createLocalizedTextGetter } from "@/lib/localization";
 import { IS_DOMESTIC_VERSION } from "@/config";
@@ -577,6 +578,11 @@ export default function ChatProvider({
   const [freeQuotaUsed, setFreeQuotaUsed] = useState<number>(0);
   const [freeQuotaDate, setFreeQuotaDate] = useState<string>("");
   const [freeQuotaLimit, setFreeQuotaLimit] = useState<number>(FREE_DAILY_LIMIT);
+  const [freePhotoRemaining, setFreePhotoRemaining] = useState<number | null>(null);
+  const [freePhotoLimit, setFreePhotoLimit] = useState<number | null>(null);
+  const [freeVideoAudioRemaining, setFreeVideoAudioRemaining] = useState<number | null>(null);
+  const [freeVideoAudioLimit, setFreeVideoAudioLimit] = useState<number | null>(null);
+  const [freeContextLimit, setFreeContextLimit] = useState<number | null>(null);
   const [basicQuotaUsed, setBasicQuotaUsed] = useState<number>(0);
   const [basicQuotaLimit, setBasicQuotaLimit] = useState<number>(
     Number.parseInt(process.env.NEXT_PUBLIC_BASIC_MONTHLY_LIMIT || "100", 10) || 100
@@ -715,8 +721,8 @@ const loadMessagesForConversation = useCallback(
             id: c.id,
             title: c.title || "New Chat",
             messages: [],
-            model: c.model || defaultExternalModelId,
-            modelType: "external",
+            model: c.model || GENERAL_MODEL_ID,
+            modelType: c.model ? (c.modelType || "external") : "general",
             category: "general",
             lastUpdated: c.updated_at ? new Date(c.updated_at) : new Date(),
             isModelLocked: false, // allow model selection before messages load
@@ -743,7 +749,12 @@ const loadMessagesForConversation = useCallback(
           const current = mapped.find((c) => c.id === currentId);
           if (current) {
             setSelectedModelType(current.modelType || "external");
-            setSelectedModel(current.model || defaultExternalModelId);
+            setSelectedModel(
+              current.model ||
+                (current.modelType === "general"
+                  ? GENERAL_MODEL_ID
+                  : defaultExternalModelId)
+            );
             setSelectedCategory(current.category || "general");
           }
         }
@@ -1305,6 +1316,11 @@ const loadMessagesForConversation = useCallback(
           setBasicQuotaPeriod(data.period ?? "");
           setFreeQuotaUsed(0);
           setFreeQuotaLimit(FREE_DAILY_LIMIT);
+          setFreePhotoLimit(null);
+          setFreePhotoRemaining(null);
+          setFreeVideoAudioLimit(null);
+          setFreeVideoAudioRemaining(null);
+          setFreeContextLimit(null);
           if(false) console.log("/*quota*/ refreshQuota applied basic", {
             used: usedVal,
             limit: data.limit ?? basicQuotaLimit,
@@ -1316,14 +1332,56 @@ const loadMessagesForConversation = useCallback(
               ? data.used
               : typeof data.limit === "number" && typeof data.remaining === "number"
                 ? data.limit - data.remaining
-                : 0;
+                : typeof data.daily?.used === "number"
+                  ? data.daily.used
+                  : typeof data.daily?.limit === "number" && typeof data.daily?.remaining === "number"
+                    ? data.daily.limit - data.daily.remaining
+                    : 0;
+          const limitVal =
+            typeof data.limit === "number"
+              ? data.limit
+              : typeof data.daily?.limit === "number"
+                ? data.daily.limit
+                : FREE_DAILY_LIMIT;
+
           setFreeQuotaUsed((prev) => Math.max(prev, usedVal));
-          setFreeQuotaLimit(data.limit ?? FREE_DAILY_LIMIT);
+          setFreeQuotaLimit(limitVal);
+          setFreePhotoLimit(
+            typeof data.photoLimit === "number"
+              ? data.photoLimit
+              : typeof data.monthlyMedia?.photoLimit === "number"
+                ? data.monthlyMedia.photoLimit
+                : null
+          );
+          setFreePhotoRemaining(
+            typeof data.photoRemaining === "number"
+              ? data.photoRemaining
+              : typeof data.monthlyMedia?.photoRemaining === "number"
+                ? data.monthlyMedia.photoRemaining
+                : null
+          );
+          setFreeVideoAudioLimit(
+            typeof data.videoAudioLimit === "number"
+              ? data.videoAudioLimit
+              : typeof data.monthlyMedia?.videoAudioLimit === "number"
+                ? data.monthlyMedia.videoAudioLimit
+                : null
+          );
+          setFreeVideoAudioRemaining(
+            typeof data.videoAudioRemaining === "number"
+              ? data.videoAudioRemaining
+              : typeof data.monthlyMedia?.videoAudioRemaining === "number"
+                ? data.monthlyMedia.videoAudioRemaining
+                : null
+          );
+          setFreeContextLimit(
+            typeof data.contextMsgLimit === "number" ? data.contextMsgLimit : null
+          );
           setBasicQuotaUsed(0);
           setBasicQuotaPeriod("");
           if(false) console.log("/*quota*/ refreshQuota applied free", {
             used: usedVal,
-            limit: data.limit ?? FREE_DAILY_LIMIT,
+            limit: limitVal,
             period: data.period,
           });
         }
@@ -1519,7 +1577,8 @@ const loadMessagesForConversation = useCallback(
       supabase,
       requireLogin,
       consumeFreeQuota,
-      refreshQuota
+      refreshQuota,
+      () => setShowUpgradeDialog(true),
     );
 
   // Guest session timeout management
@@ -2876,9 +2935,10 @@ const loadMessagesForConversation = useCallback(
     category?: string,
     model?: string
   ) => {
+    const fallbackModel = modelType === "general" ? GENERAL_MODEL_ID : defaultExternalModelId;
+    const chosenModel = model || fallbackModel;
     // If current chat already locked, start a new chat with the chosen model
     if (currentChat && currentChat.isModelLocked) {
-      const chosenModel = model || defaultExternalModelId;
       void createNewChat(category, modelType, chosenModel);
       setIsModelSelectorOpen(false);
       return;
@@ -2886,7 +2946,7 @@ const loadMessagesForConversation = useCallback(
 
     setSelectedModelType(modelType);
     if (category) setSelectedCategory(category);
-    if (model) setSelectedModel(model);
+    setSelectedModel(chosenModel);
     setIsModelSelectorOpen(false);
   };
 
@@ -2911,8 +2971,12 @@ const loadMessagesForConversation = useCallback(
       return;
     }
 
-    const chosenModel = model || defaultExternalModelId;
-    const chosenModelType = modelType || "external";
+    const chosenModelType = modelType || "general";
+    const chosenModel =
+      model ||
+      (chosenModelType === "general"
+        ? GENERAL_MODEL_ID
+        : defaultExternalModelId);
     // Use a temporary local ID; real ID will be created on first message send
     const newChatId = `local-${Date.now()}`;
 
@@ -2944,11 +3008,16 @@ const loadMessagesForConversation = useCallback(
     const chat = chatSessions.find((c) => c.id === chatId);
     if (chat) {
       // Immediately reflect locally stored messages (may be empty) before fetch
-      setMessages(chat.messages || []);
-      // Load messages only when user selects
-      void loadMessagesForConversation(chatId);
-      setSelectedModelType(chat.modelType || "external");
-      setSelectedModel(chat.model || defaultExternalModelId);
+          setMessages(chat.messages || []);
+          // Load messages only when user selects
+          void loadMessagesForConversation(chatId);
+          setSelectedModelType(chat.modelType || "general");
+          setSelectedModel(
+            chat.model ||
+              (chat.modelType === "general"
+                ? GENERAL_MODEL_ID
+                : defaultExternalModelId)
+          );
       setSelectedCategory(chat.category || "general");
 
       // Auto-collapse all folders except the chat's category
@@ -3005,7 +3074,12 @@ const loadMessagesForConversation = useCallback(
         setCurrentChatId(nextChat.id);
         currentChatIdRef.current = nextChat.id;
         setSelectedModelType(nextChat.modelType || "external");
-        setSelectedModel(nextChat.model || defaultExternalModelId);
+        setSelectedModel(
+          nextChat.model ||
+            (nextChat.modelType === "general"
+              ? GENERAL_MODEL_ID
+              : defaultExternalModelId)
+        );
         setSelectedCategory(nextChat.category || "general");
         setExpandedFolders([nextChat.category || "general"]);
         setMessages(nextChat.messages || []);
@@ -3624,6 +3698,11 @@ const loadMessagesForConversation = useCallback(
     freeQuotaLimit: FREE_DAILY_LIMIT,
     basicQuotaRemaining,
     basicQuotaLimit,
+    freePhotoRemaining,
+    freePhotoLimit,
+    freeVideoAudioRemaining,
+    freeVideoAudioLimit,
+    freeContextLimit,
   };
 
   const chatInterfaceProps = {
@@ -3631,6 +3710,9 @@ const loadMessagesForConversation = useCallback(
     appUser,
     guestChatSessions,
     currentChatId,
+    contextLimit: freeContextLimit ?? undefined,
+    setShowUpgradeDialog,
+    selectedLanguage,
     jumpToScrollPosition,
     scrollAreaRef,
     messagesEndRef,
@@ -3653,6 +3735,7 @@ const loadMessagesForConversation = useCallback(
   const inputAreaProps = {
     prompt,
     setPrompt,
+    setShowUpgradeDialog,
     handleTextSelection,
     setTextareaHeight,
     selectedText,

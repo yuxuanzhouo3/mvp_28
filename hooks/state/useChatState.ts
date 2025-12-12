@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Message, ChatSession, ExternalModel } from "../../types";
 import { DEFAULT_LANGUAGE, getCurrentModelConfig } from "../../config";
 import { externalModels } from "../../constants";
+import { GENERAL_MODEL_ID } from "@/utils/model-limits";
 
 export const useChatState = () => {
   const currentModelConfig = getCurrentModelConfig();
@@ -12,7 +13,7 @@ export const useChatState = () => {
     const multi = candidates.find((m) => m.modality === "multimodal");
     return multi?.id || candidates[0]?.id || currentModelConfig.defaultModel;
   };
-  const defaultModelId = pickDefaultModel();
+  const defaultModelId = GENERAL_MODEL_ID;
   const [messages, setMessages] = useState<Message[]>([]);
   const [prompt, setPrompt] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -41,7 +42,7 @@ export const useChatState = () => {
   const [selectedModelFilter, setSelectedModelFilter] = useState<string>("");
   // 国内版默认按外部模型（Qwen/DeepSeek 等）走 external
   const [selectedModelType, setSelectedModelType] =
-    useState<string>("external");
+    useState<string>("general");
   const [selectedLanguage, setSelectedLanguage] =
     useState<string>(DEFAULT_LANGUAGE);
   const [shortcutsEnabled, setShortcutsEnabled] = useState<boolean>(false);

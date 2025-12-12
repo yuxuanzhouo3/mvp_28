@@ -3,12 +3,29 @@ import { createClient } from "@/lib/supabase/server";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
+import {
+  getModelCategory,
+  isGeneralModel,
+  isExternalModel,
+  isAdvancedMultimodalModel,
+  getFreeDailyLimit,
+  getFreeMonthlyPhotoLimit,
+  getFreeMonthlyVideoAudioLimit,
+  getFreeContextMsgLimit,
+  getTodayString,
+  getCurrentYearMonth,
+  getQuotaExceededMessage,
+  getImageCount,
+  getVideoAudioCount,
+  MediaPayload,
+} from "@/utils/model-limits";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 async function getDomesticUser(req: NextRequest) {
-  const token = req.cookies.get("auth-token")?.value;
+  const raw = req.cookies.get("auth-token")?.value;
+  const token = raw ? decodeURIComponent(raw) : null;
   if (!token) return null;
   const auth = new CloudBaseAuthService();
   return await auth.validateToken(token);
@@ -19,13 +36,6 @@ function isDomesticRequest(req: NextRequest) {
   const hasCloudToken = !!req.cookies.get("auth-token");
   return langIsZh || hasCloudToken;
 }
-
-const getDailyLimit = () => {
-  const raw = process.env.NEXT_PUBLIC_FREE_DAILY_LIMIT || "10";
-  const n = parseInt(raw, 10);
-  if (!Number.isFinite(n) || n <= 0) return 10;
-  return Math.min(1000, n);
-};
 
 const getMonthlyLimit = () => {
   const raw = process.env.NEXT_PUBLIC_BASIC_MONTHLY_LIMIT || "100";
@@ -45,6 +55,155 @@ function getPlanInfo(meta: any) {
   const isPro = planLower === "pro" || planLower === "enterprise" || isProFlag;
   const isFree = !isPro && !isBasic;
   return { planLower, isPro, isBasic, isFree };
+}
+
+/**
+ * 检查并扣除 Free 用户的分级配额 (CloudBase)
+ * 返回 { allowed: boolean, error?: string, quotaType?: string }
+ */
+async function checkAndDeductFreeQuota(
+  db: any,
+  userId: string,
+  modelId: string,
+  mediaPayload: MediaPayload,
+  language: string = "zh"
+): Promise<{ allowed: boolean; error?: string; quotaType?: string }> {
+  const modelCategory = getModelCategory(modelId);
+  const today = getTodayString();
+  const currentMonth = getCurrentYearMonth();
+  const quotaColl = db.collection("free_quotas");
+  console.log("[quota][deduct] start", {
+    user: userId,
+    modelId,
+    category: modelCategory,
+    today,
+    month: currentMonth,
+    images: getImageCount(mediaPayload),
+    videoAudio: getVideoAudioCount(mediaPayload),
+  });
+
+  const consumeDailyQuota = async () => {
+    const dailyLimit = getFreeDailyLimit();
+    const existing = await quotaColl.where({ userId, day: today }).limit(1).get();
+    const quotaRow = existing?.data?.[0];
+    const dailyCount = quotaRow?.daily_count ?? quotaRow?.used ?? 0;
+    console.log("[quota][deduct] daily check", { user: userId, used: dailyCount, limit: dailyLimit, rowId: quotaRow?._id });
+
+    if (dailyCount >= dailyLimit) {
+      return {
+        allowed: false,
+        error: getQuotaExceededMessage("daily", language),
+        quotaType: "daily" as const,
+      };
+    }
+
+    const newCount = dailyCount + 1;
+    const payload: any = {
+      userId,
+      day: today,
+      daily_count: newCount,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (quotaRow?._id) {
+      await quotaColl.doc(quotaRow._id).update(payload);
+    } else {
+      await quotaColl.add(payload);
+    }
+
+    console.log("[quota][deduct] daily updated", {
+      user: userId,
+      modelId,
+      daily_count: newCount,
+      limit: dailyLimit,
+    });
+    return { allowed: true, quotaType: "daily" as const };
+  };
+
+  // 分支 A：通用模型 - 无限制
+  if (modelCategory === "general" || isGeneralModel(modelId)) {
+    return { allowed: true, quotaType: "unlimited" };
+  }
+
+  // 分支 B：外部模型 - 每日配额
+  if (modelCategory === "external" || isExternalModel(modelId)) {
+    return consumeDailyQuota();
+  }
+
+  // 分支 C：高级多模态模型 - 月度媒体配额
+  if (modelCategory === "advanced_multimodal" || isAdvancedMultimodalModel(modelId)) {
+    const photoLimit = getFreeMonthlyPhotoLimit();
+    const videoAudioLimit = getFreeMonthlyVideoAudioLimit();
+    
+    // 检查是否有媒体内容
+    const imageCount = getImageCount(mediaPayload);
+    const videoAudioCount = getVideoAudioCount(mediaPayload);
+
+    // 纯文本对话：走每日文本额度
+    if (imageCount === 0 && videoAudioCount === 0) {
+      console.log("[quota] advanced multimodal text-only -> consume daily quota");
+      return consumeDailyQuota();
+    }
+
+    // 查询月度媒体配额
+    const existing = await quotaColl
+      .where({ userId, month: currentMonth })
+      .limit(1)
+      .get();
+    const quotaRow = existing?.data?.[0];
+    const monthUsedPhoto = quotaRow?.month_used_photo ?? 0;
+    const monthUsedVideoAudio = quotaRow?.month_used_video_audio ?? 0;
+
+    // 检查图片配额
+    if (imageCount > 0) {
+      if (monthUsedPhoto + imageCount > photoLimit) {
+        return {
+          allowed: false,
+          error: getQuotaExceededMessage("monthly_photo", language),
+          quotaType: "monthly_photo",
+        };
+      }
+    }
+
+    // 检查视频/音频配额
+    if (videoAudioCount > 0) {
+      if (monthUsedVideoAudio + videoAudioCount > videoAudioLimit) {
+        return {
+          allowed: false,
+          error: getQuotaExceededMessage("monthly_video_audio", language),
+          quotaType: "monthly_video_audio",
+        };
+      }
+    }
+
+    // 扣除配额
+    const newPhotoUsed = monthUsedPhoto + imageCount;
+    const newVideoAudioUsed = monthUsedVideoAudio + videoAudioCount;
+    const payload: any = {
+      userId,
+      month: currentMonth,
+      month_used_photo: newPhotoUsed,
+      month_used_video_audio: newVideoAudioUsed,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (quotaRow?._id) {
+      await quotaColl.doc(quotaRow._id).update(payload);
+    } else {
+      await quotaColl.add(payload);
+    }
+
+    console.log(
+      "[quota] advanced multimodal", modelId, "user", userId,
+      "photo", newPhotoUsed, "/", photoLimit,
+      "video_audio", newVideoAudioUsed, "/", videoAudioLimit
+    );
+    return { allowed: true, quotaType: "monthly_media" };
+  }
+
+  // 未知模型类型：默认按外部模型处理
+  console.warn("[quota] unknown model category for", modelId, "treating as external");
+  return checkAndDeductFreeQuota(db, userId, "deepseek-v3", mediaPayload, language);
 }
 
 // Get messages for a conversation
@@ -162,7 +321,15 @@ export async function POST(
     videoFileIds,
     audios,
     audioFileIds,
+    modelId, // 新增：当前使用的模型 ID
   } = reqBody;
+
+  // 构建媒体 payload
+  const mediaPayload: MediaPayload = {
+    images: Array.isArray(images) ? images : Array.isArray(imageFileIds) ? imageFileIds : [],
+    videos: Array.isArray(videos) ? videos : Array.isArray(videoFileIds) ? videoFileIds : [],
+    audios: Array.isArray(audios) ? audios : Array.isArray(audioFileIds) ? audioFileIds : [],
+  };
 
   if (!isDomesticRequest(req)) {
     const supabase = await createClient();
@@ -306,37 +473,72 @@ export async function POST(
   const user = await getDomesticUser(req);
   if (!user) return new Response("Unauthorized", { status: 401 });
   const plan = getPlanInfo(user.metadata);
+  console.log("[quota][messages] user", user.id, "plan", plan.planLower, "rawModelId", modelId);
 
   const connector = new CloudBaseConnector();
   await connector.initialize();
   const db = connector.getClient();
 
   try {
-    // Quota enforcement for Free/Basic users on user messages
-    if (role === "user" && (plan.isFree || plan.isBasic)) {
+    // ============================================================
+    // 新版分级配额系统 (仅 Free 用户，仅 user 消息)
+    // ============================================================
+    if (role === "user" && plan.isFree) {
+      // 获取模型 ID（从请求体或默认）
+      const currentModelId = modelId || "qwen3-omni-flash";
+      console.log("[quota][messages] free check", {
+        user: user.id,
+        modelId: currentModelId,
+        media: {
+          images: mediaPayload.images?.length || 0,
+          videos: mediaPayload.videos?.length || 0,
+          audios: mediaPayload.audios?.length || 0,
+        },
+      });
+      
+      // 检查并扣除配额
+      const quotaResult = await checkAndDeductFreeQuota(
+        db,
+        user.id,
+        currentModelId,
+        mediaPayload,
+        "zh"
+      );
+
+      if (!quotaResult.allowed) {
+        return new Response(
+          JSON.stringify({
+            error: quotaResult.error,
+            quotaType: quotaResult.quotaType,
+            remaining: 0,
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
+      }
+    }
+
+    // Basic 用户：保留原有月度配额逻辑
+    if (role === "user" && plan.isBasic) {
       const now = new Date();
       const todayStr = now.toISOString().split("T")[0];
       const monthStart = new Date(todayStr);
       monthStart.setDate(1);
       const monthStr = monthStart.toISOString().split("T")[0];
 
-      const limit = plan.isBasic ? getMonthlyLimit() : getDailyLimit();
-      const collectionName = plan.isBasic ? "basic_quotas" : "free_quotas";
-      const periodField = plan.isBasic ? "month" : "day";
-      const periodValue = plan.isBasic ? monthStr : todayStr;
-
-      const quotaColl = db.collection(collectionName);
+      const limit = getMonthlyLimit();
+      const quotaColl = db.collection("basic_quotas");
       const existing = await quotaColl
-        .where({ userId: user.id, [periodField]: periodValue })
+        .where({ userId: user.id, month: monthStr })
         .limit(1)
         .get();
       const quotaRow = existing?.data?.[0];
       const used = quotaRow?.used ?? 0;
+      console.log("[quota][messages] basic check", { user: user.id, used, limit, month: monthStr });
 
       if (used >= limit) {
         return new Response(
           JSON.stringify({
-            error: "Daily quota reached",
+            error: "Monthly quota reached",
             remaining: 0,
             limit,
           }),
@@ -347,28 +549,11 @@ export async function POST(
       const newUsed = used + 1;
       const payload: any = {
         userId: user.id,
-        [periodField]: periodValue,
+        month: monthStr,
         used: newUsed,
+        limit_per_month: limit,
         updatedAt: now.toISOString(),
       };
-      if (plan.isBasic) {
-        payload.limit_per_month = limit;
-      } else {
-        payload.limit_per_day = limit;
-      }
-
-      console.log(
-        "[cloudbase] quota before update",
-        plan.isBasic ? "basic" : "free",
-        "user",
-        user.id,
-        "period",
-        periodValue,
-        "used",
-        used,
-        "limit",
-        limit,
-      );
 
       if (quotaRow?._id) {
         await quotaColl.doc(quotaRow._id).update(payload);
@@ -376,18 +561,7 @@ export async function POST(
         await quotaColl.add(payload);
       }
 
-      console.log(
-        "[cloudbase] quota update",
-        plan.isBasic ? "basic" : "free",
-        "user",
-        user.id,
-        "period",
-        periodValue,
-        "used",
-        newUsed,
-        "limit",
-        limit,
-      );
+      console.log("[cloudbase] basic quota update user", user.id, "month", monthStr, "used", newUsed, "/", limit);
     }
 
     // Free 用户或本地会话：不落库，仅返回成功
@@ -404,21 +578,9 @@ export async function POST(
       clientId: client_id || null,
       tokens: tokens || null,
       createdAt: now,
-      imageFileIds: Array.isArray(images)
-        ? images
-        : Array.isArray(imageFileIds)
-          ? imageFileIds
-          : [],
-      videoFileIds: Array.isArray(videos)
-        ? videos
-        : Array.isArray(videoFileIds)
-          ? videoFileIds
-          : [],
-      audioFileIds: Array.isArray(audios)
-        ? audios
-        : Array.isArray(audioFileIds)
-          ? audioFileIds
-          : [],
+      imageFileIds: mediaPayload.images,
+      videoFileIds: mediaPayload.videos,
+      audioFileIds: mediaPayload.audios,
     });
 
     // touch conversation

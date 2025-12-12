@@ -129,6 +129,7 @@ class ApiService {
       {
         method: 'POST',
         headers,
+        credentials: 'include', // carry auth-token cookie for domestic quota/auth
         body: JSON.stringify({
           // Send both for backward compatibility; server prefers \"model\"
           model: modelId,
@@ -155,6 +156,7 @@ class ApiService {
     images?: string[],
     videos?: string[],
     audios?: string[],
+    quotaChecked?: boolean,
     onChunk?: (chunk: string) => void,
     onEnd?: () => void,
     onError?: (error: string) => void,
@@ -189,6 +191,7 @@ class ApiService {
         images,
         videos,
         audios,
+        quotaChecked,
       });
 
       const doRequest = async (attempt: number): Promise<void> => {
@@ -196,6 +199,8 @@ class ApiService {
           method: 'POST',
           headers,
           body: bodyPayload,
+          // 需要携带 cookie（auth-token）以便国内版计费 / 鉴权
+          credentials: 'include',
           signal,
         });
 

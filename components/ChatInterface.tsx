@@ -12,6 +12,7 @@ import { Copy, Share, Download, Star, Zap, Bot, User } from "lucide-react";
 import { Message } from "../types";
 import type { ReactNode } from "react";
 import { externalModels } from "@/constants";
+import { GENERAL_MODEL_ID } from "@/utils/model-limits";
 import { useState, memo, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -24,6 +25,9 @@ interface ChatInterfaceProps {
   appUser: any;
   guestChatSessions: any[];
   currentChatId: string;
+  contextLimit?: number | null;
+  setShowUpgradeDialog: (show: boolean) => void;
+  selectedLanguage: string;
   jumpToScrollPosition: number | null;
   scrollAreaRef: any;
   messagesEndRef: any;
@@ -47,12 +51,16 @@ const formatModelName = (raw: string) => {
   if (!raw) return "";
   const streaming = /\(streaming\.\.\.\)/i.test(raw);
   const cleaned = raw.replace(/\(streaming\.\.\.\)/i, "").trim();
-  const mapped =
-    externalModels.find(
-      (m) =>
-        m.id.toLowerCase() === cleaned.toLowerCase() ||
-        m.name.toLowerCase() === cleaned.toLowerCase()
-    )?.name || cleaned;
+  const normalized = cleaned.toLowerCase();
+  const isGeneral =
+    normalized === "general model" || normalized === GENERAL_MODEL_ID.toLowerCase();
+  const mapped = isGeneral
+    ? "General Model"
+    : externalModels.find(
+        (m) =>
+          m.id.toLowerCase() === normalized ||
+          m.name.toLowerCase() === normalized
+      )?.name || cleaned;
   return streaming ? `${mapped} (Streaming...)` : mapped;
 };
 
@@ -63,6 +71,9 @@ function ChatInterface({
   appUser,
   guestChatSessions,
   currentChatId,
+  contextLimit,
+  setShowUpgradeDialog,
+  selectedLanguage,
   jumpToScrollPosition,
   scrollAreaRef,
   messagesEndRef,
@@ -81,6 +92,14 @@ function ChatInterface({
   bookmarkedMessages,
   onDeleteMessage,
 }: ChatInterfaceProps) {
+  const isFreeUser = !!appUser && !appUser.isPro && (appUser.plan || "").toLowerCase() === "free";
+  const activeMessages = appUser
+    ? messages
+    : guestChatSessions.find((c) => c.id === currentChatId)?.messages || [];
+  const ctxLimit = typeof contextLimit === "number" ? contextLimit : null;
+  const ctxUsed = ctxLimit !== null ? Math.min(ctxLimit, activeMessages.length) : null;
+  const ctxRemaining = ctxLimit !== null && ctxUsed !== null ? Math.max(0, ctxLimit - ctxUsed) : null;
+  const showContextBanner = isFreeUser && ctxLimit !== null && ctxRemaining !== null;
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [mediaPreviewMap, setMediaPreviewMap] = useState<Record<string, string>>({});
   const [imagePreviewSrc, setImagePreviewSrc] = useState<string | null>(null);
@@ -370,6 +389,22 @@ function ChatInterface({
             }`}
           >
             <div className="max-w-4xl mx-auto space-y-4">
+              {showContextBanner && (
+                <div className="sticky top-0 z-10 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-700 text-[11px] text-amber-800 dark:text-amber-100 flex items-center justify-between gap-3 shadow-sm">
+                  <span className="flex-1 truncate">
+                    {selectedLanguage === "zh"
+                      ? `上下文剩余：${ctxRemaining}/${ctxLimit} · 超过限制将自动截断旧消息`
+                      : `Context remaining: ${ctxRemaining}/${ctxLimit} · Exceeding limit trims older messages`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowUpgradeDialog(true)}
+                    className="px-3 py-1 text-[11px] font-semibold rounded-md bg-amber-600 text-white hover:bg-amber-700 transition-colors whitespace-nowrap"
+                  >
+                    {selectedLanguage === "zh" ? "提升额度" : "Upgrade"}
+                  </button>
+                </div>
+              )}
               {(appUser
                 ? messages
                 : guestChatSessions.find((c) => c.id === currentChatId)

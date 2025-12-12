@@ -11,3 +11,6 @@ export {
   downloadMessage,
   getSelectedModelDisplay,
 } from "../lib/utils";
+
+// Re-export model limits utilities
+export * from "./model-limits";

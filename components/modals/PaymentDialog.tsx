@@ -45,6 +45,7 @@ interface PaymentDialogProps {
   billingPeriod: string;
   pricingPlans: PricingPlan[];
   handlePayment: (e: React.FormEvent) => void;
+  appUserId?: string | null;
 }
 
 export function PaymentDialog({
@@ -58,6 +59,7 @@ export function PaymentDialog({
   billingPeriod,
   pricingPlans,
   handlePayment,
+  appUserId,
 }: PaymentDialogProps) {
   const { currentLanguage, isDomesticVersion } = useLanguage();
   const isZh = currentLanguage === "zh";
@@ -307,7 +309,7 @@ export function PaymentDialog({
                         body: JSON.stringify({
                           planName: selectedPlan.name,
                           billingPeriod: billingPeriod === "annual" ? "annual" : "monthly",
-                          userId: undefined, // 从 session 获取
+                          userId: appUserId || undefined, // 优先传递用户 ID，便于后端写入订阅
                         }),
                       });
                       const data = await res.json();

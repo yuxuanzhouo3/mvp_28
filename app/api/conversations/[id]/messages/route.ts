@@ -9,9 +9,21 @@ import {
   isExternalModel,
   isAdvancedMultimodalModel,
   getFreeDailyLimit,
+  getBasicDailyLimit,
   getFreeMonthlyPhotoLimit,
+  getBasicMonthlyPhotoLimit,
   getFreeMonthlyVideoAudioLimit,
+  getBasicMonthlyVideoAudioLimit,
   getFreeContextMsgLimit,
+  getBasicContextMsgLimit,
+  getProDailyLimit,
+  getProMonthlyPhotoLimit,
+  getProMonthlyVideoAudioLimit,
+  getProContextMsgLimit,
+  getEnterpriseDailyLimit,
+  getEnterpriseMonthlyPhotoLimit,
+  getEnterpriseMonthlyVideoAudioLimit,
+  getEnterpriseContextMsgLimit,
   getTodayString,
   getCurrentYearMonth,
   getQuotaExceededMessage,
@@ -37,24 +49,18 @@ function isDomesticRequest(req: NextRequest) {
   return langIsZh || hasCloudToken;
 }
 
-const getMonthlyLimit = () => {
-  const raw = process.env.NEXT_PUBLIC_BASIC_MONTHLY_LIMIT || "100";
-  const n = parseInt(raw, 10);
-  if (!Number.isFinite(n) || n <= 0) return 100;
-  return Math.min(100000, n);
-};
-
 function getPlanInfo(meta: any) {
   const rawPlan =
     (meta?.plan as string | undefined) ||
     (meta?.subscriptionTier as string | undefined) ||
     "";
   const planLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
-  const isProFlag = !!meta?.pro && planLower !== "free" && planLower !== "basic";
   const isBasic = planLower === "basic";
-  const isPro = planLower === "pro" || planLower === "enterprise" || isProFlag;
-  const isFree = !isPro && !isBasic;
-  return { planLower, isPro, isBasic, isFree };
+  const isProPlan = planLower === "pro";
+  const isEnterprise = planLower === "enterprise";
+  const isUnlimitedFlag = !!meta?.pro && !isBasic && !isProPlan;
+  const isFree = !isEnterprise && !isProPlan && !isBasic && !isUnlimitedFlag;
+  return { planLower, isPro: isProPlan, isBasic, isFree, isEnterprise, isUnlimitedFlag };
 }
 
 /**
@@ -69,8 +75,8 @@ async function checkAndDeductFreeQuota(
   language: string = "zh"
 ): Promise<{ allowed: boolean; error?: string; quotaType?: string }> {
   const modelCategory = getModelCategory(modelId);
-  const today = getTodayString();
-  const currentMonth = getCurrentYearMonth();
+    const today = getTodayString();
+    const currentMonth = getCurrentYearMonth();
   const quotaColl = db.collection("free_quotas");
   console.log("[quota][deduct] start", {
     user: userId,
@@ -108,7 +114,7 @@ async function checkAndDeductFreeQuota(
     if (quotaRow?._id) {
       await quotaColl.doc(quotaRow._id).update(payload);
     } else {
-      await quotaColl.add(payload);
+      await quotaColl.add({ ...payload, createdAt: new Date() });
     }
 
     console.log("[quota][deduct] daily updated", {
@@ -190,7 +196,7 @@ async function checkAndDeductFreeQuota(
     if (quotaRow?._id) {
       await quotaColl.doc(quotaRow._id).update(payload);
     } else {
-      await quotaColl.add(payload);
+      await quotaColl.add({ ...payload, createdAt: new Date() });
     }
 
     console.log(
@@ -204,6 +210,312 @@ async function checkAndDeductFreeQuota(
   // 未知模型类型：默认按外部模型处理
   console.warn("[quota] unknown model category for", modelId, "treating as external");
   return checkAndDeductFreeQuota(db, userId, "deepseek-v3", mediaPayload, language);
+}
+
+/**
+ * 检查并扣除 Basic 用户的配额 (CloudBase)
+ * 返回 { allowed: boolean, error?: string, quotaType?: string }
+ */
+async function checkAndDeductBasicQuota(
+  db: any,
+  userId: string,
+  modelId: string,
+  mediaPayload: MediaPayload,
+  language: string = "zh"
+): Promise<{ allowed: boolean; error?: string; quotaType?: string }> {
+  const modelCategory = getModelCategory(modelId);
+  const today = getTodayString();
+  const currentMonth = getCurrentYearMonth();
+  const quotaColl = db.collection("basic_quotas");
+
+  const consumeDaily = async () => {
+    const dailyLimit = getBasicDailyLimit();
+    const existing = await quotaColl.where({ userId, day: today }).limit(1).get();
+    const quotaRow = existing?.data?.[0];
+    const dailyCount = quotaRow?.daily_count ?? quotaRow?.used ?? 0;
+
+    if (dailyCount >= dailyLimit) {
+      return {
+        allowed: false,
+        error: getQuotaExceededMessage("daily", language),
+        quotaType: "daily" as const,
+      };
+    }
+
+    const newCount = dailyCount + 1;
+    const payload: any = {
+      userId,
+      day: today,
+      daily_count: newCount,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (quotaRow?._id) {
+      await quotaColl.doc(quotaRow._id).update(payload);
+    } else {
+      await quotaColl.add({ ...payload, createdAt: new Date() });
+    }
+
+    return { allowed: true, quotaType: "daily" as const };
+  };
+
+  // 通用模型不限
+  if (modelCategory === "general" || isGeneralModel(modelId)) {
+    return { allowed: true, quotaType: "unlimited" };
+  }
+
+  // 外部模型 -> 每日
+  if (modelCategory === "external" || isExternalModel(modelId)) {
+    return consumeDaily();
+  }
+
+  // 高级多模态 -> 文本走每日，媒体走月度
+  if (modelCategory === "advanced_multimodal" || isAdvancedMultimodalModel(modelId)) {
+    const photoLimit = getBasicMonthlyPhotoLimit();
+    const videoAudioLimit = getBasicMonthlyVideoAudioLimit();
+
+    const imageCount = getImageCount(mediaPayload);
+    const videoAudioCount = getVideoAudioCount(mediaPayload);
+
+    if (imageCount === 0 && videoAudioCount === 0) {
+      return consumeDaily();
+    }
+
+    const existing = await quotaColl.where({ userId, month: currentMonth }).limit(1).get();
+    const quotaRow = existing?.data?.[0];
+    const monthUsedPhoto = quotaRow?.month_used_photo ?? 0;
+    const monthUsedVideoAudio = quotaRow?.month_used_video_audio ?? 0;
+
+    if (imageCount > 0 && monthUsedPhoto + imageCount > photoLimit) {
+      return {
+        allowed: false,
+        error: getQuotaExceededMessage("monthly_photo", language),
+        quotaType: "monthly_photo",
+      };
+    }
+
+    if (videoAudioCount > 0 && monthUsedVideoAudio + videoAudioCount > videoAudioLimit) {
+      return {
+        allowed: false,
+        error: getQuotaExceededMessage("monthly_video_audio", language),
+        quotaType: "monthly_video_audio",
+      };
+    }
+
+    const payload: any = {
+      userId,
+      month: currentMonth,
+      month_used_photo: monthUsedPhoto + imageCount,
+      month_used_video_audio: monthUsedVideoAudio + videoAudioCount,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (quotaRow?._id) {
+      await quotaColl.doc(quotaRow._id).update(payload);
+    } else {
+      await quotaColl.add({ ...payload, createdAt: new Date() });
+    }
+
+    return { allowed: true, quotaType: "monthly_media" as const };
+  }
+
+  return { allowed: true, quotaType: "daily" };
+}
+
+/**
+ * 检查并扣除 Pro 用户的配额 (CloudBase)
+ */
+async function checkAndDeductProQuota(
+  db: any,
+  userId: string,
+  modelId: string,
+  mediaPayload: MediaPayload,
+  language: string = "zh"
+): Promise<{ allowed: boolean; error?: string; quotaType?: string }> {
+  const modelCategory = getModelCategory(modelId);
+  const today = getTodayString();
+  const currentMonth = getCurrentYearMonth();
+  const quotaColl = db.collection("pro_quotas");
+
+  const consumeDaily = async () => {
+    const dailyLimit = getProDailyLimit();
+    const existing = await quotaColl.where({ userId, day: today }).limit(1).get();
+    const quotaRow = existing?.data?.[0];
+    const dailyCount = quotaRow?.daily_count ?? quotaRow?.used ?? 0;
+    if (dailyCount >= dailyLimit) {
+      return {
+        allowed: false,
+        error: getQuotaExceededMessage("daily", language),
+        quotaType: "daily" as const,
+      };
+    }
+    const newCount = dailyCount + 1;
+    const payload: any = {
+      userId,
+      day: today,
+      daily_count: newCount,
+      updatedAt: new Date().toISOString(),
+    };
+    if (quotaRow?._id) {
+      await quotaColl.doc(quotaRow._id).update(payload);
+    } else {
+      await quotaColl.add({ ...payload, createdAt: new Date() });
+    }
+    return { allowed: true, quotaType: "daily" as const };
+  };
+
+  if (modelCategory === "general" || isGeneralModel(modelId)) {
+    return { allowed: true, quotaType: "unlimited" };
+  }
+
+  if (modelCategory === "external" || isExternalModel(modelId)) {
+    return consumeDaily();
+  }
+
+  if (modelCategory === "advanced_multimodal" || isAdvancedMultimodalModel(modelId)) {
+    const photoLimit = getProMonthlyPhotoLimit();
+    const videoAudioLimit = getProMonthlyVideoAudioLimit();
+    const imageCount = getImageCount(mediaPayload);
+    const videoAudioCount = getVideoAudioCount(mediaPayload);
+
+    if (imageCount === 0 && videoAudioCount === 0) {
+      return consumeDaily();
+    }
+
+    const existing = await quotaColl.where({ userId, month: currentMonth }).limit(1).get();
+    const quotaRow = existing?.data?.[0];
+    const monthUsedPhoto = quotaRow?.month_used_photo ?? 0;
+    const monthUsedVideoAudio = quotaRow?.month_used_video_audio ?? 0;
+
+    if (imageCount > 0 && monthUsedPhoto + imageCount > photoLimit) {
+      return {
+        allowed: false,
+        error: getQuotaExceededMessage("monthly_photo", language),
+        quotaType: "monthly_photo",
+      };
+    }
+    if (videoAudioCount > 0 && monthUsedVideoAudio + videoAudioCount > videoAudioLimit) {
+      return {
+        allowed: false,
+        error: getQuotaExceededMessage("monthly_video_audio", language),
+        quotaType: "monthly_video_audio",
+      };
+    }
+
+    const payload: any = {
+      userId,
+      month: currentMonth,
+      month_used_photo: monthUsedPhoto + imageCount,
+      month_used_video_audio: monthUsedVideoAudio + videoAudioCount,
+      updatedAt: new Date().toISOString(),
+    };
+    if (quotaRow?._id) {
+      await quotaColl.doc(quotaRow._id).update(payload);
+    } else {
+      await quotaColl.add({ ...payload, createdAt: new Date() });
+    }
+    return { allowed: true, quotaType: "monthly_media" as const };
+  }
+
+  return { allowed: true, quotaType: "daily" };
+}
+
+/**
+ * 检查并扣除 Enterprise 用户的配额 (CloudBase)
+ */
+async function checkAndDeductEnterpriseQuota(
+  db: any,
+  userId: string,
+  modelId: string,
+  mediaPayload: MediaPayload,
+  language: string = "zh"
+): Promise<{ allowed: boolean; error?: string; quotaType?: string }> {
+  const modelCategory = getModelCategory(modelId);
+  const today = getTodayString();
+  const currentMonth = getCurrentYearMonth();
+  const quotaColl = db.collection("enterprise_quotas");
+
+  const consumeDaily = async () => {
+    const dailyLimit = getEnterpriseDailyLimit();
+    const existing = await quotaColl.where({ userId, day: today }).limit(1).get();
+    const quotaRow = existing?.data?.[0];
+    const dailyCount = quotaRow?.daily_count ?? quotaRow?.used ?? 0;
+    if (dailyCount >= dailyLimit) {
+      return {
+        allowed: false,
+        error: getQuotaExceededMessage("daily", language),
+        quotaType: "daily" as const,
+      };
+    }
+    const newCount = dailyCount + 1;
+    const payload: any = {
+      userId,
+      day: today,
+      daily_count: newCount,
+      updatedAt: new Date().toISOString(),
+    };
+    if (quotaRow?._id) {
+      await quotaColl.doc(quotaRow._id).update(payload);
+    } else {
+      await quotaColl.add({ ...payload, createdAt: new Date() });
+    }
+    return { allowed: true, quotaType: "daily" as const };
+  };
+
+  if (modelCategory === "general" || isGeneralModel(modelId)) {
+    return { allowed: true, quotaType: "unlimited" };
+  }
+
+  if (modelCategory === "external" || isExternalModel(modelId)) {
+    return consumeDaily();
+  }
+
+  if (modelCategory === "advanced_multimodal" || isAdvancedMultimodalModel(modelId)) {
+    const photoLimit = getEnterpriseMonthlyPhotoLimit();
+    const videoAudioLimit = getEnterpriseMonthlyVideoAudioLimit();
+    const imageCount = getImageCount(mediaPayload);
+    const videoAudioCount = getVideoAudioCount(mediaPayload);
+
+    if (imageCount === 0 && videoAudioCount === 0) {
+      return consumeDaily();
+    }
+
+    const existing = await quotaColl.where({ userId, month: currentMonth }).limit(1).get();
+    const quotaRow = existing?.data?.[0];
+    const monthUsedPhoto = quotaRow?.month_used_photo ?? 0;
+    const monthUsedVideoAudio = quotaRow?.month_used_video_audio ?? 0;
+
+    if (imageCount > 0 && monthUsedPhoto + imageCount > photoLimit) {
+      return {
+        allowed: false,
+        error: getQuotaExceededMessage("monthly_photo", language),
+        quotaType: "monthly_photo",
+      };
+    }
+    if (videoAudioCount > 0 && monthUsedVideoAudio + videoAudioCount > videoAudioLimit) {
+      return {
+        allowed: false,
+        error: getQuotaExceededMessage("monthly_video_audio", language),
+        quotaType: "monthly_video_audio",
+      };
+    }
+
+    const payload: any = {
+      userId,
+      month: currentMonth,
+      month_used_photo: monthUsedPhoto + imageCount,
+      month_used_video_audio: monthUsedVideoAudio + videoAudioCount,
+      updatedAt: new Date().toISOString(),
+    };
+    if (quotaRow?._id) {
+      await quotaColl.doc(quotaRow._id).update(payload);
+    } else {
+      await quotaColl.add({ ...payload, createdAt: new Date() });
+    }
+    return { allowed: true, quotaType: "monthly_media" as const };
+  }
+
+  return { allowed: true, quotaType: "daily" };
 }
 
 // Get messages for a conversation
@@ -346,33 +658,24 @@ export async function POST(
     const isFreeUser = !planLower || planLower === "free";
     const isBasicUser = planLower === "basic";
 
-    // Enforce daily quota only for Free users and only on user messages
+    // Enforce daily quota for Free/Basic users on user messages
     if (role === "user" && (isFreeUser || isBasicUser)) {
       const today = new Date().toISOString().split("T")[0];
       const isBasic = isBasicUser;
       const limit = (() => {
         if (isBasic) {
-          const raw = process.env.NEXT_PUBLIC_BASIC_MONTHLY_LIMIT || "100";
-          const n = parseInt(raw, 10);
-          if (!Number.isFinite(n) || n <= 0) return 100;
-          return Math.min(100000, n);
+          return getBasicDailyLimit();
         }
-        const raw = process.env.NEXT_PUBLIC_FREE_DAILY_LIMIT || "10";
-        const n = parseInt(raw, 10);
-        if (!Number.isFinite(n) || n <= 0) return 10;
-        return Math.min(1000, n);
+        return getFreeDailyLimit();
       })();
 
       let used = 0;
       if (isBasic) {
-        const monthStart = new Date(today);
-        monthStart.setDate(1);
-        const monthStr = monthStart.toISOString().split("T")[0];
         const { data: quotaRow, error: quotaErr } = await supabase
           .from("basic_quotas")
-          .select("used, limit_per_month")
+          .select("used, limit_per_day")
           .eq("user_id", userId)
-          .eq("month", monthStr)
+          .eq("day", today)
           .single();
         if (quotaErr && quotaErr.code !== "PGRST116") {
           console.error("Quota fetch error", quotaErr);
@@ -406,18 +709,15 @@ export async function POST(
 
       const newUsed = used + 1;
       if (isBasic) {
-        const monthStart = new Date(today);
-        monthStart.setDate(1);
-        const monthStr = monthStart.toISOString().split("T")[0];
         const { error: upsertErr } = await supabase.from("basic_quotas").upsert(
           {
             user_id: userId,
-            month: monthStr,
+            day: today,
             used: newUsed,
-            limit_per_month: limit,
+            limit_per_day: limit,
             updated_at: new Date().toISOString(),
           },
-          { onConflict: "user_id,month" },
+          { onConflict: "user_id,day" },
         );
         if (upsertErr) {
           console.error("Quota upsert error", upsertErr);
@@ -437,6 +737,75 @@ export async function POST(
         if (upsertErr) {
           console.error("Quota upsert error", upsertErr);
           return new Response("Failed to update quota", { status: 500 });
+        }
+      }
+
+      // Basic 高级多模态媒体配额检查（国际版）
+      if (isBasic) {
+        const currentModelId = modelId || "qwen3-omni-flash";
+        const modelCategory = getModelCategory(currentModelId);
+        const hasMedia =
+          (mediaPayload.images?.length || 0) > 0 ||
+          (mediaPayload.videos?.length || 0) > 0 ||
+          (mediaPayload.audios?.length || 0) > 0;
+        if (modelCategory === "advanced_multimodal" && hasMedia) {
+          const currentMonth = getCurrentYearMonth();
+          const imageCount = getImageCount(mediaPayload);
+          const videoAudioCount = getVideoAudioCount(mediaPayload);
+          const photoLimit = getBasicMonthlyPhotoLimit();
+          const videoAudioLimit = getBasicMonthlyVideoAudioLimit();
+
+          const { data: mediaRow, error: mediaErr } = await supabase
+            .from("basic_quotas")
+            .select("month_used_photo, month_used_video_audio")
+            .eq("user_id", userId)
+            .eq("month", currentMonth)
+            .single();
+
+          if (mediaErr && mediaErr.code !== "PGRST116") {
+            console.error("Basic media quota fetch error", mediaErr);
+            return new Response("Failed to check media quota", { status: 500 });
+          }
+
+          const monthUsedPhoto = mediaRow?.month_used_photo ?? 0;
+          const monthUsedVideoAudio = mediaRow?.month_used_video_audio ?? 0;
+
+          if (imageCount > 0 && monthUsedPhoto + imageCount > photoLimit) {
+            return new Response(
+              JSON.stringify({
+                error: getQuotaExceededMessage("monthly_photo", "en"),
+                quotaType: "monthly_photo",
+                remaining: Math.max(0, photoLimit - monthUsedPhoto),
+              }),
+              { status: 402, headers: { "Content-Type": "application/json" } },
+            );
+          }
+
+          if (videoAudioCount > 0 && monthUsedVideoAudio + videoAudioCount > videoAudioLimit) {
+            return new Response(
+              JSON.stringify({
+                error: getQuotaExceededMessage("monthly_video_audio", "en"),
+                quotaType: "monthly_video_audio",
+                remaining: Math.max(0, videoAudioLimit - monthUsedVideoAudio),
+              }),
+              { status: 402, headers: { "Content-Type": "application/json" } },
+            );
+          }
+
+          const { error: mediaUpsertErr } = await supabase.from("basic_quotas").upsert(
+            {
+              user_id: userId,
+              month: currentMonth,
+              month_used_photo: monthUsedPhoto + imageCount,
+              month_used_video_audio: monthUsedVideoAudio + videoAudioCount,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id,month" },
+          );
+          if (mediaUpsertErr) {
+            console.error("Basic media quota upsert error", mediaUpsertErr);
+            return new Response("Failed to update media quota", { status: 500 });
+          }
         }
       }
 
@@ -481,7 +850,7 @@ export async function POST(
 
   try {
     // ============================================================
-    // 新版分级配额系统 (仅 Free 用户，仅 user 消息)
+    // 新版分级配额系统 (Free/Basic/Pro 用户，仅 user 消息)
     // ============================================================
     if (role === "user" && plan.isFree) {
       // 获取模型 ID（从请求体或默认）
@@ -517,51 +886,50 @@ export async function POST(
       }
     }
 
-    // Basic 用户：保留原有月度配额逻辑
-    if (role === "user" && plan.isBasic) {
-      const now = new Date();
-      const todayStr = now.toISOString().split("T")[0];
-      const monthStart = new Date(todayStr);
-      monthStart.setDate(1);
-      const monthStr = monthStart.toISOString().split("T")[0];
-
-      const limit = getMonthlyLimit();
-      const quotaColl = db.collection("basic_quotas");
-      const existing = await quotaColl
-        .where({ userId: user.id, month: monthStr })
-        .limit(1)
-        .get();
-      const quotaRow = existing?.data?.[0];
-      const used = quotaRow?.used ?? 0;
-      console.log("[quota][messages] basic check", { user: user.id, used, limit, month: monthStr });
-
-      if (used >= limit) {
+    if (role === "user" && plan.planLower === "pro") {
+      const currentModelId = modelId || "qwen3-omni-flash";
+      const quotaResult = await checkAndDeductProQuota(db, user.id, currentModelId, mediaPayload, "zh");
+      if (!quotaResult.allowed) {
         return new Response(
           JSON.stringify({
-            error: "Monthly quota reached",
+            error: quotaResult.error,
+            quotaType: quotaResult.quotaType,
             remaining: 0,
-            limit,
           }),
           { status: 402, headers: { "Content-Type": "application/json" } },
         );
       }
+    }
 
-      const newUsed = used + 1;
-      const payload: any = {
-        userId: user.id,
-        month: monthStr,
-        used: newUsed,
-        limit_per_month: limit,
-        updatedAt: now.toISOString(),
-      };
-
-      if (quotaRow?._id) {
-        await quotaColl.doc(quotaRow._id).update(payload);
-      } else {
-        await quotaColl.add(payload);
+    if (role === "user" && plan.planLower === "enterprise") {
+      const currentModelId = modelId || "qwen3-omni-flash";
+      const quotaResult = await checkAndDeductEnterpriseQuota(db, user.id, currentModelId, mediaPayload, "zh");
+      if (!quotaResult.allowed) {
+        return new Response(
+          JSON.stringify({
+            error: quotaResult.error,
+            quotaType: quotaResult.quotaType,
+            remaining: 0,
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
       }
+    }
 
-      console.log("[cloudbase] basic quota update user", user.id, "month", monthStr, "used", newUsed, "/", limit);
+    // Basic 用户：每日文本 + 月度媒体
+    if (role === "user" && plan.isBasic) {
+      const currentModelId = modelId || "qwen3-omni-flash";
+      const quotaResult = await checkAndDeductBasicQuota(db, user.id, currentModelId, mediaPayload, "zh");
+      if (!quotaResult.allowed) {
+        return new Response(
+          JSON.stringify({
+            error: quotaResult.error,
+            quotaType: quotaResult.quotaType,
+            remaining: 0,
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
+      }
     }
 
     // Free 用户或本地会话：不落库，仅返回成功

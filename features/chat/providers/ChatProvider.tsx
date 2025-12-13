@@ -46,6 +46,25 @@ const FREE_DAILY_LIMIT = (() => {
   if (!Number.isFinite(n) || n <= 0) return 10;
   return Math.min(1000, n); // safety clamp
 })();
+const BASIC_DAILY_LIMIT = (() => {
+  const raw = process.env.NEXT_PUBLIC_BASIC_DAILY_LIMIT || "100";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 100;
+  return Math.min(10000, n); // safety clamp
+})();
+const PRO_DAILY_LIMIT = (() => {
+  const raw = process.env.NEXT_PUBLIC_PRO_DAILY_LIMIT || "200";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 200;
+  return Math.min(20000, n); // safety clamp
+})();
+
+const ENTERPRISE_DAILY_LIMIT = (() => {
+  const raw = process.env.NEXT_PUBLIC_ENTERPRISE_DAILY_LIMIT || "500";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 500;
+  return Math.min(50000, n); // safety clamp
+})();
 
 // Import hooks
 import {
@@ -584,10 +603,29 @@ export default function ChatProvider({
   const [freeVideoAudioLimit, setFreeVideoAudioLimit] = useState<number | null>(null);
   const [freeContextLimit, setFreeContextLimit] = useState<number | null>(null);
   const [basicQuotaUsed, setBasicQuotaUsed] = useState<number>(0);
-  const [basicQuotaLimit, setBasicQuotaLimit] = useState<number>(
-    Number.parseInt(process.env.NEXT_PUBLIC_BASIC_MONTHLY_LIMIT || "100", 10) || 100
-  );
-  const [basicQuotaPeriod, setBasicQuotaPeriod] = useState<string>("");
+  const [basicQuotaDate, setBasicQuotaDate] = useState<string>("");
+  const [basicQuotaLimit, setBasicQuotaLimit] = useState<number>(BASIC_DAILY_LIMIT);
+  const [basicPhotoRemaining, setBasicPhotoRemaining] = useState<number | null>(null);
+  const [basicPhotoLimit, setBasicPhotoLimit] = useState<number | null>(null);
+  const [basicVideoAudioRemaining, setBasicVideoAudioRemaining] = useState<number | null>(null);
+  const [basicVideoAudioLimit, setBasicVideoAudioLimit] = useState<number | null>(null);
+  const [basicContextLimit, setBasicContextLimit] = useState<number | null>(null);
+  const [proQuotaUsed, setProQuotaUsed] = useState<number>(0);
+  const [proQuotaDate, setProQuotaDate] = useState<string>("");
+  const [proQuotaLimit, setProQuotaLimit] = useState<number>(PRO_DAILY_LIMIT);
+  const [proPhotoRemaining, setProPhotoRemaining] = useState<number | null>(null);
+  const [proPhotoLimit, setProPhotoLimit] = useState<number | null>(null);
+  const [proVideoAudioRemaining, setProVideoAudioRemaining] = useState<number | null>(null);
+  const [proVideoAudioLimit, setProVideoAudioLimit] = useState<number | null>(null);
+  const [proContextLimit, setProContextLimit] = useState<number | null>(null);
+  const [enterpriseQuotaUsed, setEnterpriseQuotaUsed] = useState<number>(0);
+  const [enterpriseQuotaDate, setEnterpriseQuotaDate] = useState<string>("");
+  const [enterpriseQuotaLimit, setEnterpriseQuotaLimit] = useState<number>(ENTERPRISE_DAILY_LIMIT);
+  const [enterprisePhotoRemaining, setEnterprisePhotoRemaining] = useState<number | null>(null);
+  const [enterprisePhotoLimit, setEnterprisePhotoLimit] = useState<number | null>(null);
+  const [enterpriseVideoAudioRemaining, setEnterpriseVideoAudioRemaining] = useState<number | null>(null);
+  const [enterpriseVideoAudioLimit, setEnterpriseVideoAudioLimit] = useState<number | null>(null);
+  const [enterpriseContextLimit, setEnterpriseContextLimit] = useState<number | null>(null);
 
 const loadMessagesForConversation = useCallback(
   async (conversationId: string) => {
@@ -602,6 +640,21 @@ const loadMessagesForConversation = useCallback(
             : c
         )
       );
+      setIsConversationLoading(false);
+      return;
+    }
+
+    // Free 账号：不落库，仅使用内存缓存，刷新即丢失
+    const planLower = (currentPlan || appUserRef.current?.plan || "").toLowerCase?.() || "";
+    const isFreeUser = !!appUserRef.current && (planLower === "" || planLower === "free");
+    if (isFreeUser) {
+      const cached = chatSessionsRef.current.find((c) => c.id === conversationId);
+      setMessages(cached?.messages || []);
+      if (cached) {
+        setSelectedModelType(cached.modelType || "general");
+        setSelectedModel(cached.model || GENERAL_MODEL_ID);
+        setSelectedCategory(cached.category || "general");
+      }
       setIsConversationLoading(false);
       return;
     }
@@ -696,6 +749,14 @@ const loadMessagesForConversation = useCallback(
         loadedConversationsForUserRef.current === user.id
       )
         return;
+      const planLower = (user.plan || "").toLowerCase?.() || "";
+      // Free 登录用户：不拉取服务端记录，保持当前内存列表（刷新即失效）
+      if (planLower === "" || planLower === "free") {
+        hasLoadedConversationsRef.current = true;
+        loadedConversationsForUserRef.current = user.id;
+        setIsSidebarLoading(false);
+        return;
+      }
       loadConversationsPendingRef.current = true;
       setIsSidebarLoading(true);
       try {
@@ -717,16 +778,26 @@ const loadMessagesForConversation = useCallback(
         const data = await res.json();
 
         const mapped: ChatSession[] =
-          data?.map((c: any) => ({
-            id: c.id,
-            title: c.title || "New Chat",
-            messages: [],
-            model: c.model || GENERAL_MODEL_ID,
-            modelType: c.model ? (c.modelType || "external") : "general",
-            category: "general",
-            lastUpdated: c.updated_at ? new Date(c.updated_at) : new Date(),
-            isModelLocked: false, // allow model selection before messages load
-          })) || [];
+          data?.map((c: any) => {
+            const rawModel = c.model || GENERAL_MODEL_ID;
+            const isGeneralModel =
+              (rawModel || "").toLowerCase() === GENERAL_MODEL_ID.toLowerCase();
+            const modelType = isGeneralModel
+              ? "general"
+              : c.model
+                ? c.modelType || "external"
+                : "general";
+            return {
+              id: c.id,
+              title: c.title || "New Chat",
+              messages: [],
+              model: rawModel,
+              modelType,
+              category: isGeneralModel ? "general" : c.category || "general",
+              lastUpdated: c.updated_at ? new Date(c.updated_at) : new Date(),
+              isModelLocked: false, // allow model selection before messages load
+            };
+          }) || [];
 
         setChatSessions(mapped);
         hasLoadedConversationsRef.current = true;
@@ -807,6 +878,7 @@ const loadMessagesForConversation = useCallback(
           isDomesticSessionRef.current = true;
           setAppUser(mappedUser);
           setIsLoggedIn(true);
+          setShowAuthDialog(false);
           if (mappedUser.plan) {
             setCurrentPlan(mappedUser.plan as "Basic" | "Pro" | "Enterprise");
             localStorage.setItem("morngpt_current_plan", mappedUser.plan);
@@ -814,8 +886,8 @@ const loadMessagesForConversation = useCallback(
               localStorage.setItem("morngpt_current_plan_exp", mappedUser.planExp);
             }
           }
-          await refreshQuota(mappedUser);
-          await loadConversations(mappedUser);
+          void refreshQuota(mappedUser);
+          void loadConversations(mappedUser);
           return;
         }
       }
@@ -844,6 +916,7 @@ const loadMessagesForConversation = useCallback(
         isDomesticSessionRef.current = false;
         setAppUser(mappedUser);
         setIsLoggedIn(true);
+        setShowAuthDialog(false);
         const planMeta = (user.user_metadata as any)?.plan;
         if (planMeta) {
           setCurrentPlan(planMeta as "Basic" | "Pro" | "Enterprise");
@@ -855,7 +928,7 @@ const loadMessagesForConversation = useCallback(
         } else if (mappedUser.isPro) {
           setCurrentPlan("Pro");
         }
-        await loadConversations(mappedUser);
+        void loadConversations(mappedUser);
       } else {
         setAppUser(null);
         setIsLoggedIn(false);
@@ -892,6 +965,7 @@ const loadMessagesForConversation = useCallback(
             };
             setAppUser(mappedUser);
             setIsLoggedIn(true);
+            setShowAuthDialog(false);
             const planMeta = (user.user_metadata as any)?.plan;
             if (planMeta) {
               setCurrentPlan(planMeta as "Basic" | "Pro" | "Enterprise");
@@ -903,7 +977,7 @@ const loadMessagesForConversation = useCallback(
             } else if (mappedUser.isPro) {
               setCurrentPlan("Pro");
             }
-            await loadConversations(mappedUser);
+            void loadConversations(mappedUser);
           }
           if (event === "SIGNED_OUT") {
             setAppUser(null);
@@ -986,9 +1060,26 @@ const loadMessagesForConversation = useCallback(
     return (await res.json()) as { fileId: string; tempUrl?: string };
   };
 
+  const clearUploadsAndRemote = useCallback(async () => {
+    const fileIds = uploadedFiles.map((f) => f.fileId).filter(Boolean) as string[];
+    setUploadedFiles([]);
+    if (!fileIds.length) return;
+    try {
+      await fetch("/api/domestic/media/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ fileIds }),
+      });
+    } catch (err) {
+      if (false) console.warn("[media/delete] client cleanup failed", err);
+    }
+  }, [uploadedFiles, setUploadedFiles]);
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files) return;
+    const currentChat = chatSessions.find((c) => c.id === currentChatId);
     const incoming = Array.from(files);
     if (uploadedFiles.length >= MAX_FILES_LIMIT) {
       setUploadError(
@@ -1034,9 +1125,27 @@ const loadMessagesForConversation = useCallback(
       if (!sessionKind) {
         sessionKind = currentKind;
       } else if (currentKind !== sessionKind) {
-        setUploadError(typeMismatchMessage);
-        continue;
+      setUploadError(typeMismatchMessage);
+      continue;
+    }
+
+      // 如果当前对话已锁定为非 omni，阻止上传
+      const lockedNonOmni =
+        currentChat &&
+        currentChat.isModelLocked &&
+        (currentChat.model || "").toLowerCase() !== "qwen3-omni-flash";
+      if (lockedNonOmni) {
+        setUploadError(
+          activeLanguage === "zh"
+            ? "当前对话已锁定为文字模型，无法上传图片/视频/音频。请新建对话并选择 Qwen3-Omni-Flash。"
+            : "This chat is locked to a text model. Start a new chat with Qwen3-Omni-Flash to upload media."
+        );
+        event.target.value = "";
+        return;
       }
+      // 自动切换到 omni 模型，保证 UI 立即更新
+      setSelectedModelType("advanced_multimodal");
+      setSelectedModel("qwen3-omni-flash");
 
       if (isAudio) {
         if (!allowAudioUpload) {
@@ -1255,6 +1364,7 @@ const loadMessagesForConversation = useCallback(
   const isDomesticSessionRef = useRef<boolean>(IS_DOMESTIC_VERSION);
   const currentChatIdRef = useRef<string>("");
   const messagesLoadTokenRef = useRef<number>(0);
+  const chatSessionsRef = useRef<ChatSession[]>([]);
   const loadConversationsPendingRef = useRef<boolean>(false);
   const hasLoadedConversationsRef = useRef<boolean>(false);
   const loadedConversationsForUserRef = useRef<string | null>(null);
@@ -1268,6 +1378,10 @@ const loadMessagesForConversation = useCallback(
   useEffect(() => {
     appUserRef.current = appUser as AppUser | null;
   }, [appUser]);
+
+  useEffect(() => {
+    chatSessionsRef.current = chatSessions;
+  }, [chatSessions]);
 
   const getToday = () => new Date().toISOString().split("T")[0];
 
@@ -1284,15 +1398,20 @@ const loadMessagesForConversation = useCallback(
         isPro: targetUser?.isPro,
       });
       const planLower = (targetUser?.plan || "").toLowerCase?.() || "";
-      const isUnlimited = !!targetUser?.isPro && planLower !== "basic";
-      if (!targetUser?.id || isUnlimited) {
+      const isUnlimited = planLower === "unlimited";
+      if (!targetUser?.id) {
         setFreeQuotaUsed(0);
         setFreeQuotaLimit(FREE_DAILY_LIMIT);
         setBasicQuotaUsed(0);
-        setBasicQuotaLimit(
-          Number.parseInt(process.env.NEXT_PUBLIC_BASIC_MONTHLY_LIMIT || "100", 10) || 100
-        );
-        setBasicQuotaPeriod("");
+        setBasicQuotaLimit(BASIC_DAILY_LIMIT);
+        setBasicQuotaDate(getToday());
+        // Pro 也重置
+        setProQuotaUsed(0);
+        setProQuotaLimit(PRO_DAILY_LIMIT);
+        setProQuotaDate(getToday());
+        setEnterpriseQuotaUsed(0);
+        setEnterpriseQuotaLimit(ENTERPRISE_DAILY_LIMIT);
+        setEnterpriseQuotaDate(getToday());
         return;
       }
 
@@ -1304,27 +1423,129 @@ const loadMessagesForConversation = useCallback(
         if (!res.ok) throw new Error(`quota ${res.status}`);
         const data = await res.json();
         if(false) console.log("/*quota*/ refreshQuota response", data);
-        if (data?.plan === "basic") {
-          const usedVal =
-            typeof data.used === "number"
-              ? data.used
-              : typeof data.limit === "number" && typeof data.remaining === "number"
-                ? data.limit - data.remaining
-                : 0;
-          setBasicQuotaUsed((prev) => Math.max(prev, usedVal));
-          setBasicQuotaLimit(data.limit ?? basicQuotaLimit);
-          setBasicQuotaPeriod(data.period ?? "");
+        if (data?.plan === "basic" || data?.plan === "pro" || data?.plan === "enterprise") {
+          const dailyLimit =
+            typeof data.daily?.limit === "number"
+              ? data.daily.limit
+              : typeof data.limit === "number"
+                ? data.limit
+                : data?.plan === "pro"
+                  ? PRO_DAILY_LIMIT
+                  : data?.plan === "enterprise"
+                    ? ENTERPRISE_DAILY_LIMIT
+                    : BASIC_DAILY_LIMIT;
+          const dailyUsed =
+            typeof data.daily?.used === "number"
+              ? data.daily.used
+              : typeof data.used === "number"
+                ? data.used
+              : typeof data.daily?.remaining === "number"
+                  ? dailyLimit - data.daily.remaining
+                  : typeof data.remaining === "number" && typeof dailyLimit === "number"
+                    ? dailyLimit - data.remaining
+                    : 0;
+
+          const limitSetter =
+            data?.plan === "pro"
+              ? setProQuotaLimit
+              : data?.plan === "enterprise"
+                ? setEnterpriseQuotaLimit
+                : setBasicQuotaLimit;
+          const usedSetter =
+            data?.plan === "pro"
+              ? setProQuotaUsed
+              : data?.plan === "enterprise"
+                ? setEnterpriseQuotaUsed
+                : setBasicQuotaUsed;
+          const dateSetter =
+            data?.plan === "pro"
+              ? setProQuotaDate
+              : data?.plan === "enterprise"
+                ? setEnterpriseQuotaDate
+                : setBasicQuotaDate;
+
+          dateSetter(today);
+          usedSetter((prev) => Math.max(prev, dailyUsed));
+          limitSetter(dailyLimit || (data?.plan === "pro" ? PRO_DAILY_LIMIT : data?.plan === "enterprise" ? ENTERPRISE_DAILY_LIMIT : BASIC_DAILY_LIMIT));
+
+          const setPhotoLimit =
+            data?.plan === "pro"
+              ? setProPhotoLimit
+              : data?.plan === "enterprise"
+                ? setEnterprisePhotoLimit
+                : setBasicPhotoLimit;
+          const setPhotoRemaining =
+            data?.plan === "pro"
+              ? setProPhotoRemaining
+              : data?.plan === "enterprise"
+                ? setEnterprisePhotoRemaining
+                : setBasicPhotoRemaining;
+          const setVideoLimit =
+            data?.plan === "pro"
+              ? setProVideoAudioLimit
+              : data?.plan === "enterprise"
+                ? setEnterpriseVideoAudioLimit
+                : setBasicVideoAudioLimit;
+          const setVideoRemaining =
+            data?.plan === "pro"
+              ? setProVideoAudioRemaining
+              : data?.plan === "enterprise"
+                ? setEnterpriseVideoAudioRemaining
+                : setBasicVideoAudioRemaining;
+          const setContextLimit =
+            data?.plan === "pro"
+              ? setProContextLimit
+              : data?.plan === "enterprise"
+                ? setEnterpriseContextLimit
+                : setBasicContextLimit;
+
+          setPhotoLimit(
+            typeof data.photoLimit === "number"
+              ? data.photoLimit
+              : typeof data.monthlyMedia?.photoLimit === "number"
+                ? data.monthlyMedia.photoLimit
+                : null
+          );
+          setPhotoRemaining(
+            typeof data.photoRemaining === "number"
+              ? data.photoRemaining
+              : typeof data.monthlyMedia?.photoRemaining === "number"
+                ? data.monthlyMedia.photoRemaining
+                : null
+          );
+          setVideoLimit(
+            typeof data.videoAudioLimit === "number"
+              ? data.videoAudioLimit
+              : typeof data.monthlyMedia?.videoAudioLimit === "number"
+                ? data.monthlyMedia.videoAudioLimit
+                : null
+          );
+          setVideoRemaining(
+            typeof data.videoAudioRemaining === "number"
+              ? data.videoAudioRemaining
+              : typeof data.monthlyMedia?.videoAudioRemaining === "number"
+                ? data.monthlyMedia.videoAudioRemaining
+                : null
+          );
+          setContextLimit(
+            typeof data.contextMsgLimit === "number" ? data.contextMsgLimit : null
+          );
+
+          // 将 Pro 视为独立存储
+          // 已通过 setter 分支处理，无需额外同步
+
+          // 清空 Free 显示以免串用
           setFreeQuotaUsed(0);
-          setFreeQuotaLimit(FREE_DAILY_LIMIT);
           setFreePhotoLimit(null);
           setFreePhotoRemaining(null);
           setFreeVideoAudioLimit(null);
           setFreeVideoAudioRemaining(null);
           setFreeContextLimit(null);
-          if(false) console.log("/*quota*/ refreshQuota applied basic", {
-            used: usedVal,
-            limit: data.limit ?? basicQuotaLimit,
+          if(false) console.log("/*quota*/ refreshQuota applied basic/pro", {
+            used: dailyUsed,
+            limit: dailyLimit || (data?.plan === "pro" ? PRO_DAILY_LIMIT : BASIC_DAILY_LIMIT),
             period: data.period,
+            plan: data?.plan,
           });
         } else {
           const usedVal =
@@ -1378,7 +1599,21 @@ const loadMessagesForConversation = useCallback(
             typeof data.contextMsgLimit === "number" ? data.contextMsgLimit : null
           );
           setBasicQuotaUsed(0);
-          setBasicQuotaPeriod("");
+          setBasicQuotaDate(today);
+          setProQuotaUsed(0);
+          setProQuotaDate(today);
+          setEnterpriseQuotaUsed(0);
+          setEnterpriseQuotaDate(today);
+          setEnterprisePhotoLimit(null);
+          setEnterprisePhotoRemaining(null);
+          setEnterpriseVideoAudioLimit(null);
+          setEnterpriseVideoAudioRemaining(null);
+          setEnterpriseContextLimit(null);
+          setProPhotoLimit(null);
+          setProPhotoRemaining(null);
+          setProVideoAudioLimit(null);
+          setProVideoAudioRemaining(null);
+          setProContextLimit(null);
           if(false) console.log("/*quota*/ refreshQuota applied free", {
             used: usedVal,
             limit: limitVal,
@@ -1406,25 +1641,59 @@ const loadMessagesForConversation = useCallback(
   }, [setAuthMode, setAuthForm, setShowAuthDialog]);
 
   const consumeFreeQuota = useCallback(() => {
+    // 通用模型（General Model）不扣减每日外部额度（国内/国际一致）
+    if (selectedModelType === "general" || selectedModel === GENERAL_MODEL_ID) {
+      return true;
+    }
+
     if (!appUser) return false;
     const planLower = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";
-    const isBasic = planLower === "basic";
-    if (appUser.isPro) return true;
+    const isBasicOrPro = planLower === "basic" || planLower === "pro" || planLower === "enterprise";
 
-    if (isBasic) {
-      const limit = basicQuotaLimit || 100;
-      if (basicQuotaUsed >= limit) {
+    if (isBasicOrPro) {
+      const today = getToday();
+      const baseUsed =
+        planLower === "pro"
+          ? proQuotaDate === today ? proQuotaUsed : 0
+          : planLower === "enterprise"
+            ? enterpriseQuotaDate === today ? enterpriseQuotaUsed : 0
+            : basicQuotaDate === today
+              ? basicQuotaUsed
+              : 0;
+      const limit =
+        planLower === "pro"
+          ? proQuotaLimit || PRO_DAILY_LIMIT
+          : planLower === "enterprise"
+            ? enterpriseQuotaLimit || ENTERPRISE_DAILY_LIMIT
+            : basicQuotaLimit || BASIC_DAILY_LIMIT;
+      if (baseUsed >= limit) {
         alert(
-          `You have reached this month's ${limit}-message limit on Basic. Please upgrade to continue.`
+          planLower === "pro"
+            ? `You have reached today's ${limit}-message limit on Pro. Please upgrade to continue.`
+            : planLower === "enterprise"
+              ? `You have reached today's ${limit}-message limit on Enterprise. Please contact support to extend your quota.`
+              : `You have reached today's ${limit}-message limit on Basic. Please upgrade to continue.`
         );
         setShowUpgradeDialog(true);
         return false;
       }
-      setBasicQuotaUsed((prev) => {
-        const next = Math.min(limit, prev + 1);
-        if(false) console.log("/*quota*/ local basic consume", { prev, next, limit });
-        return next;
-      });
+      if (planLower === "pro") {
+        setProQuotaDate(today);
+        setProQuotaUsed((prev) => {
+          const safePrev = proQuotaDate === today ? prev : 0;
+          const next = Math.min(limit, safePrev + 1);
+          if(false) console.log("/*quota*/ local pro consume", { prev, next, limit });
+          return next;
+        });
+      } else {
+        setBasicQuotaDate(today);
+        setBasicQuotaUsed((prev) => {
+          const safePrev = basicQuotaDate === today ? prev : 0;
+          const next = Math.min(limit, safePrev + 1);
+          if(false) console.log("/*quota*/ local basic consume", { prev, next, limit });
+          return next;
+        });
+      }
       void refreshQuota();
       return true;
     } else {
@@ -1448,6 +1717,8 @@ const loadMessagesForConversation = useCallback(
   }, [
     appUser,
     currentPlan,
+    selectedModelType,
+    selectedModel,
     freeQuotaDate,
     freeQuotaUsed,
     freeQuotaLimit,
@@ -1556,6 +1827,8 @@ const loadMessagesForConversation = useCallback(
       setCurrentChatId,
       selectedModelType,
       selectedModel,
+      setSelectedModel,
+      setSelectedModelType,
       selectedCategory,
       selectedLanguage,
       setSelectedLanguage,
@@ -1835,6 +2108,14 @@ const loadMessagesForConversation = useCallback(
   useEffect(() => {
     applyFontSettings(fontFamily, fontSize);
   }, [fontFamily, fontSize, applyFontSettings]);
+
+  // 清理非 omni 模型下的已上传媒体
+  useEffect(() => {
+    const isOmni = (selectedModel || "").toLowerCase() === "qwen3-omni-flash";
+    if (!isOmni && uploadedFiles.length > 0) {
+      void clearUploadsAndRemote();
+    }
+  }, [selectedModel, selectedModelType, uploadedFiles, clearUploadsAndRemote]);
 
   const handleFontFamilyChange = (family: string) => {
     setFontFamily(family);
@@ -2156,6 +2437,7 @@ const loadMessagesForConversation = useCallback(
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
+          setShowAuthDialog(false);
           if (mappedUser.plan) {
             setCurrentPlan(mappedUser.plan as "Basic" | "Pro" | "Enterprise");
             localStorage.setItem("morngpt_current_plan", mappedUser.plan);
@@ -2164,7 +2446,7 @@ const loadMessagesForConversation = useCallback(
             localStorage.setItem("morngpt_current_plan_exp", mappedUser.planExp);
           }
           appUserRef.current = mappedUser;
-          await loadConversations(mappedUser);
+          void loadConversations(mappedUser);
           alert(isZh ? "注册成功" : "Sign up successful");
         } else {
           const { data, error } = await supabase.auth.signUp({
@@ -2190,8 +2472,9 @@ const loadMessagesForConversation = useCallback(
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
+          setShowAuthDialog(false);
           appUserRef.current = mappedUser;
-          await loadConversations(mappedUser);
+          void loadConversations(mappedUser);
         }
         alert(
           isZh
@@ -2224,6 +2507,7 @@ const loadMessagesForConversation = useCallback(
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
+          setShowAuthDialog(false);
           if (mappedUser.plan) {
             setCurrentPlan(mappedUser.plan as "Basic" | "Pro" | "Enterprise");
             localStorage.setItem("morngpt_current_plan", mappedUser.plan);
@@ -2232,7 +2516,7 @@ const loadMessagesForConversation = useCallback(
             localStorage.setItem("morngpt_current_plan_exp", mappedUser.planExp);
           }
           appUserRef.current = mappedUser;
-          await loadConversations(mappedUser);
+          void loadConversations(mappedUser);
         } else {
           const { data, error } = await supabase.auth.signInWithPassword({
             email: authForm.email,
@@ -2253,12 +2537,12 @@ const loadMessagesForConversation = useCallback(
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
+          setShowAuthDialog(false);
           appUserRef.current = mappedUser;
-          await loadConversations(mappedUser);
+          void loadConversations(mappedUser);
         }
       }
       }
-      setShowAuthDialog(false);
       setAuthForm({ email: "", password: "", name: "" });
     } catch (err) {
       console.error("Auth error", err);
@@ -2971,6 +3255,19 @@ const loadMessagesForConversation = useCallback(
       return;
     }
 
+    const planLower = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";
+    const isFreeUser = !!appUser && !appUser.isPro && (planLower === "" || planLower === "free");
+    if (isFreeUser && chatSessions.length > 0) {
+      const proceed = window.confirm(
+        selectedLanguage === "zh"
+          ? "新建对话将覆盖之前的聊天记录，确认继续？"
+          : "Starting a new chat will overwrite your previous chat history. Continue?"
+      );
+      if (!proceed) return;
+      setChatSessions([]);
+      setMessages([]);
+    }
+
     const chosenModelType = modelType || "general";
     const chosenModel =
       model ||
@@ -3483,7 +3780,7 @@ const loadMessagesForConversation = useCallback(
 
   const freeQuotaRemaining = useMemo(() => {
     const planLower = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";
-    if (!appUser || appUser.isPro || planLower === "basic" || planLower === "pro" || planLower === "enterprise") return null;
+    if (!appUser || planLower === "basic" || planLower === "pro" || planLower === "enterprise") return null;
     const today = getToday();
     const used = freeQuotaDate === today ? freeQuotaUsed : 0;
     const limit = freeQuotaLimit || FREE_DAILY_LIMIT;
@@ -3492,16 +3789,31 @@ const loadMessagesForConversation = useCallback(
 
   const basicQuotaRemaining = useMemo(() => {
     const planLower = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";
-    if (!appUser || appUser.isPro || planLower !== "basic") return null;
-    const limit = basicQuotaLimit || 100;
-    return Math.max(0, limit - basicQuotaUsed);
-  }, [appUser, currentPlan, basicQuotaLimit, basicQuotaUsed]);
+    if (!appUser || (planLower !== "basic" && planLower !== "pro")) return null;
+    const today = getToday();
+    const used =
+      planLower === "pro"
+        ? proQuotaDate === today ? proQuotaUsed : 0
+        : basicQuotaDate === today ? basicQuotaUsed : 0;
+    const limit =
+      planLower === "pro"
+        ? proQuotaLimit || PRO_DAILY_LIMIT
+        : basicQuotaLimit || BASIC_DAILY_LIMIT;
+    return Math.max(0, limit - used);
+  }, [appUser, currentPlan, basicQuotaLimit, basicQuotaUsed, basicQuotaDate, proQuotaLimit, proQuotaUsed, proQuotaDate]);
+
+  const enterpriseQuotaRemaining = useMemo(() => {
+    const planLower = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";
+    if (!appUser || planLower !== "enterprise") return null;
+    const today = getToday();
+    const used = enterpriseQuotaDate === today ? enterpriseQuotaUsed : 0;
+    const limit = enterpriseQuotaLimit || ENTERPRISE_DAILY_LIMIT;
+    return Math.max(0, limit - used);
+  }, [appUser, currentPlan, enterpriseQuotaDate, enterpriseQuotaLimit, enterpriseQuotaUsed]);
 
   const isUnlimitedPlan =
     !!appUser &&
-    (appUser.isPro ||
-      (currentPlan || appUser?.plan || "").toLowerCase?.() === "pro" ||
-      (currentPlan || appUser?.plan || "").toLowerCase?.() === "enterprise");
+    ((currentPlan || appUser?.plan || "").toLowerCase?.() === "unlimited");
 
   const downloadConversation = useCallback(
     (chatId: string, title: string, messages: Message[]) => {
@@ -3695,7 +4007,7 @@ const loadMessagesForConversation = useCallback(
     setShowUpgradeDialog,
     isDomestic,
     freeQuotaRemaining,
-    freeQuotaLimit: FREE_DAILY_LIMIT,
+    freeQuotaLimit,
     basicQuotaRemaining,
     basicQuotaLimit,
     freePhotoRemaining,
@@ -3703,14 +4015,53 @@ const loadMessagesForConversation = useCallback(
     freeVideoAudioRemaining,
     freeVideoAudioLimit,
     freeContextLimit,
+    basicPhotoRemaining,
+    basicPhotoLimit,
+    basicVideoAudioRemaining,
+    basicVideoAudioLimit,
+    basicContextLimit,
+    proQuotaRemaining:
+      (appUser?.plan || currentPlan || "").toLowerCase?.() === "pro"
+        ? Math.max(0, (proQuotaLimit || PRO_DAILY_LIMIT) - (proQuotaDate === getToday() ? proQuotaUsed : 0))
+        : null,
+    proQuotaLimit,
+    proPhotoRemaining,
+    proPhotoLimit,
+    proVideoAudioRemaining,
+    proVideoAudioLimit,
+    proContextLimit,
+    enterpriseQuotaRemaining:
+      (appUser?.plan || currentPlan || "").toLowerCase?.() === "enterprise"
+        ? Math.max(
+            0,
+            (enterpriseQuotaLimit || ENTERPRISE_DAILY_LIMIT) -
+              (enterpriseQuotaDate === getToday() ? enterpriseQuotaUsed : 0),
+          )
+        : null,
+    enterpriseQuotaLimit,
+    enterprisePhotoRemaining,
+    enterprisePhotoLimit,
+    enterpriseVideoAudioRemaining,
+    enterpriseVideoAudioLimit,
+    enterpriseContextLimit,
   };
+
+  const planLowerForContext = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";
+  const effectiveContextLimit =
+    planLowerForContext === "basic"
+      ? basicContextLimit ?? undefined
+      : planLowerForContext === "pro"
+        ? proContextLimit ?? undefined
+        : planLowerForContext === "enterprise"
+          ? enterpriseContextLimit ?? undefined
+          : freeContextLimit ?? undefined;
 
   const chatInterfaceProps = {
     messages,
     appUser,
     guestChatSessions,
     currentChatId,
-    contextLimit: freeContextLimit ?? undefined,
+    contextLimit: effectiveContextLimit,
     setShowUpgradeDialog,
     selectedLanguage,
     jumpToScrollPosition,

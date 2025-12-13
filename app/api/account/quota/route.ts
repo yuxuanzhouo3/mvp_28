@@ -9,6 +9,18 @@ import {
   getFreeMonthlyPhotoLimit,
   getFreeMonthlyVideoAudioLimit,
   getFreeContextMsgLimit,
+  getBasicDailyLimit,
+  getBasicMonthlyPhotoLimit,
+  getBasicMonthlyVideoAudioLimit,
+  getBasicContextMsgLimit,
+  getProDailyLimit,
+  getProMonthlyPhotoLimit,
+  getProMonthlyVideoAudioLimit,
+  getProContextMsgLimit,
+  getEnterpriseDailyLimit,
+  getEnterpriseMonthlyPhotoLimit,
+  getEnterpriseMonthlyVideoAudioLimit,
+  getEnterpriseContextMsgLimit,
   getTodayString,
   getCurrentYearMonth,
   getModelCategory,
@@ -19,13 +31,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const QUOTA_LOG = false;
 
-const getMonthlyLimit = () => {
-  const raw = process.env.NEXT_PUBLIC_BASIC_MONTHLY_LIMIT || "100";
-  const n = parseInt(raw, 10);
-  if (!Number.isFinite(n) || n <= 0) return 100;
-  return Math.min(100000, n);
-};
-
 const getPlanInfo = (meta: any) => {
   const rawPlan =
     (meta?.plan as string | undefined) ||
@@ -33,9 +38,11 @@ const getPlanInfo = (meta: any) => {
     "";
   const planLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
   const isBasic = planLower === "basic";
-  const isPro = planLower === "pro" || planLower === "enterprise" || (!!meta?.pro && !isBasic);
-  const isFree = !isPro && !isBasic;
-  return { planLower, isBasic, isPro, isFree };
+  const isProPlan = planLower === "pro";
+  const isEnterprise = planLower === "enterprise";
+  const isUnlimitedFlag = !!meta?.pro && !isBasic && !isProPlan && !isEnterprise;
+  const isFree = !isEnterprise && !isProPlan && !isBasic && !isUnlimitedFlag;
+  return { planLower, isBasic, isProPlan, isEnterprise, isFree, isUnlimitedFlag };
 };
 
 /**
@@ -76,15 +83,26 @@ export async function GET(req: NextRequest) {
     const today = getTodayString();
     const currentMonth = getCurrentYearMonth();
     const dailyLimit = getFreeDailyLimit();
-    const monthlyLimit = getMonthlyLimit();
+    const basicDailyLimit = getBasicDailyLimit();
+    const proDailyLimit = getProDailyLimit();
+    const enterpriseDailyLimit = getEnterpriseDailyLimit();
     const photoLimit = getFreeMonthlyPhotoLimit();
     const videoAudioLimit = getFreeMonthlyVideoAudioLimit();
     const contextMsgLimit = getFreeContextMsgLimit();
+    const basicPhotoLimit = getBasicMonthlyPhotoLimit();
+    const basicVideoAudioLimit = getBasicMonthlyVideoAudioLimit();
+    const basicContextMsgLimit = getBasicContextMsgLimit();
+    const proPhotoLimit = getProMonthlyPhotoLimit();
+    const proVideoAudioLimit = getProMonthlyVideoAudioLimit();
+    const proContextMsgLimit = getProContextMsgLimit();
+    const enterprisePhotoLimit = getEnterpriseMonthlyPhotoLimit();
+    const enterpriseVideoAudioLimit = getEnterpriseMonthlyVideoAudioLimit();
+    const enterpriseContextMsgLimit = getEnterpriseContextMsgLimit();
 
-    // Pro/Enterprise：返回无限制
-    if (plan.isPro && !plan.isBasic) {
+    // 特殊无限制标记
+    if (plan.isUnlimitedFlag) {
       return Response.json({
-        plan: plan.planLower || "pro",
+        plan: plan.planLower || "enterprise",
         period: null,
         used: 0,
         limit: null,
@@ -92,7 +110,7 @@ export async function GET(req: NextRequest) {
         // 新版配额信息
         quotaType: "unlimited",
         modelCategory: modelCategory || "all",
-        contextMsgLimit: null, // Pro 用户无上下文限制
+        contextMsgLimit: null, // 无限标记不做限制
       });
     }
 
@@ -100,34 +118,293 @@ export async function GET(req: NextRequest) {
     await connector.initialize();
     const db = connector.getClient();
 
-    // Basic 用户：月度配额
+    // Basic 用户：每日文本 + 月度媒体
     if (plan.isBasic) {
-      const monthStart = new Date(today);
-      monthStart.setDate(1);
-      const monthStr = monthStart.toISOString().split("T")[0];
-
-      const res = await db
+      // 每日文本配额
+      const dailyRes = await db
         .collection("basic_quotas")
-        .where({ userId: user.id, month: monthStr })
+        .where({ userId: user.id, day: today })
         .limit(1)
         .get();
+      const dailyRow = dailyRes?.data?.[0] || null;
+      const dailyUsed = dailyRow?.daily_count ?? dailyRow?.used ?? 0;
 
-      const quotaRow = res?.data?.[0] || null;
-      if (QUOTA_LOG) console.log("[quota] basic row", quotaRow);
-      const used = quotaRow?.used ?? 0;
-      const limit = Number.isFinite(monthlyLimit)
-        ? monthlyLimit
-        : quotaRow?.limit_per_month ?? 100;
+      // 月度媒体配额
+      const monthlyMediaRes = await db
+        .collection("basic_quotas")
+        .where({ userId: user.id, month: currentMonth })
+        .limit(1)
+        .get();
+      const monthlyMediaRow = monthlyMediaRes?.data?.[0] || null;
+      const monthUsedPhoto = monthlyMediaRow?.month_used_photo ?? 0;
+      const monthUsedVideoAudio = monthlyMediaRow?.month_used_video_audio ?? 0;
 
+      if (modelCategory === "general") {
+        return Response.json({
+          plan: "basic",
+          quotaType: "unlimited",
+          modelCategory: "general",
+          contextMsgLimit: basicContextMsgLimit,
+        });
+      }
+
+      if (modelCategory === "external") {
+        return Response.json({
+          plan: "basic",
+          period: today,
+          used: dailyUsed,
+          limit: basicDailyLimit,
+          remaining: Math.max(0, basicDailyLimit - dailyUsed),
+          quotaType: "daily",
+          modelCategory: "external",
+          contextMsgLimit: basicContextMsgLimit,
+        });
+      }
+
+      if (modelCategory === "advanced_multimodal") {
+        return Response.json({
+          plan: "basic",
+          period: currentMonth,
+          quotaType: "monthly_media",
+          modelCategory: "advanced_multimodal",
+          contextMsgLimit: basicContextMsgLimit,
+          daily: {
+            period: today,
+            used: dailyUsed,
+            limit: basicDailyLimit,
+            remaining: Math.max(0, basicDailyLimit - dailyUsed),
+          },
+          textConsumesDaily: true,
+          // 图片配额
+          photoUsed: monthUsedPhoto,
+          photoLimit: basicPhotoLimit,
+          photoRemaining: Math.max(0, basicPhotoLimit - monthUsedPhoto),
+          // 视频/音频配额
+          videoAudioUsed: monthUsedVideoAudio,
+          videoAudioLimit: basicVideoAudioLimit,
+          videoAudioRemaining: Math.max(0, basicVideoAudioLimit - monthUsedVideoAudio),
+          monthlyMedia: {
+            period: currentMonth,
+            photoUsed: monthUsedPhoto,
+            photoLimit: basicPhotoLimit,
+            photoRemaining: Math.max(0, basicPhotoLimit - monthUsedPhoto),
+            videoAudioUsed: monthUsedVideoAudio,
+            videoAudioLimit: basicVideoAudioLimit,
+            videoAudioRemaining: Math.max(0, basicVideoAudioLimit - monthUsedVideoAudio),
+          },
+        });
+      }
+
+      // 默认：返回全部配额
       return Response.json({
         plan: "basic",
-        period: monthStr,
-        used,
-        limit,
-        remaining: Math.max(0, limit - used),
-        quotaType: "monthly",
-        modelCategory: modelCategory || "all",
-        contextMsgLimit: 50, // Basic 用户 50 条上下文
+        modelCategory: modelCategory || null,
+        daily: {
+          period: today,
+          used: dailyUsed,
+          limit: basicDailyLimit,
+          remaining: Math.max(0, basicDailyLimit - dailyUsed),
+        },
+        monthlyMedia: {
+          period: currentMonth,
+          photoUsed: monthUsedPhoto,
+          photoLimit: basicPhotoLimit,
+          photoRemaining: Math.max(0, basicPhotoLimit - monthUsedPhoto),
+          videoAudioUsed: monthUsedVideoAudio,
+          videoAudioLimit: basicVideoAudioLimit,
+          videoAudioRemaining: Math.max(0, basicVideoAudioLimit - monthUsedVideoAudio),
+        },
+        contextMsgLimit: basicContextMsgLimit,
+      });
+    }
+
+    // Pro 用户：每日文本 + 月度媒体（pro_quotas）
+    if (plan.isProPlan) {
+      const dailyRes = await db
+        .collection("pro_quotas")
+        .where({ userId: user.id, day: today })
+        .limit(1)
+        .get();
+      const dailyRow = dailyRes?.data?.[0] || null;
+      const dailyUsed = dailyRow?.daily_count ?? dailyRow?.used ?? 0;
+
+      const monthlyMediaRes = await db
+        .collection("pro_quotas")
+        .where({ userId: user.id, month: currentMonth })
+        .limit(1)
+        .get();
+      const monthlyMediaRow = monthlyMediaRes?.data?.[0] || null;
+      const monthUsedPhoto = monthlyMediaRow?.month_used_photo ?? 0;
+      const monthUsedVideoAudio = monthlyMediaRow?.month_used_video_audio ?? 0;
+
+      if (modelCategory === "general") {
+        return Response.json({
+          plan: "pro",
+          quotaType: "unlimited",
+          modelCategory: "general",
+          contextMsgLimit: proContextMsgLimit,
+        });
+      }
+
+      if (modelCategory === "external") {
+        return Response.json({
+          plan: "pro",
+          period: today,
+          used: dailyUsed,
+          limit: proDailyLimit,
+          remaining: Math.max(0, proDailyLimit - dailyUsed),
+          quotaType: "daily",
+          modelCategory: "external",
+          contextMsgLimit: proContextMsgLimit,
+        });
+      }
+
+      if (modelCategory === "advanced_multimodal") {
+        return Response.json({
+          plan: "pro",
+          period: currentMonth,
+          quotaType: "monthly_media",
+          modelCategory: "advanced_multimodal",
+          contextMsgLimit: proContextMsgLimit,
+          daily: {
+            period: today,
+            used: dailyUsed,
+            limit: proDailyLimit,
+            remaining: Math.max(0, proDailyLimit - dailyUsed),
+          },
+          textConsumesDaily: true,
+          photoUsed: monthUsedPhoto,
+          photoLimit: proPhotoLimit,
+          photoRemaining: Math.max(0, proPhotoLimit - monthUsedPhoto),
+          videoAudioUsed: monthUsedVideoAudio,
+          videoAudioLimit: proVideoAudioLimit,
+          videoAudioRemaining: Math.max(0, proVideoAudioLimit - monthUsedVideoAudio),
+          monthlyMedia: {
+            period: currentMonth,
+            photoUsed: monthUsedPhoto,
+            photoLimit: proPhotoLimit,
+            photoRemaining: Math.max(0, proPhotoLimit - monthUsedPhoto),
+            videoAudioUsed: monthUsedVideoAudio,
+            videoAudioLimit: proVideoAudioLimit,
+            videoAudioRemaining: Math.max(0, proVideoAudioLimit - monthUsedVideoAudio),
+          },
+        });
+      }
+
+      return Response.json({
+        plan: "pro",
+        modelCategory: modelCategory || null,
+        daily: {
+          period: today,
+          used: dailyUsed,
+          limit: proDailyLimit,
+          remaining: Math.max(0, proDailyLimit - dailyUsed),
+        },
+        monthlyMedia: {
+          period: currentMonth,
+          photoUsed: monthUsedPhoto,
+          photoLimit: proPhotoLimit,
+          photoRemaining: Math.max(0, proPhotoLimit - monthUsedPhoto),
+          videoAudioUsed: monthUsedVideoAudio,
+          videoAudioLimit: proVideoAudioLimit,
+          videoAudioRemaining: Math.max(0, proVideoAudioLimit - monthUsedVideoAudio),
+        },
+        contextMsgLimit: proContextMsgLimit,
+      });
+    }
+
+    // Enterprise 用户：每日文本 + 月度媒体（enterprise_quotas）
+    if (plan.isEnterprise) {
+      const dailyRes = await db
+        .collection("enterprise_quotas")
+        .where({ userId: user.id, day: today })
+        .limit(1)
+        .get();
+      const dailyRow = dailyRes?.data?.[0] || null;
+      const dailyUsed = dailyRow?.daily_count ?? dailyRow?.used ?? 0;
+
+      const monthlyMediaRes = await db
+        .collection("enterprise_quotas")
+        .where({ userId: user.id, month: currentMonth })
+        .limit(1)
+        .get();
+      const monthlyMediaRow = monthlyMediaRes?.data?.[0] || null;
+      const monthUsedPhoto = monthlyMediaRow?.month_used_photo ?? 0;
+      const monthUsedVideoAudio = monthlyMediaRow?.month_used_video_audio ?? 0;
+
+      if (modelCategory === "general") {
+        return Response.json({
+          plan: "enterprise",
+          quotaType: "unlimited",
+          modelCategory: "general",
+          contextMsgLimit: enterpriseContextMsgLimit,
+        });
+      }
+
+      if (modelCategory === "external") {
+        return Response.json({
+          plan: "enterprise",
+          period: today,
+          used: dailyUsed,
+          limit: enterpriseDailyLimit,
+          remaining: Math.max(0, enterpriseDailyLimit - dailyUsed),
+          quotaType: "daily",
+          modelCategory: "external",
+          contextMsgLimit: enterpriseContextMsgLimit,
+        });
+      }
+
+      if (modelCategory === "advanced_multimodal") {
+        return Response.json({
+          plan: "enterprise",
+          period: currentMonth,
+          quotaType: "monthly_media",
+          modelCategory: "advanced_multimodal",
+          contextMsgLimit: enterpriseContextMsgLimit,
+          daily: {
+            period: today,
+            used: dailyUsed,
+            limit: enterpriseDailyLimit,
+            remaining: Math.max(0, enterpriseDailyLimit - dailyUsed),
+          },
+          textConsumesDaily: true,
+          photoUsed: monthUsedPhoto,
+          photoLimit: enterprisePhotoLimit,
+          photoRemaining: Math.max(0, enterprisePhotoLimit - monthUsedPhoto),
+          videoAudioUsed: monthUsedVideoAudio,
+          videoAudioLimit: enterpriseVideoAudioLimit,
+          videoAudioRemaining: Math.max(0, enterpriseVideoAudioLimit - monthUsedVideoAudio),
+          monthlyMedia: {
+            period: currentMonth,
+            photoUsed: monthUsedPhoto,
+            photoLimit: enterprisePhotoLimit,
+            photoRemaining: Math.max(0, enterprisePhotoLimit - monthUsedPhoto),
+            videoAudioUsed: monthUsedVideoAudio,
+            videoAudioLimit: enterpriseVideoAudioLimit,
+            videoAudioRemaining: Math.max(0, enterpriseVideoAudioLimit - monthUsedVideoAudio),
+          },
+        });
+      }
+
+      return Response.json({
+        plan: "enterprise",
+        modelCategory: modelCategory || null,
+        daily: {
+          period: today,
+          used: dailyUsed,
+          limit: enterpriseDailyLimit,
+          remaining: Math.max(0, enterpriseDailyLimit - dailyUsed),
+        },
+        monthlyMedia: {
+          period: currentMonth,
+          photoUsed: monthUsedPhoto,
+          photoLimit: enterprisePhotoLimit,
+          photoRemaining: Math.max(0, enterprisePhotoLimit - monthUsedPhoto),
+          videoAudioUsed: monthUsedVideoAudio,
+          videoAudioLimit: enterpriseVideoAudioLimit,
+          videoAudioRemaining: Math.max(0, enterpriseVideoAudioLimit - monthUsedVideoAudio),
+        },
+        contextMsgLimit: enterpriseContextMsgLimit,
       });
     }
 
@@ -251,7 +528,13 @@ export async function GET(req: NextRequest) {
   const userId = userData.user.id;
   const today = getTodayString();
   const dailyLimit = getFreeDailyLimit();
-  const monthlyLimit = getMonthlyLimit();
+  const basicDailyLimit = getBasicDailyLimit();
+  const photoLimit = getFreeMonthlyPhotoLimit();
+  const videoAudioLimit = getFreeMonthlyVideoAudioLimit();
+  const basicPhotoLimit = getBasicMonthlyPhotoLimit();
+  const basicVideoAudioLimit = getBasicMonthlyVideoAudioLimit();
+  const freeContextLimit = getFreeContextMsgLimit();
+  const basicContextLimit = getBasicContextMsgLimit();
 
   const userPlan =
     (userData.user.user_metadata as any)?.plan ||
@@ -261,33 +544,108 @@ export async function GET(req: NextRequest) {
   const isBasic = planLower === "basic";
 
   if (isBasic) {
-    const monthStart = new Date(today);
-    monthStart.setDate(1);
-    const monthStr = monthStart.toISOString().split("T")[0];
-
-    const { data: quotaRow, error: quotaErr } = await supabase
+    // Basic 每日文本
+    const { data: dailyRow, error: dailyErr } = await supabase
       .from("basic_quotas")
-      .select("used, limit_per_month")
+      .select("used, limit_per_day")
       .eq("user_id", userId)
-      .eq("month", monthStr)
+      .eq("day", today)
       .single();
-
-    if (quotaErr && quotaErr.code !== "PGRST116") {
-      console.error("Basic quota fetch error", quotaErr);
+    if (dailyErr && dailyErr.code !== "PGRST116") {
+      console.error("Basic quota fetch error", dailyErr);
       return new Response("Failed to fetch quota", { status: 500 });
     }
+    const dailyUsed = dailyRow?.used ?? 0;
 
-    const used = quotaRow?.used ?? 0;
-    const limit = Number.isFinite(monthlyLimit)
-      ? monthlyLimit
-      : quotaRow?.limit_per_month ?? 100;
+    // Basic 月度媒体
+    const currentMonth = getCurrentYearMonth();
+    const { data: mediaRow, error: mediaErr } = await supabase
+      .from("basic_quotas")
+      .select("month_used_photo, month_used_video_audio")
+      .eq("user_id", userId)
+      .eq("month", currentMonth)
+      .single();
+    if (mediaErr && mediaErr.code !== "PGRST116") {
+      console.error("Basic media quota fetch error", mediaErr);
+      return new Response("Failed to fetch quota", { status: 500 });
+    }
+    const monthUsedPhoto = mediaRow?.month_used_photo ?? 0;
+    const monthUsedVideoAudio = mediaRow?.month_used_video_audio ?? 0;
+
+    if (modelId) {
+      const modelCategory = getModelCategory(modelId);
+      if (modelCategory === "general") {
+        return Response.json({
+          plan: "basic",
+          quotaType: "unlimited",
+          modelCategory: "general",
+          contextMsgLimit: basicContextLimit,
+        });
+      }
+      if (modelCategory === "external") {
+        return Response.json({
+          plan: "basic",
+          period: today,
+          used: dailyUsed,
+          limit: basicDailyLimit,
+          remaining: Math.max(0, basicDailyLimit - dailyUsed),
+          quotaType: "daily",
+          modelCategory: "external",
+          contextMsgLimit: basicContextLimit,
+        });
+      }
+      if (modelCategory === "advanced_multimodal") {
+        return Response.json({
+          plan: "basic",
+          period: currentMonth,
+          quotaType: "monthly_media",
+          modelCategory: "advanced_multimodal",
+          contextMsgLimit: basicContextLimit,
+          daily: {
+            period: today,
+            used: dailyUsed,
+            limit: basicDailyLimit,
+            remaining: Math.max(0, basicDailyLimit - dailyUsed),
+          },
+          textConsumesDaily: true,
+          photoUsed: monthUsedPhoto,
+          photoLimit: basicPhotoLimit,
+          photoRemaining: Math.max(0, basicPhotoLimit - monthUsedPhoto),
+          videoAudioUsed: monthUsedVideoAudio,
+          videoAudioLimit: basicVideoAudioLimit,
+          videoAudioRemaining: Math.max(0, basicVideoAudioLimit - monthUsedVideoAudio),
+          monthlyMedia: {
+            period: currentMonth,
+            photoUsed: monthUsedPhoto,
+            photoLimit: basicPhotoLimit,
+            photoRemaining: Math.max(0, basicPhotoLimit - monthUsedPhoto),
+            videoAudioUsed: monthUsedVideoAudio,
+            videoAudioLimit: basicVideoAudioLimit,
+            videoAudioRemaining: Math.max(0, basicVideoAudioLimit - monthUsedVideoAudio),
+          },
+        });
+      }
+    }
 
     return Response.json({
       plan: "basic",
-      period: monthStr,
-      used,
-      limit,
-      remaining: Math.max(0, limit - used),
+      modelCategory: modelId ? getModelCategory(modelId) : null,
+      daily: {
+        period: today,
+        used: dailyUsed,
+        limit: basicDailyLimit,
+        remaining: Math.max(0, basicDailyLimit - dailyUsed),
+      },
+      monthlyMedia: {
+        period: currentMonth,
+        photoUsed: monthUsedPhoto,
+        photoLimit: basicPhotoLimit,
+        photoRemaining: Math.max(0, basicPhotoLimit - monthUsedPhoto),
+        videoAudioUsed: monthUsedVideoAudio,
+        videoAudioLimit: basicVideoAudioLimit,
+        videoAudioRemaining: Math.max(0, basicVideoAudioLimit - monthUsedVideoAudio),
+      },
+      contextMsgLimit: basicContextLimit,
     });
   }
 
@@ -315,5 +673,6 @@ export async function GET(req: NextRequest) {
     used,
     limit,
     remaining: Math.max(0, limit - used),
+    contextMsgLimit: freeContextLimit,
   });
 }

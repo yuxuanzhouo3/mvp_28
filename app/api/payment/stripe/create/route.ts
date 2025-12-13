@@ -1,15 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createStripeCheckoutSession, stripeErrorResponse } from "@/lib/stripe";
 import { pricingPlans } from "@/constants/pricing";
+import { IS_DOMESTIC_VERSION } from "@/config";
+import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
+import { cookies } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { planName, billingPeriod, userId } = body as {
+    let { planName, billingPeriod, userId } = body as {
       planName: string;
       billingPeriod: "monthly" | "annual";
       userId?: string;
     };
+
+    // 如果前端未传 userId，尝试从会话自动获取
+    if (!userId) {
+      if (IS_DOMESTIC_VERSION) {
+        const cookieStore = await cookies();
+        const token = cookieStore.get("auth-token")?.value;
+        if (token) {
+          const auth = new CloudBaseAuthService();
+          const user = await auth.validateToken(token);
+          if (user?.id) {
+            userId = user.id;
+          }
+        }
+      } else {
+        const supabase = await createClient();
+        const { data } = await supabase.auth.getUser();
+        if (data?.user?.id) {
+          userId = data.user.id;
+        }
+      }
+    }
 
     // 查找套餐
     const plan = pricingPlans.find((p) => p.name === planName) || pricingPlans[1]; // 默认 Pro
@@ -68,6 +93,5 @@ export async function POST(request: NextRequest) {
     return stripeErrorResponse(err);
   }
 }
-
 
 

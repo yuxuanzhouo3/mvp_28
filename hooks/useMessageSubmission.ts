@@ -28,6 +28,8 @@ export const useMessageSubmission = (
   setCurrentChatId: React.Dispatch<React.SetStateAction<string>>,
   selectedModelType: string,
   selectedModel: string,
+  setSelectedModel: React.Dispatch<React.SetStateAction<string>>,
+  setSelectedModelType: React.Dispatch<React.SetStateAction<string>>,
   selectedCategory: string,
   selectedLanguage: string,
   setSelectedLanguage: React.Dispatch<React.SetStateAction<string>>,
@@ -126,6 +128,9 @@ export const useMessageSubmission = (
 
     // Determine language for request headers; keep UI language unchanged
     const detectedLanguage = selectedLanguage || detectLanguage(prompt);
+    // Effective model (may switch to omni when uploading media)
+    let effectiveModelType = selectedModelType;
+    let effectiveSelectedModel = selectedModel;
 
     // Prevent duplicate submissions
     if (isLoading) {
@@ -135,7 +140,7 @@ export const useMessageSubmission = (
     }
 
     // Block region-mismatched models early to avoid hitting backend and creating bad chats
-    const selectedExternal = externalModels.find((m) => m.id === selectedModel);
+    const selectedExternal = externalModels.find((m) => m.id === effectiveSelectedModel);
     const isCrossRegionModel =
       (IS_DOMESTIC_VERSION && selectedExternal?.category === "international") ||
       (!IS_DOMESTIC_VERSION && selectedExternal?.category === "domestic");
@@ -161,6 +166,10 @@ export const useMessageSubmission = (
     }
 
     // Collect uploaded media IDs (CloudBase fileId); only images/videos/audios are sent to the model
+    const hasMediaUpload = uploadedFiles.some(
+      (f) => f.kind === "image" || f.kind === "video" || f.kind === "audio"
+    );
+
     const imageFileIds = uploadedFiles
       .filter((f) => f.kind === "image" && f.fileId)
       .map((f) => f.fileId as string);
@@ -215,31 +224,56 @@ export const useMessageSubmission = (
       audioPreviews,
     };
     const displayModelName = getSelectedModelDisplayLocal();
-    const persistedModelId =
-      selectedModelType === "general"
+    let persistedModelId =
+      effectiveModelType === "general"
         ? GENERAL_MODEL_ID
-        : selectedModel || "qwen3-omni-flash";
-    const currentModel =
-      selectedModelType === "general"
+        : effectiveSelectedModel || "qwen3-omni-flash";
+    let currentModel =
+      effectiveModelType === "general"
         ? displayModelName
-        : selectedModel || displayModelName;
+        : effectiveSelectedModel || displayModelName;
     const currentChat = chatSessions.find((c) => c.id === currentChatId);
     let conversationId = currentChatId || "";
     const newChatCategory = selectedCategory || "general";
+    const planLower = (appUser?.plan || "").toLowerCase?.() || "";
+    const isFreeUser = !!appUser && (planLower === "" || planLower === "free");
+
+    // 如果已有对话锁定为文字模型，阻止媒体上传；新建/未锁定则自动切换到 Qwen3-Omni-Flash
+    if (hasMediaUpload) {
+      if (currentChat && currentChat.isModelLocked && (currentChat.model || "").toLowerCase() !== "qwen3-omni-flash") {
+        alert(
+          selectedLanguage === "zh"
+            ? "当前对话已锁定为文字模型，无法上传图片/视频/音频。请新建对话并选择 Qwen3-Omni-Flash。"
+            : "This conversation is locked to a text model. Start a new chat with Qwen3-Omni-Flash to upload media."
+        );
+        releaseLock();
+        return;
+      }
+      effectiveModelType = "advanced_multimodal";
+      effectiveSelectedModel = "qwen3-omni-flash";
+      persistedModelId = "qwen3-omni-flash";
+      currentModel = "qwen3-omni-flash";
+      setSelectedModelType("advanced_multimodal");
+      setSelectedModel("qwen3-omni-flash");
+    }
 
     try {
       if (!currentChat) {
-        conversationId = await createServerConversation(
-          userMessage.content.slice(0, 30) + "...",
-          persistedModelId
-        );
+        if (isFreeUser) {
+          conversationId = `local-${Date.now()}`;
+        } else {
+          conversationId = await createServerConversation(
+            userMessage.content.slice(0, 30) + "...",
+            persistedModelId
+          );
+        }
 
         const newChat: ChatSession = {
           id: conversationId,
           title: userMessage.content.slice(0, 30) + "...",
           messages: [userMessage],
           model: persistedModelId,
-          modelType: selectedModelType,
+          modelType: effectiveModelType,
           category: newChatCategory,
           lastUpdated: new Date(),
           isModelLocked: true,
@@ -253,17 +287,21 @@ export const useMessageSubmission = (
           setExpandedFolders([newChatCategory]);
         }
       } else if (!currentChat.isModelLocked) {
-        conversationId = await createServerConversation(
-          userMessage.content.slice(0, 30) + "...",
-          persistedModelId
-        );
+        if (isFreeUser) {
+          conversationId = `local-${Date.now()}`;
+        } else {
+          conversationId = await createServerConversation(
+            userMessage.content.slice(0, 30) + "...",
+            persistedModelId
+          );
+        }
 
         const newChat: ChatSession = {
           id: conversationId,
           title: userMessage.content.slice(0, 30) + "...",
           messages: [userMessage],
           model: persistedModelId,
-          modelType: selectedModelType,
+          modelType: effectiveModelType,
           category: newChatCategory,
           lastUpdated: new Date(),
           isModelLocked: true,
@@ -323,8 +361,6 @@ export const useMessageSubmission = (
     let preparedHistory = [...messages, userMessage];
 
     // 上下文截断：Free 用户按环境限制，只保留最近 N 条
-    const planLower = (appUser?.plan || "").toLowerCase?.() || "";
-    const isFreeUser = !appUser?.isPro && planLower !== "basic" && planLower !== "pro" && planLower !== "enterprise";
     if (isFreeUser) {
       const ctxLimit = getFreeContextMsgLimit();
       if (messages.length >= ctxLimit) {
@@ -351,7 +387,7 @@ export const useMessageSubmission = (
     }));
 
     // Persist user message via API
-    if (conversationId) {
+    if (conversationId && !conversationId.startsWith("local-")) {
       try {
         const res = await fetch(`/api/conversations/${conversationId}/messages`, {
           method: "POST",
@@ -369,9 +405,12 @@ export const useMessageSubmission = (
         });
         if (res.status === 402) {
           const body = await res.json().catch(() => ({}));
-          // 根据配额类型显示不同的错误提示
+          // 根据配额类型显示不同的错误提示（Free/Basic 同一逻辑，统一触发订阅弹窗）
           const quotaType = body?.quotaType || "daily";
+          const planLower = (appUser?.plan || "").toLowerCase?.() || "";
+          const isBasic = planLower === "basic";
           let msg: string;
+          openUpgrade?.();
           if (quotaType === "monthly_photo") {
             msg = selectedLanguage === "zh"
               ? "本月图片配额已用完，请升级套餐或下月再试。"
@@ -381,9 +420,15 @@ export const useMessageSubmission = (
               ? "本月视频/音频配额已用完，请升级套餐或下月再试。"
               : body?.error || "Monthly video/audio quota reached. Please upgrade or try next month.";
           } else {
+            const defaultZh = isBasic
+              ? "今日基础版额度已用完，请升级套餐或切换到通用模型（General Model）继续使用。"
+              : "今日免费额度已用完，请升级套餐或切换到通用模型（General Model）继续使用。";
+            const defaultEn = isBasic
+              ? "Today's Basic quota is used up. Please upgrade or switch to the General Model."
+              : "Today's free quota is used up. Please upgrade or switch to the General Model.";
             msg = selectedLanguage === "zh"
-              ? "今日免费额度已用完，请升级套餐或切换到通用模型（General Model）继续使用。"
-              : body?.error || "Daily free quota reached. Please upgrade or switch to the General Model.";
+              ? body?.error || defaultZh
+              : body?.error || defaultEn;
           }
           alert(msg);
           setIsLoading(false);
@@ -407,7 +452,7 @@ export const useMessageSubmission = (
     }
 
     // 国际版：本地预扣免费额度；国内版/通用模型跳过（由服务端或无限制处理）
-    if (!IS_DOMESTIC_VERSION && selectedModelType !== "general") {
+    if (!IS_DOMESTIC_VERSION && effectiveModelType !== "general") {
       if (consumeFreeQuota && !consumeFreeQuota()) {
         setIsLoading(false);
         releaseLock();
@@ -504,7 +549,7 @@ export const useMessageSubmission = (
           )
         );
 
-        if (conversationId) {
+        if (conversationId && !conversationId.startsWith("local-")) {
           fetch(`/api/conversations/${conversationId}/messages`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -524,18 +569,18 @@ export const useMessageSubmission = (
       } else {
         // Use real API calls for external models
         let modelId =
-          selectedModelType === "general" ? GENERAL_MODEL_ID : persistedModelId;
+          effectiveModelType === "general" ? GENERAL_MODEL_ID : persistedModelId;
 
         // Prefer selected external model
-        if (selectedModelType === "external" && selectedModel) {
-          const model = externalModels.find((m) => m.id === selectedModel);
+        if (effectiveModelType === "external" && effectiveSelectedModel) {
+          const model = externalModels.find((m) => m.id === effectiveSelectedModel);
           if (model) {
             modelId = model.id;
           }
-        } else if (selectedModelType === "general") {
+        } else if (effectiveModelType === "general") {
           modelId = GENERAL_MODEL_ID;
-        } else if (selectedModel) {
-          modelId = selectedModel;
+        } else if (effectiveSelectedModel) {
+          modelId = effectiveSelectedModel;
         }
 
         // If包含图片/视频，强制用多模态模型（对标 Qwen Demo）
@@ -571,12 +616,23 @@ export const useMessageSubmission = (
         setIsStreaming(true);
         // Keep isLoading true to show thinking indicator until first chunk arrives
 
+        // 国际版接口不接受多模态字段，将历史与媒体字段裁剪为纯文本
+        const historyForSend = IS_DOMESTIC_VERSION
+          ? historyMessages
+          : historyMessages.map((msg) => ({
+              role: msg.role as "user" | "assistant" | "system",
+              content: msg.content,
+            }));
+        const sendImages = IS_DOMESTIC_VERSION ? userMessage.images : undefined;
+        const sendVideos = IS_DOMESTIC_VERSION ? userMessage.videos : undefined;
+        const sendAudios = IS_DOMESTIC_VERSION ? (userMessage as any).audios : undefined;
+
         // Minimal terminal log to help diagnose media payload
         console.log("[media][client] sendMessageStream payload", {
           modelId,
-          images: userMessage.images?.length || 0,
-          videos: userMessage.videos?.length || 0,
-          historyCount: historyMessages.length,
+          images: sendImages?.length || 0,
+          videos: sendVideos?.length || 0,
+          historyCount: historyForSend.length,
         });
 
         try {
@@ -586,10 +642,10 @@ export const useMessageSubmission = (
             undefined,
             undefined,
             detectedLanguage,
-            historyMessages,
-            userMessage.images,
-            userMessage.videos,
-            (userMessage as any).audios,
+            historyForSend,
+            sendImages,
+            sendVideos,
+            sendAudios,
             true, // quota already checked & persisted via /messages
             // onChunk callback
             (chunk: string) => {
@@ -743,7 +799,7 @@ export const useMessageSubmission = (
             await new Promise((resolve) => setTimeout(resolve, 100));
           }
 
-          // 如果用户中途点击“停止”，sendMessageStream 会提前返回且 isStreamingComplete 仍为 false
+    // 如果用户中途点击“停止”，sendMessageStream 会提前返回且 isStreamingComplete 仍为 false
           // 此处兜底：将已生成内容落库，并清理状态
           if (!isStreamingComplete && messageCreated) {
             setMessages((prev) =>

@@ -7,8 +7,12 @@
 // 模型分类定义
 // =============================================================================
 
-// 默认通用模型（前端展示为 General Model，实际使用 Qwen-Turbo）
-export const GENERAL_MODEL_ID = "qwen-turbo";
+import { IS_DOMESTIC_VERSION } from "@/config";
+
+// 默认通用模型（前端展示为 General Model）：
+// - 国内版使用 Qwen-Turbo
+// - 国际版使用 Mistral-small-latest
+export const GENERAL_MODEL_ID = IS_DOMESTIC_VERSION ? "qwen-turbo" : "mistral-small-latest";
 
 /**
  * 通用模型列表 (General/Internal Models)
@@ -100,6 +104,26 @@ export function getFreeDailyLimit(): number {
 }
 
 /**
+ * 获取 Basic 订阅每日外部模型限制
+ */
+export function getBasicDailyLimit(): number {
+  const raw = process.env.NEXT_PUBLIC_BASIC_DAILY_LIMIT || "100";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 100;
+  return Math.min(10000, n);
+}
+
+/**
+ * 获取 Pro 订阅每日外部模型限制
+ */
+export function getProDailyLimit(): number {
+  const raw = process.env.NEXT_PUBLIC_PRO_DAILY_LIMIT || "200";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 200;
+  return Math.min(20000, n);
+}
+
+/**
  * 获取高级多模态模型每月图片限制
  */
 export function getFreeMonthlyPhotoLimit(): number {
@@ -120,6 +144,76 @@ export function getFreeMonthlyVideoAudioLimit(): number {
 }
 
 /**
+ * 获取 Basic 订阅多模态图片月度限制
+ */
+export function getBasicMonthlyPhotoLimit(): number {
+  const raw = process.env.NEXT_PUBLIC_BASIC_MONTHLY_PHOTO_LIMIT || "100";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 100;
+  return Math.min(10000, n);
+}
+
+/**
+ * 获取 Pro 订阅多模态图片月度限制
+ */
+export function getProMonthlyPhotoLimit(): number {
+  const raw = process.env.NEXT_PUBLIC_PRO_MONTHLY_PHOTO_LIMIT || "500";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 500;
+  return Math.min(20000, n);
+}
+
+/**
+ * 获取 Basic 订阅多模态视频/音频月度限制
+ */
+export function getBasicMonthlyVideoAudioLimit(): number {
+  const raw = process.env.NEXT_PUBLIC_BASIC_MONTHLY_VIDEO_AUDIO_LIMIT || "20";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 20;
+  return Math.min(1000, n);
+}
+
+/**
+ * 获取 Pro 订阅多模态视频/音频月度限制
+ */
+export function getProMonthlyVideoAudioLimit(): number {
+  const raw = process.env.NEXT_PUBLIC_PRO_MONTHLY_VIDEO_AUDIO_LIMIT || "100";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 100;
+  return Math.min(5000, n);
+}
+
+/**
+ * 获取 Enterprise 订阅每日外部模型限制
+ */
+export function getEnterpriseDailyLimit(): number {
+  const raw = process.env.NEXT_PUBLIC_ENTERPRISE_DAILY_LIMIT || "500";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 500;
+  return Math.min(50000, n);
+}
+
+/**
+ * 获取 Enterprise 订阅多模态图片月度限制
+ */
+export function getEnterpriseMonthlyPhotoLimit(): number {
+  const raw = process.env.NEXT_PUBLIC_ENTERPRISE_MONTHLY_PHOTO_LIMIT || "1000";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 1000;
+  return Math.min(50000, n);
+}
+
+/**
+ * 获取 Enterprise 订阅多模态视频/音频月度限制
+ */
+export function getEnterpriseMonthlyVideoAudioLimit(): number {
+  const raw = process.env.NEXT_PUBLIC_ENTERPRISE_MONTHLY_VIDEO_AUDIO_LIMIT || "200";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 200;
+  return Math.min(20000, n);
+}
+
+/**
  * 获取 Free 用户上下文消息限制 (非消耗型，仅用于截断历史)
  */
 export function getFreeContextMsgLimit(): number {
@@ -127,6 +221,42 @@ export function getFreeContextMsgLimit(): number {
   const n = parseInt(raw, 10);
   if (!Number.isFinite(n) || n <= 0) return 10;
   return Math.min(100, n);
+}
+
+/**
+ * 获取 Basic 用户上下文消息限制 (非消耗型，仅用于截断历史)
+ */
+export function getBasicContextMsgLimit(): number {
+  const raw = process.env.NEXT_PUBLIC_BASIC_CONTEXT_MSG_LIMIT || "50";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 50;
+  return Math.min(200, n);
+}
+
+/**
+ * 获取 Pro 用户上下文消息限制 (非消耗型，仅用于截断历史)
+ */
+export function getProContextMsgLimit(): number {
+  const raw =
+    process.env.NEXT_PUBLIC_PRO_CONTEXT_MSG_LIMIT ||
+    process.env.NEXT_PUBLIC_Pro_CONTEXT_MSG_LIMIT ||
+    "100";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 100;
+  return Math.min(300, n);
+}
+
+/**
+ * 获取 Enterprise 用户上下文消息限制 (非消耗型，仅用于截断历史)
+ */
+export function getEnterpriseContextMsgLimit(): number {
+  const raw =
+    process.env.NEXT_PUBLIC_ENTERPRISE_CONTEXT_MSG_LIMIT ||
+    process.env.NEXT_PUBLIC_Enterprise_CONTEXT_MSG_LIMIT ||
+    "200";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 200;
+  return Math.min(500, n);
 }
 
 // =============================================================================
@@ -230,25 +360,32 @@ export function getContextTruncationMessage(
 // =============================================================================
 
 /**
- * 获取今天的日期字符串 (YYYY-MM-DD)
+ * 获取今天的日期字符串 (YYYY-MM-DD) - 北京时间
  */
 export function getTodayString(): string {
-  return new Date().toISOString().split("T")[0];
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const beijing = new Date(utc + 8 * 3600000);
+  return beijing.toISOString().split("T")[0];
 }
 
 /**
- * 获取当月第一天的日期字符串 (YYYY-MM-DD)
+ * 获取当月第一天的日期字符串 (YYYY-MM-DD) - 北京时间
  */
 export function getMonthStartString(): string {
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const beijing = new Date(utc + 8 * 3600000);
+  const monthStart = new Date(beijing.getFullYear(), beijing.getMonth(), 1);
   return monthStart.toISOString().split("T")[0];
 }
 
 /**
- * 获取当前年月字符串 (YYYY-MM)
+ * 获取当前年月字符串 (YYYY-MM) - 北京时间
  */
 export function getCurrentYearMonth(): string {
   const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const beijing = new Date(utc + 8 * 3600000);
+  return `${beijing.getFullYear()}-${String(beijing.getMonth() + 1).padStart(2, "0")}`;
 }

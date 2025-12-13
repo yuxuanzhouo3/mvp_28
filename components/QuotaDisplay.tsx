@@ -14,7 +14,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Infinity, Image, Video, MessageSquare, Zap, AlertCircle } from "lucide-react";
+import { Image, Video, MessageSquare, Zap, AlertCircle } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import {
   ADVANCED_MULTIMODAL_MODELS,
@@ -166,39 +166,13 @@ export function QuotaDisplay({
 
   // 计划判断
   const planLower = (currentPlan || quotaData?.plan || "").toLowerCase();
-  const isPro = planLower === "pro" || planLower === "enterprise";
+  const isEnterprise = planLower === "enterprise";
+  const isProLimited = planLower === "pro" || planLower === "enterprise";
   const isBasic = planLower === "basic";
-  const isFree = !isPro && !isBasic;
+  const isFree = !isEnterprise && !isProLimited && !isBasic;
 
-  // Pro/Enterprise 用户：无限制
-  if (isPro) {
-    return (
-      <TooltipProvider delayDuration={150}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge
-              variant="outline"
-              className={`text-xs px-2 py-0.5 border-0 bg-gradient-to-r from-emerald-500 to-teal-500 text-white cursor-pointer ${className}`}
-            >
-              <Infinity className="w-3 h-3 mr-1" />
-              {isZh ? "无限" : "Unlimited"}
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">
-            <div className="space-y-1">
-              <div className="font-semibold">{planLower === "enterprise" ? "Enterprise" : "Pro"}</div>
-              <div className="text-gray-600 dark:text-gray-300">
-                {isZh ? "无限制消息额度" : "Unlimited messages"}
-              </div>
-            </div>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  }
-
-  // Free 用户：根据模型类型显示不同配额
-  if (isFree && quotaData) {
+  // Free / Basic 用户：根据模型类型显示不同配额
+  if ((isFree || isBasic || isProLimited) && quotaData) {
     const modelCategory = getModelCategory(selectedModel);
 
     // 通用模型：无限畅聊
@@ -403,44 +377,72 @@ export function QuotaDisplay({
     }
   }
 
-  // Basic 用户
-  if (isBasic && quotaData) {
-    const used = quotaData.used ?? 0;
-    const limit = quotaData.limit ?? 100;
-    const remaining = Math.max(0, limit - used);
-    const percent = limit > 0 ? Math.min(100, (remaining / limit) * 100) : 0;
-    const isLow = remaining <= 10;
+  // Basic / Pro 用户（未匹配模型类型时）：显示每日 + 月度媒体
+  if ((isBasic || isProLimited) && quotaData?.daily) {
+    const { remaining, limit } = quotaData.daily;
+    const remainingSafe = typeof remaining === "number" ? remaining : 0;
+    const limitSafe = limit ?? 0;
+    const percent = limitSafe > 0 ? Math.min(100, Math.max(0, (remainingSafe / limitSafe) * 100)) : 0;
+    const photoLimit = quotaData.monthlyMedia?.photoLimit ?? 0;
+    const photoRemaining = quotaData.monthlyMedia?.photoRemaining ?? photoLimit;
+    const videoLimit = quotaData.monthlyMedia?.videoAudioLimit ?? 0;
+    const videoRemaining = quotaData.monthlyMedia?.videoAudioRemaining ?? videoLimit;
+    const photoPercent = photoLimit > 0 ? Math.min(100, Math.max(0, (photoRemaining / photoLimit) * 100)) : 0;
+    const videoPercent = videoLimit > 0 ? Math.min(100, Math.max(0, (videoRemaining / videoLimit) * 100)) : 0;
 
     return (
       <Popover>
         <PopoverTrigger asChild>
           <Badge
             variant="outline"
-            className={`text-xs px-2 py-0.5 border-0 cursor-pointer ${
-              isLow
-                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                : "bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-300"
-            } ${className}`}
+            className={`text-xs px-2 py-0.5 border-0 cursor-pointer bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300 ${className}`}
           >
             <MessageSquare className="w-3 h-3 mr-1" />
-            {remaining}/{limit}
+            {remainingSafe}/{limitSafe}
           </Badge>
         </PopoverTrigger>
-        <PopoverContent className="w-64 p-3" side="bottom">
+        <PopoverContent className="w-72 p-3" side="bottom">
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-sm">
-                {isZh ? "Basic 月度配额" : "Basic Monthly Quota"}
-              </span>
-              <span className={`text-sm font-bold ${isLow ? "text-amber-600" : "text-amber-500"}`}>
-                {remaining}/{limit}
-              </span>
+            <div className="font-semibold text-sm">
+            {isZh ? (isProLimited ? "Pro 配额" : "Basic 配额") : (isProLimited ? "Pro Quota" : "Basic Quota")}
             </div>
-            <Progress value={percent} className="h-2" />
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              {isZh
-                ? `本月剩余 ${remaining} 次，每月 1 日重置`
-                : `${remaining} remaining this month, resets on the 1st`}
+            <div className="space-y-1 border-b pb-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center">
+                  <MessageSquare className="w-3 h-3 mr-1 text-amber-500" />
+                  {isZh ? "每日外部模型" : "External (daily)"}
+                </span>
+                <span className="font-bold text-amber-600">
+                  {remainingSafe}/{limitSafe}
+                </span>
+              </div>
+              <Progress value={percent} className="h-1.5" />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center">
+                  <Image className="w-3 h-3 mr-1 text-purple-500" />
+                  {isZh ? "本月图片" : "Photos (monthly)"}
+                </span>
+                <span className="font-bold text-purple-600">
+                  {photoRemaining}/{photoLimit}
+                </span>
+              </div>
+              <Progress value={photoPercent} className="h-1.5" />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center">
+                  <Video className="w-3 h-3 mr-1 text-purple-500" />
+                  {isZh ? "本月视频/音频" : "Video/Audio (monthly)"}
+                </span>
+                <span className="font-bold text-purple-600">
+                  {videoRemaining}/{videoLimit}
+                </span>
+              </div>
+              <Progress value={videoPercent} className="h-1.5" />
             </div>
           </div>
         </PopoverContent>

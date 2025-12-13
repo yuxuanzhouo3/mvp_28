@@ -30,7 +30,7 @@ export function UploadedFilesList({
     <div className="mt-2 space-y-1">
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-500 dark:text-gray-400">
-          {uploadedFiles.length}/{maxFiles} files ({formatFileSize(totalSize)})
+          {uploadedFiles.length}/{maxFiles} 个文件 ({formatFileSize(totalSize)})
         </span>
         <Button
           size="sm"
@@ -38,7 +38,7 @@ export function UploadedFilesList({
           className="h-5 px-2 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400"
           onClick={() => setUploadedFiles([])}
         >
-          Clear all
+          清空全部
         </Button>
       </div>
 
@@ -50,15 +50,15 @@ export function UploadedFilesList({
             title={`${file.name} (${formatFileSize(file.size)})`}
           >
             <span className="text-xs mr-1">{getFileIcon(file.type)}</span>
-            <span className="text-gray-700 dark:text-gray-300 truncate text-xs">
+            <span className="text-gray-700 dark:text-gray-300 truncate text-xs flex-1">
               {file.name.length > 8 ? file.name.substring(0, 6) + ".." : file.name}
             </span>
             <Button
               size="sm"
               variant="ghost"
-              className="h-3 w-3 p-0 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 absolute -top-1 -right-1"
+              className="h-3 w-3 p-0 ml-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100"
               onClick={() => removeFile(index)}
-              title="Remove file"
+              title="移除文件"
             >
               <X className="w-2 h-2" />
             </Button>

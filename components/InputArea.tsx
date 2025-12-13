@@ -308,6 +308,7 @@ const InputArea = React.memo(function InputArea({
     category?: string,
     modelId?: string
   ) => {
+    setModelSelectorTab(type);
     handleModelChange(type, category, modelId);
     // Focus input so user can type immediately after selecting model
     setTimeout(() => focusTextarea(), 0);
@@ -352,9 +353,19 @@ const InputArea = React.memo(function InputArea({
     const latestValue = errorEntries.find((e) => e.key === latestKey)?.value || "";
     setLatestError(latestValue);
   }, [voiceError, cameraError, uploadError, locationError, proChatError]);
-  
+
   // Get language context
   const { isDomesticVersion } = useLanguage();
+
+  // 独立的模型选择 Tab 状态（仅用于弹窗切换，不影响当前已选模型）
+  const [modelSelectorTab, setModelSelectorTab] = React.useState(selectedModelType);
+
+  // 弹窗打开时同步当前模型到本地 Tab，避免误切换
+  React.useEffect(() => {
+    if (isModelSelectorOpen) {
+      setModelSelectorTab(selectedModelType);
+    }
+  }, [isModelSelectorOpen, selectedModelType]);
   
   // Filter models based on deployment version
   const filteredExternalModels = externalModels.filter((model) =>
@@ -1137,8 +1148,8 @@ const InputArea = React.memo(function InputArea({
                         </div>
 
                         <Tabs
-                          value={selectedModelType}
-                          onValueChange={setSelectedModelType}
+                          value={modelSelectorTab}
+                          onValueChange={setModelSelectorTab}
                           className="w-full"
                         >
                           <TabsList className="grid w-full grid-cols-3 bg-gray-100 dark:bg-[#565869]">

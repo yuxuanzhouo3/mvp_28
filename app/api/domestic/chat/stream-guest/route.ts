@@ -201,9 +201,40 @@ export async function POST(req: Request) {
     await connector.initialize();
     const db = connector.getClient();
 
+    // 即使 quotaChecked=true，也要阻止超限的媒体请求（不重复扣减）
+    if (plan.isFree && quotaChecked) {
+      const category = getModelCategory(finalModelId);
+      const imageCount = getImageCount({ images });
+      const videoAudioCount = getVideoAudioCount({ videos, audios });
+
+      if (category === "advanced_multimodal" && (imageCount > 0 || videoAudioCount > 0)) {
+        const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+        const quotaColl = db.collection("free_quotas");
+        const existing = await quotaColl.where({ userId: user.id, month: currentMonth }).limit(1).get();
+        const row = existing?.data?.[0];
+        const usedPhoto = row?.month_used_photo ?? 0;
+        const usedVideoAudio = row?.month_used_video_audio ?? 0;
+        const photoLimit = getFreeMonthlyPhotoLimit();
+        const videoAudioLimit = getFreeMonthlyVideoAudioLimit();
+
+        if (imageCount > 0 && usedPhoto + imageCount > photoLimit) {
+          return new Response(
+            JSON.stringify({ success: false, error: getQuotaExceededMessage("monthly_photo", language === "zh" ? "zh" : "en") }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        if (videoAudioCount > 0 && usedVideoAudio + videoAudioCount > videoAudioLimit) {
+          return new Response(
+            JSON.stringify({ success: false, error: getQuotaExceededMessage("monthly_video_audio", language === "zh" ? "zh" : "en") }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
+      }
+    }
+
     if (plan.isFree && !quotaChecked) {
-      const today = new Date().toISOString().split("T")[0];
-      const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+      const today = getTodayString();
+      const currentMonth = getCurrentYearMonth();
       const quotaColl = db.collection("free_quotas");
       const category = getModelCategory(finalModelId);
       const imageCount = getImageCount({ images });
@@ -235,6 +266,7 @@ export async function POST(req: Request) {
           day: today,
           daily_count: used + 1,
           updatedAt: new Date().toISOString(),
+          createdAt: new Date(),
         };
         if (row?._id) {
           await quotaColl.doc(row._id).update(payload);
@@ -268,50 +300,70 @@ export async function POST(req: Request) {
             });
           }
         } else {
-          const existing = await quotaColl.where({ userId: user.id, month: currentMonth }).limit(1).get();
-          const row = existing?.data?.[0];
-          const usedPhoto = row?.month_used_photo ?? 0;
-          const usedVideoAudio = row?.month_used_video_audio ?? 0;
-          console.log("[quota][stream] monthly check", {
-            usedPhoto,
-            usedVideoAudio,
-            photoLimit,
-            videoAudioLimit,
-            rowId: row?._id,
-          });
+          // 使用事务保证并发安全的额度扣减
+          const txn = await db.startTransaction();
+          try {
+            const quotaTxColl = txn.collection("free_quotas");
+            const existing = await quotaTxColl.where({ userId: user.id, month: currentMonth }).limit(1).get();
+            const row = existing?.data?.[0];
+            const usedPhoto = row?.month_used_photo ?? 0;
+            const usedVideoAudio = row?.month_used_video_audio ?? 0;
 
-          if (imageCount > 0 && usedPhoto + imageCount > photoLimit) {
+            console.log("[quota][stream][tx] monthly check", {
+              usedPhoto,
+              usedVideoAudio,
+              photoLimit,
+              videoAudioLimit,
+              rowId: row?._id,
+            });
+
+            if (imageCount > 0 && usedPhoto + imageCount > photoLimit) {
+              await txn.rollback();
+              return new Response(
+                JSON.stringify({ success: false, error: getQuotaExceededMessage("monthly_photo", language === "zh" ? "zh" : "en") }),
+                { status: 402, headers: { "Content-Type": "application/json" } },
+              );
+            }
+            if (videoAudioCount > 0 && usedVideoAudio + videoAudioCount > videoAudioLimit) {
+              await txn.rollback();
+              return new Response(
+                JSON.stringify({ success: false, error: getQuotaExceededMessage("monthly_video_audio", language === "zh" ? "zh" : "en") }),
+                { status: 402, headers: { "Content-Type": "application/json" } },
+              );
+            }
+
+            const payload: any = {
+              userId: user.id,
+              month: currentMonth,
+              month_used_photo: usedPhoto + imageCount,
+              month_used_video_audio: usedVideoAudio + videoAudioCount,
+              updatedAt: new Date().toISOString(),
+              createdAt: new Date(),
+            };
+            if (row?._id) {
+              await quotaTxColl.doc(row._id).update(payload);
+            } else {
+              await quotaTxColl.add(payload);
+            }
+
+            await txn.commit();
+            console.log("[quota][stream][tx] monthly updated", {
+              user: user.id,
+              photo: payload.month_used_photo,
+              photoLimit,
+              videoAudio: payload.month_used_video_audio,
+              videoAudioLimit,
+            });
+          } catch (err) {
+            console.error("[quota][stream][tx] monthly update failed", err);
+            try {
+              await txn.rollback();
+            } catch {}
             return new Response(
-              JSON.stringify({ success: false, error: getQuotaExceededMessage("monthly_photo", language === "zh" ? "zh" : "en") }),
-              { status: 402, headers: { "Content-Type": "application/json" } },
+              JSON.stringify({ success: false, error: "Quota check failed, please retry." }),
+              { status: 500, headers: { "Content-Type": "application/json" } },
             );
           }
-          if (videoAudioCount > 0 && usedVideoAudio + videoAudioCount > videoAudioLimit) {
-            return new Response(
-              JSON.stringify({ success: false, error: getQuotaExceededMessage("monthly_video_audio", language === "zh" ? "zh" : "en") }),
-              { status: 402, headers: { "Content-Type": "application/json" } },
-            );
-          }
-
-          const payload: any = {
-            userId: user.id,
-            month: currentMonth,
-            month_used_photo: usedPhoto + imageCount,
-            month_used_video_audio: usedVideoAudio + videoAudioCount,
-            updatedAt: new Date().toISOString(),
-          };
-          if (row?._id) {
-            await quotaColl.doc(row._id).update(payload);
-          } else {
-            await quotaColl.add(payload);
-          }
-          console.log("[quota][stream] monthly updated", {
-            user: user.id,
-            photo: usedPhoto + imageCount,
-            photoLimit,
-            videoAudio: usedVideoAudio + videoAudioCount,
-            videoAudioLimit,
-          });
         }
       } else {
         // 未知模型：按外部模型处理

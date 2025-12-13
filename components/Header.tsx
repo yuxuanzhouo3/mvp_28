@@ -64,6 +64,25 @@ interface HeaderProps {
   freeVideoAudioRemaining?: number | null;
   freeVideoAudioLimit?: number | null;
   freeContextLimit?: number | null;
+  basicPhotoRemaining?: number | null;
+  basicPhotoLimit?: number | null;
+  basicVideoAudioRemaining?: number | null;
+  basicVideoAudioLimit?: number | null;
+  basicContextLimit?: number | null;
+  proQuotaRemaining?: number | null;
+  proQuotaLimit?: number;
+  proPhotoRemaining?: number | null;
+  proPhotoLimit?: number | null;
+  proVideoAudioRemaining?: number | null;
+  proVideoAudioLimit?: number | null;
+  proContextLimit?: number | null;
+  enterpriseQuotaRemaining?: number | null;
+  enterpriseQuotaLimit?: number;
+  enterprisePhotoRemaining?: number | null;
+  enterprisePhotoLimit?: number | null;
+  enterpriseVideoAudioRemaining?: number | null;
+  enterpriseVideoAudioLimit?: number | null;
+  enterpriseContextLimit?: number | null;
 }
 
 export default function Header({
@@ -99,6 +118,25 @@ export default function Header({
   freeVideoAudioRemaining,
   freeVideoAudioLimit,
   freeContextLimit,
+  basicPhotoRemaining,
+  basicPhotoLimit,
+  basicVideoAudioRemaining,
+  basicVideoAudioLimit,
+  basicContextLimit,
+  proQuotaRemaining,
+  proQuotaLimit,
+  proPhotoRemaining,
+  proPhotoLimit,
+  proVideoAudioRemaining,
+  proVideoAudioLimit,
+  proContextLimit,
+  enterpriseQuotaRemaining,
+  enterpriseQuotaLimit,
+  enterprisePhotoRemaining,
+  enterprisePhotoLimit,
+  enterpriseVideoAudioRemaining,
+  enterpriseVideoAudioLimit,
+  enterpriseContextLimit,
 }: HeaderProps) {
   const planLower = (
     currentPlan ||
@@ -124,58 +162,98 @@ export default function Header({
       ? "bg-amber-500 text-white"
       : "bg-gray-200 text-gray-800";
   const isBasicUser = !!appUser && planLower === "basic";
+  const isProUserLimited = !!appUser && planLower === "pro";
+  const isEnterpriseUser = !!appUser && planLower === "enterprise";
   const isUnlimited =
     !!appUser &&
     !isBasicUser &&
-    (planLower === "pro" ||
-      planLower === "enterprise" ||
-      (isUnlimitedPlan && planLower !== "free" && planLower !== ""));
+    !isProUserLimited &&
+    !isEnterpriseUser &&
+    (isUnlimitedPlan && planLower !== "free" && planLower !== "");
   const isFreeUser =
     !!appUser &&
     !isUnlimited &&
     !isBasicUser &&
+    !isProUserLimited &&
+    !isEnterpriseUser &&
     (planLower === "" || planLower === "free");
 
-  const quotaLimit = isUnlimited
-    ? 1
-    : isBasicUser
-    ? basicQuotaLimit ?? 100
-    : freeQuotaLimit ?? 10;
-  const quotaRemaining = (() => {
-    if (isUnlimited) return Infinity;
-    if (isBasicUser) {
-      return typeof basicQuotaRemaining === "number"
-        ? Math.max(0, basicQuotaRemaining)
-        : quotaLimit;
-    }
-    if (isFreeUser) {
-      return typeof freeQuotaRemaining === "number"
-        ? Math.max(0, freeQuotaRemaining)
-        : quotaLimit;
-    }
-    return quotaLimit;
-  })();
-  const quotaPercent = isUnlimited
-    ? 100
-    : quotaLimit > 0
-    ? Math.min(100, Math.max(0, (quotaRemaining / quotaLimit) * 100))
-    : 0;
   const quotaText = isUnlimited ? "∞/∞" : null;
 
-  const renderFreeQuotaBars = () => {
-    if (!isFreeUser) return null;
-    const photoLimitSafe = freePhotoLimit ?? 0;
-    const photoRemainingSafe = freePhotoRemaining ?? photoLimitSafe;
-    const videoLimitSafe = freeVideoAudioLimit ?? 0;
-    const videoRemainingSafe = freeVideoAudioRemaining ?? videoLimitSafe;
+  const renderQuotaBars = () => {
+    if (!isFreeUser && !isBasicUser && !isProUserLimited && !isEnterpriseUser) return null;
+    const isBasic = isBasicUser;
+    const isPro = isProUserLimited;
+    const isEnterprise = isEnterpriseUser;
+    const dailyLimit = isBasic
+      ? basicQuotaLimit ?? 0
+      : isPro
+        ? proQuotaLimit ?? 0
+        : isEnterprise
+          ? enterpriseQuotaLimit ?? 0
+          : freeQuotaLimit ?? 0;
+    const dailyRemainingRaw = isBasic
+      ? basicQuotaRemaining
+      : isPro
+        ? proQuotaRemaining
+        : isEnterprise
+          ? enterpriseQuotaRemaining
+          : freeQuotaRemaining;
+    const dailyRemaining =
+      typeof dailyRemainingRaw === "number"
+        ? Math.max(0, dailyRemainingRaw as number)
+        : dailyLimit;
+    const dailyPercent =
+      dailyLimit > 0 ? Math.min(100, Math.max(0, (dailyRemaining / dailyLimit) * 100)) : 0;
+
+    const photoLimitSafe = isBasic
+      ? basicPhotoLimit ?? 0
+      : isPro
+        ? proPhotoLimit ?? 0
+        : isEnterprise
+          ? enterprisePhotoLimit ?? 0
+          : freePhotoLimit ?? 0;
+    const photoRemainingSafe = isBasic
+      ? basicPhotoRemaining ?? photoLimitSafe
+      : isPro
+        ? proPhotoRemaining ?? photoLimitSafe
+        : isEnterprise
+          ? enterprisePhotoRemaining ?? photoLimitSafe
+          : freePhotoRemaining ?? photoLimitSafe;
+    const videoLimitSafe = isBasic
+      ? basicVideoAudioLimit ?? 0
+      : isPro
+        ? proVideoAudioLimit ?? 0
+        : isEnterprise
+          ? enterpriseVideoAudioLimit ?? 0
+          : freeVideoAudioLimit ?? 0;
+    const videoRemainingSafe = isBasic
+      ? basicVideoAudioRemaining ?? videoLimitSafe
+      : isPro
+        ? proVideoAudioRemaining ?? videoLimitSafe
+        : isEnterprise
+          ? enterpriseVideoAudioRemaining ?? videoLimitSafe
+          : freeVideoAudioRemaining ?? videoLimitSafe;
     const photoPercent =
       photoLimitSafe > 0 ? Math.min(100, Math.max(0, (photoRemainingSafe / photoLimitSafe) * 100)) : 0;
     const videoPercent =
       videoLimitSafe > 0 ? Math.min(100, Math.max(0, (videoRemainingSafe / videoLimitSafe) * 100)) : 0;
     const dailyText =
-      quotaLimit > 0 && quotaRemaining !== Infinity
-        ? `${Math.max(0, Math.min(quotaLimit, Math.ceil(quotaRemaining)))} / ${quotaLimit}`
+      dailyLimit > 0 && dailyRemaining !== Infinity
+        ? `${Math.max(0, Math.min(dailyLimit, Math.ceil(dailyRemaining)))} / ${dailyLimit}`
         : "—";
+    const parseLimit = (val: any, fallback: number) =>
+      typeof val === "number" && Number.isFinite(val) ? val : fallback;
+    const contextLimit = isBasic
+      ? parseLimit(basicContextLimit, parseInt(process.env.NEXT_PUBLIC_BASIC_CONTEXT_MSG_LIMIT || "50", 10) || 50)
+      : isPro
+        ? parseLimit(proContextLimit, parseInt(process.env.NEXT_PUBLIC_PRO_CONTEXT_MSG_LIMIT || "100", 10) || 100)
+        : isEnterprise
+          ? parseLimit(
+              enterpriseContextLimit,
+              parseInt(process.env.NEXT_PUBLIC_ENTERPRISE_CONTEXT_MSG_LIMIT || "200", 10) || 200
+            )
+          : parseLimit(freeContextLimit, parseInt(process.env.NEXT_PUBLIC_FREE_CONTEXT_MSG_LIMIT || "10", 10) || 10);
 
     return (
       <div className="space-y-2 pt-1 border-t border-gray-200 dark:border-gray-700">
@@ -188,7 +266,7 @@ export default function Header({
         <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
           <div
             className="h-full bg-gradient-to-r from-green-400 via-blue-400 to-blue-600 transition-[width] duration-300"
-            style={{ width: `${quotaPercent}%` }}
+            style={{ width: `${dailyPercent}%` }}
           />
         </div>
 
@@ -222,6 +300,12 @@ export default function Header({
           />
         </div>
 
+        {typeof contextLimit === "number" && contextLimit > 0 && (
+          <div className="flex items-center justify-between text-[11px] text-gray-600 dark:text-gray-300">
+            <span>{selectedLanguage === "zh" ? "上下文限制" : "Context limit"}</span>
+            <span>{contextLimit}</span>
+          </div>
+        )}
       </div>
     );
   };
@@ -281,17 +365,25 @@ export default function Header({
                               : "Active subscription"}
                         </div>
                       </div>
-                    ) : isFreeUser || isBasicUser ? (
+                    ) : isFreeUser || isBasicUser || isProUserLimited || isEnterpriseUser ? (
                       <div className="space-y-2 w-56">
                         <div className="flex items-center justify-between">
                           <span className="font-semibold text-gray-900 dark:text-gray-50">
                             {selectedLanguage === "zh"
-                              ? isBasicUser
-                                ? "基础版"
-                                : "Free"
-                              : isBasicUser
-                                ? "Basic Plan"
-                                : "Free"}
+                              ? isEnterpriseUser
+                                ? "企业版"
+                                : isProUserLimited
+                                  ? "专业版"
+                                  : isBasicUser
+                                    ? "基础版"
+                                    : "Free"
+                              : isEnterpriseUser
+                                ? "Enterprise"
+                                : isProUserLimited
+                                  ? "Pro Plan"
+                                  : isBasicUser
+                                    ? "Basic Plan"
+                                    : "Free"}
                           </span>
                           {quotaText && (
                             <span className="text-gray-700 dark:text-gray-200 font-semibold">
@@ -299,8 +391,8 @@ export default function Header({
                             </span>
                           )}
                         </div>
-                        {renderFreeQuotaBars()}
-                        {isBasicUser && (
+                        {renderQuotaBars()}
+                        {(isBasicUser || isProUserLimited || isEnterpriseUser) && (
                           <div className="text-[11px] text-gray-600 dark:text-gray-300 pt-1 border-t border-gray-200 dark:border-gray-700">
                             {planExp
                               ? `${selectedLanguage === "zh" ? "到期" : "Expires"}: ${new Date(

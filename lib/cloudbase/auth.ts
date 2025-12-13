@@ -262,7 +262,6 @@ export class CloudBaseAuthService {
       createdAt: new Date().toISOString(),
       expiresAt,
     });
-    console.log("[cloudbase] session created", { userId, token, expiresAt });
 
       const users = await this.db.collection("users").doc(userId).get();
       const user = users.data[0] as CloudBaseUser;

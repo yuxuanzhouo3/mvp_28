@@ -254,6 +254,7 @@ export default function ModalHub(props: ModalHubProps) {
         billingPeriod={billingPeriod}
         pricingPlans={pricingPlans}
         handlePayment={handlePayment}
+        appUserId={appUser?.id || null}
       />
 
       {/* Logout Confirmation Dialog */}

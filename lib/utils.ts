@@ -98,18 +98,18 @@ export const getSelectedModelDisplay = (
   if (selectedModelType === "general") {
     return "General Model";
   }
+  // 优先按已选模型名称匹配外部/多模态模型
+  if (selectedModel) {
+    const model = externalModels.find(
+      (m) =>
+        m.id.toLowerCase() === selectedModel.toLowerCase() ||
+        m.name.toLowerCase() === selectedModel.toLowerCase()
+    );
+    if (model) return model.name;
+  }
   if (selectedModelType === "morngpt" && selectedCategory) {
     const category = mornGPTCategories.find((c) => c.id === selectedCategory);
     return category?.name || "General Model";
   }
-  if (selectedModelType === "external" && selectedModel) {
-    const model = externalModels.find(
-      (m) => m.id === selectedModel || m.name === selectedModel
-    );
-    if (model) {
-      return model.name;
-    }
-    return selectedModel;
-  }
-  return "General Model";
+  return selectedModel || "General Model";
 };

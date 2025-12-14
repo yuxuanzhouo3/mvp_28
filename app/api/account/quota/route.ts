@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
+import { isAfter } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
-import { CloudBaseConnector } from "@/lib/cloudbase/connector";
 import {
   getFreeDailyLimit,
   getFreeMonthlyPhotoLimit,
@@ -26,6 +26,7 @@ import {
   getModelCategory,
   ModelCategory,
 } from "@/utils/model-limits";
+import { getWalletStats, seedWalletForPlan, checkDailyExternalQuota } from "@/services/wallet";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,13 +37,16 @@ const getPlanInfo = (meta: any) => {
     (meta?.plan as string | undefined) ||
     (meta?.subscriptionTier as string | undefined) ||
     "";
-  const planLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
+  const rawPlanLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
+  const planExp = meta?.plan_exp ? new Date(meta.plan_exp) : null;
+  const planActive = planExp ? isAfter(planExp, new Date()) : true;
+  const planLower = planActive ? rawPlanLower : "free";
   const isBasic = planLower === "basic";
   const isProPlan = planLower === "pro";
   const isEnterprise = planLower === "enterprise";
   const isUnlimitedFlag = !!meta?.pro && !isBasic && !isProPlan && !isEnterprise;
   const isFree = !isEnterprise && !isProPlan && !isBasic && !isUnlimitedFlag;
-  return { planLower, isBasic, isProPlan, isEnterprise, isFree, isUnlimitedFlag };
+  return { planLower, isBasic, isProPlan, isEnterprise, isFree, isUnlimitedFlag, planExp, planActive };
 };
 
 /**
@@ -82,440 +86,156 @@ export async function GET(req: NextRequest) {
     
     const today = getTodayString();
     const currentMonth = getCurrentYearMonth();
-    const dailyLimit = getFreeDailyLimit();
-    const basicDailyLimit = getBasicDailyLimit();
-    const proDailyLimit = getProDailyLimit();
-    const enterpriseDailyLimit = getEnterpriseDailyLimit();
-    const photoLimit = getFreeMonthlyPhotoLimit();
-    const videoAudioLimit = getFreeMonthlyVideoAudioLimit();
-    const contextMsgLimit = getFreeContextMsgLimit();
-    const basicPhotoLimit = getBasicMonthlyPhotoLimit();
-    const basicVideoAudioLimit = getBasicMonthlyVideoAudioLimit();
-    const basicContextMsgLimit = getBasicContextMsgLimit();
-    const proPhotoLimit = getProMonthlyPhotoLimit();
-    const proVideoAudioLimit = getProMonthlyVideoAudioLimit();
-    const proContextMsgLimit = getProContextMsgLimit();
-    const enterprisePhotoLimit = getEnterpriseMonthlyPhotoLimit();
-    const enterpriseVideoAudioLimit = getEnterpriseMonthlyVideoAudioLimit();
-    const enterpriseContextMsgLimit = getEnterpriseContextMsgLimit();
+    const effectivePlanLower = plan.planActive ? plan.planLower : "free";
+
+    const limits = (() => {
+      switch (effectivePlanLower) {
+        case "basic":
+          return {
+            dailyLimit: getBasicDailyLimit(),
+            contextLimit: getBasicContextMsgLimit(),
+            photoLimit: getBasicMonthlyPhotoLimit(),
+            videoLimit: getBasicMonthlyVideoAudioLimit(),
+            label: "basic",
+          };
+        case "pro":
+          return {
+            dailyLimit: getProDailyLimit(),
+            contextLimit: getProContextMsgLimit(),
+            photoLimit: getProMonthlyPhotoLimit(),
+            videoLimit: getProMonthlyVideoAudioLimit(),
+            label: "pro",
+          };
+        case "enterprise":
+          return {
+            dailyLimit: getEnterpriseDailyLimit(),
+            contextLimit: getEnterpriseContextMsgLimit(),
+            photoLimit: getEnterpriseMonthlyPhotoLimit(),
+            videoLimit: getEnterpriseMonthlyVideoAudioLimit(),
+            label: "enterprise",
+          };
+        default:
+          return {
+            dailyLimit: getFreeDailyLimit(),
+            contextLimit: getFreeContextMsgLimit(),
+            photoLimit: getFreeMonthlyPhotoLimit(),
+            videoLimit: getFreeMonthlyVideoAudioLimit(),
+            label: "free",
+          };
+      }
+    })();
+
+    // 同步 wallet，确保基础额度写入
+    const walletSeed = await seedWalletForPlan(user.id, effectivePlanLower);
+    const walletStats =
+      (await getWalletStats(user.id)) || {
+        monthly: {
+          image: walletSeed.monthly_image_balance,
+          video: walletSeed.monthly_video_balance,
+          resetAt: walletSeed.monthly_reset_at,
+        },
+        addon: {
+          image: walletSeed.addon_image_balance,
+          video: walletSeed.addon_video_balance,
+        },
+        total: {
+          image: walletSeed.monthly_image_balance + walletSeed.addon_image_balance,
+          video: walletSeed.monthly_video_balance + walletSeed.addon_video_balance,
+        },
+      };
+
+    const monthlyImageRemaining =
+      (walletStats.monthly?.image ?? limits.photoLimit) + (walletStats.addon?.image ?? 0);
+    const monthlyVideoRemaining =
+      (walletStats.monthly?.video ?? limits.videoLimit) + (walletStats.addon?.video ?? 0);
+
+    const dailyQuota = await checkDailyExternalQuota(user.id, effectivePlanLower, 0);
+    const dailyLimit = dailyQuota?.limit ?? limits.dailyLimit;
+    const dailyUsed = dailyQuota ? Math.max(0, dailyLimit - dailyQuota.remaining) : 0;
+
+    const monthlyMedia = {
+      period: currentMonth,
+      photoUsed: Math.max(0, limits.photoLimit - (walletStats.monthly?.image ?? limits.photoLimit)),
+      photoLimit: limits.photoLimit + (walletStats.addon?.image ?? 0),
+      photoRemaining: monthlyImageRemaining,
+      videoAudioUsed: Math.max(0, limits.videoLimit - (walletStats.monthly?.video ?? limits.videoLimit)),
+      videoAudioLimit: limits.videoLimit + (walletStats.addon?.video ?? 0),
+      videoAudioRemaining: monthlyVideoRemaining,
+    };
+
+    const daily = {
+      period: today,
+      used: dailyUsed,
+      limit: dailyLimit,
+      remaining: Math.max(0, dailyLimit - dailyUsed),
+    };
 
     // 特殊无限制标记
     if (plan.isUnlimitedFlag) {
       return Response.json({
-        plan: plan.planLower || "enterprise",
+        plan: limits.label,
         period: null,
         used: 0,
         limit: null,
         remaining: null,
-        // 新版配额信息
         quotaType: "unlimited",
         modelCategory: modelCategory || "all",
-        contextMsgLimit: null, // 无限标记不做限制
+        contextMsgLimit: null,
       });
     }
 
-    const connector = new CloudBaseConnector();
-    await connector.initialize();
-    const db = connector.getClient();
-
-    // Basic 用户：每日文本 + 月度媒体
-    if (plan.isBasic) {
-      // 每日文本配额
-      const dailyRes = await db
-        .collection("basic_quotas")
-        .where({ userId: user.id, day: today })
-        .limit(1)
-        .get();
-      const dailyRow = dailyRes?.data?.[0] || null;
-      const dailyUsed = dailyRow?.daily_count ?? dailyRow?.used ?? 0;
-
-      // 月度媒体配额
-      const monthlyMediaRes = await db
-        .collection("basic_quotas")
-        .where({ userId: user.id, month: currentMonth })
-        .limit(1)
-        .get();
-      const monthlyMediaRow = monthlyMediaRes?.data?.[0] || null;
-      const monthUsedPhoto = monthlyMediaRow?.month_used_photo ?? 0;
-      const monthUsedVideoAudio = monthlyMediaRow?.month_used_video_audio ?? 0;
-
-      if (modelCategory === "general") {
-        return Response.json({
-          plan: "basic",
-          quotaType: "unlimited",
-          modelCategory: "general",
-          contextMsgLimit: basicContextMsgLimit,
-        });
-      }
-
-      if (modelCategory === "external") {
-        return Response.json({
-          plan: "basic",
-          period: today,
-          used: dailyUsed,
-          limit: basicDailyLimit,
-          remaining: Math.max(0, basicDailyLimit - dailyUsed),
-          quotaType: "daily",
-          modelCategory: "external",
-          contextMsgLimit: basicContextMsgLimit,
-        });
-      }
-
-      if (modelCategory === "advanced_multimodal") {
-        return Response.json({
-          plan: "basic",
-          period: currentMonth,
-          quotaType: "monthly_media",
-          modelCategory: "advanced_multimodal",
-          contextMsgLimit: basicContextMsgLimit,
-          daily: {
-            period: today,
-            used: dailyUsed,
-            limit: basicDailyLimit,
-            remaining: Math.max(0, basicDailyLimit - dailyUsed),
-          },
-          textConsumesDaily: true,
-          // 图片配额
-          photoUsed: monthUsedPhoto,
-          photoLimit: basicPhotoLimit,
-          photoRemaining: Math.max(0, basicPhotoLimit - monthUsedPhoto),
-          // 视频/音频配额
-          videoAudioUsed: monthUsedVideoAudio,
-          videoAudioLimit: basicVideoAudioLimit,
-          videoAudioRemaining: Math.max(0, basicVideoAudioLimit - monthUsedVideoAudio),
-          monthlyMedia: {
-            period: currentMonth,
-            photoUsed: monthUsedPhoto,
-            photoLimit: basicPhotoLimit,
-            photoRemaining: Math.max(0, basicPhotoLimit - monthUsedPhoto),
-            videoAudioUsed: monthUsedVideoAudio,
-            videoAudioLimit: basicVideoAudioLimit,
-            videoAudioRemaining: Math.max(0, basicVideoAudioLimit - monthUsedVideoAudio),
-          },
-        });
-      }
-
-      // 默认：返回全部配额
-      return Response.json({
-        plan: "basic",
-        modelCategory: modelCategory || null,
-        daily: {
-          period: today,
-          used: dailyUsed,
-          limit: basicDailyLimit,
-          remaining: Math.max(0, basicDailyLimit - dailyUsed),
-        },
-        monthlyMedia: {
-          period: currentMonth,
-          photoUsed: monthUsedPhoto,
-          photoLimit: basicPhotoLimit,
-          photoRemaining: Math.max(0, basicPhotoLimit - monthUsedPhoto),
-          videoAudioUsed: monthUsedVideoAudio,
-          videoAudioLimit: basicVideoAudioLimit,
-          videoAudioRemaining: Math.max(0, basicVideoAudioLimit - monthUsedVideoAudio),
-        },
-        contextMsgLimit: basicContextMsgLimit,
-      });
-    }
-
-    // Pro 用户：每日文本 + 月度媒体（pro_quotas）
-    if (plan.isProPlan) {
-      const dailyRes = await db
-        .collection("pro_quotas")
-        .where({ userId: user.id, day: today })
-        .limit(1)
-        .get();
-      const dailyRow = dailyRes?.data?.[0] || null;
-      const dailyUsed = dailyRow?.daily_count ?? dailyRow?.used ?? 0;
-
-      const monthlyMediaRes = await db
-        .collection("pro_quotas")
-        .where({ userId: user.id, month: currentMonth })
-        .limit(1)
-        .get();
-      const monthlyMediaRow = monthlyMediaRes?.data?.[0] || null;
-      const monthUsedPhoto = monthlyMediaRow?.month_used_photo ?? 0;
-      const monthUsedVideoAudio = monthlyMediaRow?.month_used_video_audio ?? 0;
-
-      if (modelCategory === "general") {
-        return Response.json({
-          plan: "pro",
-          quotaType: "unlimited",
-          modelCategory: "general",
-          contextMsgLimit: proContextMsgLimit,
-        });
-      }
-
-      if (modelCategory === "external") {
-        return Response.json({
-          plan: "pro",
-          period: today,
-          used: dailyUsed,
-          limit: proDailyLimit,
-          remaining: Math.max(0, proDailyLimit - dailyUsed),
-          quotaType: "daily",
-          modelCategory: "external",
-          contextMsgLimit: proContextMsgLimit,
-        });
-      }
-
-      if (modelCategory === "advanced_multimodal") {
-        return Response.json({
-          plan: "pro",
-          period: currentMonth,
-          quotaType: "monthly_media",
-          modelCategory: "advanced_multimodal",
-          contextMsgLimit: proContextMsgLimit,
-          daily: {
-            period: today,
-            used: dailyUsed,
-            limit: proDailyLimit,
-            remaining: Math.max(0, proDailyLimit - dailyUsed),
-          },
-          textConsumesDaily: true,
-          photoUsed: monthUsedPhoto,
-          photoLimit: proPhotoLimit,
-          photoRemaining: Math.max(0, proPhotoLimit - monthUsedPhoto),
-          videoAudioUsed: monthUsedVideoAudio,
-          videoAudioLimit: proVideoAudioLimit,
-          videoAudioRemaining: Math.max(0, proVideoAudioLimit - monthUsedVideoAudio),
-          monthlyMedia: {
-            period: currentMonth,
-            photoUsed: monthUsedPhoto,
-            photoLimit: proPhotoLimit,
-            photoRemaining: Math.max(0, proPhotoLimit - monthUsedPhoto),
-            videoAudioUsed: monthUsedVideoAudio,
-            videoAudioLimit: proVideoAudioLimit,
-            videoAudioRemaining: Math.max(0, proVideoAudioLimit - monthUsedVideoAudio),
-          },
-        });
-      }
-
-      return Response.json({
-        plan: "pro",
-        modelCategory: modelCategory || null,
-        daily: {
-          period: today,
-          used: dailyUsed,
-          limit: proDailyLimit,
-          remaining: Math.max(0, proDailyLimit - dailyUsed),
-        },
-        monthlyMedia: {
-          period: currentMonth,
-          photoUsed: monthUsedPhoto,
-          photoLimit: proPhotoLimit,
-          photoRemaining: Math.max(0, proPhotoLimit - monthUsedPhoto),
-          videoAudioUsed: monthUsedVideoAudio,
-          videoAudioLimit: proVideoAudioLimit,
-          videoAudioRemaining: Math.max(0, proVideoAudioLimit - monthUsedVideoAudio),
-        },
-        contextMsgLimit: proContextMsgLimit,
-      });
-    }
-
-    // Enterprise 用户：每日文本 + 月度媒体（enterprise_quotas）
-    if (plan.isEnterprise) {
-      const dailyRes = await db
-        .collection("enterprise_quotas")
-        .where({ userId: user.id, day: today })
-        .limit(1)
-        .get();
-      const dailyRow = dailyRes?.data?.[0] || null;
-      const dailyUsed = dailyRow?.daily_count ?? dailyRow?.used ?? 0;
-
-      const monthlyMediaRes = await db
-        .collection("enterprise_quotas")
-        .where({ userId: user.id, month: currentMonth })
-        .limit(1)
-        .get();
-      const monthlyMediaRow = monthlyMediaRes?.data?.[0] || null;
-      const monthUsedPhoto = monthlyMediaRow?.month_used_photo ?? 0;
-      const monthUsedVideoAudio = monthlyMediaRow?.month_used_video_audio ?? 0;
-
-      if (modelCategory === "general") {
-        return Response.json({
-          plan: "enterprise",
-          quotaType: "unlimited",
-          modelCategory: "general",
-          contextMsgLimit: enterpriseContextMsgLimit,
-        });
-      }
-
-      if (modelCategory === "external") {
-        return Response.json({
-          plan: "enterprise",
-          period: today,
-          used: dailyUsed,
-          limit: enterpriseDailyLimit,
-          remaining: Math.max(0, enterpriseDailyLimit - dailyUsed),
-          quotaType: "daily",
-          modelCategory: "external",
-          contextMsgLimit: enterpriseContextMsgLimit,
-        });
-      }
-
-      if (modelCategory === "advanced_multimodal") {
-        return Response.json({
-          plan: "enterprise",
-          period: currentMonth,
-          quotaType: "monthly_media",
-          modelCategory: "advanced_multimodal",
-          contextMsgLimit: enterpriseContextMsgLimit,
-          daily: {
-            period: today,
-            used: dailyUsed,
-            limit: enterpriseDailyLimit,
-            remaining: Math.max(0, enterpriseDailyLimit - dailyUsed),
-          },
-          textConsumesDaily: true,
-          photoUsed: monthUsedPhoto,
-          photoLimit: enterprisePhotoLimit,
-          photoRemaining: Math.max(0, enterprisePhotoLimit - monthUsedPhoto),
-          videoAudioUsed: monthUsedVideoAudio,
-          videoAudioLimit: enterpriseVideoAudioLimit,
-          videoAudioRemaining: Math.max(0, enterpriseVideoAudioLimit - monthUsedVideoAudio),
-          monthlyMedia: {
-            period: currentMonth,
-            photoUsed: monthUsedPhoto,
-            photoLimit: enterprisePhotoLimit,
-            photoRemaining: Math.max(0, enterprisePhotoLimit - monthUsedPhoto),
-            videoAudioUsed: monthUsedVideoAudio,
-            videoAudioLimit: enterpriseVideoAudioLimit,
-            videoAudioRemaining: Math.max(0, enterpriseVideoAudioLimit - monthUsedVideoAudio),
-          },
-        });
-      }
-
-      return Response.json({
-        plan: "enterprise",
-        modelCategory: modelCategory || null,
-        daily: {
-          period: today,
-          used: dailyUsed,
-          limit: enterpriseDailyLimit,
-          remaining: Math.max(0, enterpriseDailyLimit - dailyUsed),
-        },
-        monthlyMedia: {
-          period: currentMonth,
-          photoUsed: monthUsedPhoto,
-          photoLimit: enterprisePhotoLimit,
-          photoRemaining: Math.max(0, enterprisePhotoLimit - monthUsedPhoto),
-          videoAudioUsed: monthUsedVideoAudio,
-          videoAudioLimit: enterpriseVideoAudioLimit,
-          videoAudioRemaining: Math.max(0, enterpriseVideoAudioLimit - monthUsedVideoAudio),
-        },
-        contextMsgLimit: enterpriseContextMsgLimit,
-      });
-    }
-
-    // Free 用户：分级配额系统
-    // 获取每日外部模型配额
-    const dailyRes = await db
-      .collection("free_quotas")
-      .where({ userId: user.id, day: today })
-      .limit(1)
-      .get();
-    const dailyRow = dailyRes?.data?.[0] || null;
-    const dailyUsed = dailyRow?.daily_count ?? dailyRow?.used ?? 0;
-
-    // 获取月度媒体配额
-    const monthlyMediaRes = await db
-      .collection("free_quotas")
-      .where({ userId: user.id, month: currentMonth })
-      .limit(1)
-      .get();
-    const monthlyMediaRow = monthlyMediaRes?.data?.[0] || null;
-    const monthUsedPhoto = monthlyMediaRow?.month_used_photo ?? 0;
-    const monthUsedVideoAudio = monthlyMediaRow?.month_used_video_audio ?? 0;
-
-    // 根据模型类型返回对应配额
     if (modelCategory === "general") {
-      // 通用模型：无限制
       return Response.json({
-        plan: "free",
-        period: null,
-        used: 0,
-        limit: null,
-        remaining: null,
+        plan: limits.label,
         quotaType: "unlimited",
         modelCategory: "general",
-        contextMsgLimit,
-        displayText: "无限畅聊",
+        contextMsgLimit: limits.contextLimit,
+        wallet: walletStats,
       });
     }
 
     if (modelCategory === "external") {
-      // 外部模型：每日配额
       return Response.json({
-        plan: "free",
+        plan: limits.label,
         period: today,
-        used: dailyUsed,
-        limit: dailyLimit,
-        remaining: Math.max(0, dailyLimit - dailyUsed),
+        used: daily.used,
+        limit: daily.limit,
+        remaining: daily.remaining,
         quotaType: "daily",
         modelCategory: "external",
-        contextMsgLimit,
+        contextMsgLimit: limits.contextLimit,
+        wallet: walletStats,
       });
     }
 
     if (modelCategory === "advanced_multimodal") {
-      // 高级多模态模型：月度媒体配额
       return Response.json({
-        plan: "free",
+        plan: limits.label,
         period: currentMonth,
         quotaType: "monthly_media",
         modelCategory: "advanced_multimodal",
-        contextMsgLimit,
-        daily: {
-          period: today,
-          used: dailyUsed,
-          limit: dailyLimit,
-          remaining: Math.max(0, dailyLimit - dailyUsed),
-        },
+        contextMsgLimit: limits.contextLimit,
+        daily,
         textConsumesDaily: true,
-        // 图片配额
-        photoUsed: monthUsedPhoto,
-        photoLimit: photoLimit,
-        photoRemaining: Math.max(0, photoLimit - monthUsedPhoto),
-        // 视频/音频配额
-        videoAudioUsed: monthUsedVideoAudio,
-        videoAudioLimit: videoAudioLimit,
-        videoAudioRemaining: Math.max(0, videoAudioLimit - monthUsedVideoAudio),
-        textConsumesDaily: true,
-        monthlyMedia: {
-          period: currentMonth,
-          photoUsed: monthUsedPhoto,
-          photoLimit: photoLimit,
-          photoRemaining: Math.max(0, photoLimit - monthUsedPhoto),
-          videoAudioUsed: monthUsedVideoAudio,
-          videoAudioLimit: videoAudioLimit,
-          videoAudioRemaining: Math.max(0, videoAudioLimit - monthUsedVideoAudio),
-        },
+        photoUsed: monthlyMedia.photoUsed,
+        photoLimit: monthlyMedia.photoLimit,
+        photoRemaining: monthlyMedia.photoRemaining,
+        videoAudioUsed: monthlyMedia.videoAudioUsed,
+        videoAudioLimit: monthlyMedia.videoAudioLimit,
+        videoAudioRemaining: monthlyMedia.videoAudioRemaining,
+        monthlyMedia,
+        wallet: walletStats,
       });
     }
 
     // 默认返回全部配额信息（无特定模型）
     return Response.json({
-      plan: "free",
-      // 每日外部模型配额
-      daily: {
-        period: today,
-        used: dailyUsed,
-        limit: dailyLimit,
-        remaining: Math.max(0, dailyLimit - dailyUsed),
-      },
-      // 月度媒体配额
-      monthlyMedia: {
-        period: currentMonth,
-        photoUsed: monthUsedPhoto,
-        photoLimit: photoLimit,
-        photoRemaining: Math.max(0, photoLimit - monthUsedPhoto),
-        videoAudioUsed: monthUsedVideoAudio,
-        videoAudioLimit: videoAudioLimit,
-        videoAudioRemaining: Math.max(0, videoAudioLimit - monthUsedVideoAudio),
-      },
-      contextMsgLimit,
-      modelCategory: null,
+      plan: limits.label,
+      daily,
+      monthlyMedia,
+      contextMsgLimit: limits.contextLimit,
+      modelCategory: modelCategory || null,
+      wallet: walletStats,
     });
   }
 

@@ -39,6 +39,7 @@ import { GENERAL_MODEL_ID } from "@/utils/model-limits";
 import { useLanguage } from "@/context/LanguageContext";
 import { createLocalizedTextGetter } from "@/lib/localization";
 import { IS_DOMESTIC_VERSION } from "@/config";
+import { fetchQuotaShared } from "@/utils/quota-fetcher";
 
 const FREE_DAILY_LIMIT = (() => {
   const raw = process.env.NEXT_PUBLIC_FREE_DAILY_LIMIT || "10";
@@ -1416,12 +1417,7 @@ const loadMessagesForConversation = useCallback(
       }
 
       try {
-        const res = await fetch("/api/account/quota", {
-          credentials: "include",
-          cache: "no-store",
-        });
-        if (!res.ok) throw new Error(`quota ${res.status}`);
-        const data = await res.json();
+        const data = await fetchQuotaShared("/api/account/quota");
         if(false) console.log("/*quota*/ refreshQuota response", data);
         if (data?.plan === "basic" || data?.plan === "pro" || data?.plan === "enterprise") {
           const dailyLimit =
@@ -1620,6 +1616,11 @@ const loadMessagesForConversation = useCallback(
             period: data.period,
           });
         }
+
+        // 通知需要实时刷新的前端组件（悬浮层/额度弹层/铭牌）
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("quota:refresh"));
+        }
       } catch (err) {
         // 失败时保持当前显示，避免误将额度重置为 0 导致进度条回弹
         if(false) console.warn("/*quota*/ refresh failed", err);
@@ -1631,7 +1632,8 @@ const loadMessagesForConversation = useCallback(
 
   useEffect(() => {
     void refreshQuota(appUserRef.current);
-  }, [refreshQuota, currentPlan, appUser?.id]);
+    // 仅在用户或当前计划变化时主动刷新，避免重复请求
+  }, [currentPlan, appUser?.id]);
 
   const requireLogin = useCallback(() => {
     setAuthMode("login");
@@ -2644,9 +2646,10 @@ const loadMessagesForConversation = useCallback(
   };
 
   const handleUpgradeClick = (plan: (typeof pricingPlans)[0]) => {
+    // 旧逻辑：打开二次支付弹窗。现改为在套餐弹窗内直接支付，仅记录选中套餐。
     setSelectedPlan(plan);
-    setShowUpgradeDialog(false);
-    setShowPaymentDialog(true);
+    setSelectedPlanInDialog(plan);
+    setShowUpgradeDialog(true);
   };
 
   const handlePaymentModalUpgrade = () => {

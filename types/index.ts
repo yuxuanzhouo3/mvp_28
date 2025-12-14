@@ -96,6 +96,20 @@ export interface ChatSession {
   isModelLocked: boolean;
 }
 
+// 钱包结构（国内版配额统一入口）
+export interface UserWallet {
+  // 月度配额（随订阅或免费额度重置）
+  monthly_image_balance: number;
+  monthly_video_balance: number;
+  monthly_reset_at?: string;
+  // 加油包配额（永久有效）
+  addon_image_balance: number;
+  addon_video_balance: number;
+  // 外部模型每日用量（按天重置）
+  daily_external_used?: number;
+  daily_external_day?: string;
+}
+
 export interface AppUser {
   id: string;
   email: string;
@@ -103,9 +117,14 @@ export interface AppUser {
   bio?: string;
   isPro: boolean;
   isPaid: boolean;
-   plan?: "Basic" | "Pro" | "Enterprise";
-   planExp?: string;
+  plan?: "Basic" | "Pro" | "Enterprise";
+  planExp?: string;
   avatar?: string;
+  wallet?: UserWallet;
+  pendingDowngrade?: {
+    targetPlan: "Basic" | "Pro" | "Enterprise";
+    effectiveAt?: string;
+  } | null;
   settings?: {
     theme: "light" | "dark" | "auto";
     language: string;

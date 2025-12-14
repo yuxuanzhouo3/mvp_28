@@ -7,7 +7,6 @@ import {
   SettingsDialog,
   ShareDialog,
   UpgradeDialog,
-  PaymentDialog,
   PrivacyDialog,
   BillingDialog,
   FontDialog,
@@ -67,20 +66,12 @@ export default function ModalHub(props: ModalHubProps) {
     pricingPlans,
     selectedPlanInDialog,
     setSelectedPlanInDialog,
-    handleUpgradeClick,
     showProUpgradeDialog,
     setShowProUpgradeDialog,
     proChatType,
     setProChatType,
     proChatTrialCount,
     MAX_TRIAL_ATTEMPTS,
-    showPaymentDialog,
-    setShowPaymentDialog,
-    selectedPlan,
-    setSelectedPlan,
-    selectedPaymentMethod,
-    setSelectedPaymentMethod,
-    handlePayment,
     showLogoutConfirmDialog,
     setShowLogoutConfirmDialog,
     handleLogout,
@@ -220,7 +211,7 @@ export default function ModalHub(props: ModalHubProps) {
         pricingPlans={pricingPlans}
         selectedPlanInDialog={selectedPlanInDialog}
         setSelectedPlanInDialog={setSelectedPlanInDialog}
-        handleUpgradeClick={handleUpgradeClick}
+        appUserId={appUser?.id || null}
       />
 
       {/* Pro Upgrade Dialog */}
@@ -240,21 +231,6 @@ export default function ModalHub(props: ModalHubProps) {
           setShowProUpgradeDialog(false);
           setShowUpgradeDialog(true);
         }}
-      />
-
-      {/* Payment Dialog */}
-      <PaymentDialog
-        open={showPaymentDialog}
-        onOpenChange={setShowPaymentDialog}
-        selectedPaidModel={selectedPaidModel}
-        selectedPlan={selectedPlan}
-        setSelectedPlan={setSelectedPlan}
-        selectedPaymentMethod={selectedPaymentMethod}
-        setSelectedPaymentMethod={setSelectedPaymentMethod}
-        billingPeriod={billingPeriod}
-        pricingPlans={pricingPlans}
-        handlePayment={handlePayment}
-        appUserId={appUser?.id || null}
       />
 
       {/* Logout Confirmation Dialog */}

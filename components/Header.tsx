@@ -30,6 +30,8 @@ import {
   ChevronDown,
   User,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { fetchQuotaShared } from "@/utils/quota-fetcher";
 
 interface HeaderProps {
   currentChat: any;
@@ -179,9 +181,58 @@ export default function Header({
     (planLower === "" || planLower === "free");
 
   const quotaText = isUnlimited ? "∞/∞" : null;
+  // 实时钱包（用于显示加油包最新额度）
+  const [liveWallet, setLiveWallet] = useState<{ addon_image_balance: number; addon_video_balance: number } | null>(
+    appUser?.wallet
+      ? {
+          addon_image_balance: appUser.wallet.addon_image_balance ?? 0,
+          addon_video_balance: appUser.wallet.addon_video_balance ?? 0,
+        }
+      : null
+  );
+
+  // 定时轮询 + 聚焦刷新，加油包额度实时更新
+  useEffect(() => {
+    if (!appUser?.id) return;
+    let cancelled = false;
+    const fetchWallet = async () => {
+      try {
+        const data = await fetchQuotaShared("/api/account/quota");
+        if (cancelled) return;
+        if (data?.wallet) {
+          setLiveWallet({
+            addon_image_balance: data.wallet.addon?.image ?? 0,
+            addon_video_balance: data.wallet.addon?.video ?? 0,
+          });
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    fetchWallet();
+    const onFocus = () => fetchWallet();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchWallet();
+      }
+    };
+    const onQuotaRefresh = () => fetchWallet();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("quota:refresh", onQuotaRefresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("quota:refresh", onQuotaRefresh);
+    };
+  }, [appUser?.id]);
 
   const renderQuotaBars = () => {
     if (!isFreeUser && !isBasicUser && !isProUserLimited && !isEnterpriseUser) return null;
+    const addonImage = liveWallet?.addon_image_balance ?? 0;
+    const addonVideo = liveWallet?.addon_video_balance ?? 0;
     const isBasic = isBasicUser;
     const isPro = isProUserLimited;
     const isEnterprise = isEnterpriseUser;
@@ -298,6 +349,23 @@ export default function Header({
             className="h-full bg-gradient-to-r from-orange-300 via-orange-400 to-red-500 transition-[width] duration-300"
             style={{ width: `${videoPercent}%` }}
           />
+        </div>
+
+        {/* 加油包永久额度展示 */}
+        <div className="flex items-center justify-between text-[11px] text-amber-700 dark:text-amber-300 pt-1 border-t border-gray-200 dark:border-gray-700">
+          <span className="font-medium">
+            {selectedLanguage === "zh" ? "加油包（永久）" : "Add-on credits"}
+          </span>
+          <span className="flex items-center space-x-2">
+            <span className="flex items-center space-x-1">
+              <span>📷</span>
+              <span>{addonImage}</span>
+            </span>
+            <span className="flex items-center space-x-1">
+              <span>🎬</span>
+              <span>{addonVideo}</span>
+            </span>
+          </span>
         </div>
 
         {typeof contextLimit === "number" && contextLimit > 0 && (

@@ -21,6 +21,7 @@ import {
   EXTERNAL_MODELS,
   GENERAL_MODELS,
 } from "@/utils/model-limits";
+import { fetchQuotaShared } from "@/utils/quota-fetcher";
 
 // =============================================================================
 // 类型定义
@@ -59,6 +60,22 @@ interface QuotaData {
     videoAudioUsed: number;
     videoAudioLimit: number;
     videoAudioRemaining: number;
+  };
+  // 新增：钱包配额信息 (月度 + 加油包分离)
+  wallet?: {
+    monthly: {
+      image: number;
+      video: number;
+      resetAt?: string;
+    };
+    addon: {
+      image: number;
+      video: number;
+    };
+    total: {
+      image: number;
+      video: number;
+    };
   };
 }
 
@@ -114,16 +131,7 @@ export function QuotaDisplay({
       const url = selectedModel
         ? `/api/account/quota?modelId=${encodeURIComponent(selectedModel)}`
         : "/api/account/quota";
-      
-      const res = await fetch(url, {
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        throw new Error(`Failed to fetch quota: ${res.status}`);
-      }
-
-      const data = await res.json();
+      const data = await fetchQuotaShared(url);
       setQuotaData(data);
 
       // 检查配额是否超限
@@ -152,6 +160,33 @@ export function QuotaDisplay({
 
   useEffect(() => {
     fetchQuota();
+    // 仅在用户/模型/语言变化时重新获取，避免无意义重复请求
+  }, [appUser?.id, selectedModel, isZh]);
+
+  // 聚焦/可见性变化时刷新，避免高频轮询
+  useEffect(() => {
+    if (!appUser) return;
+
+    const onFocus = () => fetchQuota();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchQuota();
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [appUser, fetchQuota]);
+
+  // 监听全局配额刷新事件，流式结束/购买后立即同步
+  useEffect(() => {
+    const handler = () => fetchQuota();
+    window.addEventListener("quota:refresh", handler);
+    return () => window.removeEventListener("quota:refresh", handler);
   }, [fetchQuota]);
 
   // 刷新配额的公开方法
@@ -175,43 +210,66 @@ export function QuotaDisplay({
   if ((isFree || isBasic || isProLimited) && quotaData) {
     const modelCategory = getModelCategory(selectedModel);
 
-    // 通用模型：无限畅聊
+    // 通用模型：无限畅聊 + 加油包展示
     if (modelCategory === "general") {
+      const addonImage = quotaData.wallet?.addon?.image ?? 0;
+      const addonVideo = quotaData.wallet?.addon?.video ?? 0;
       return (
-        <TooltipProvider delayDuration={150}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Badge
-                variant="outline"
-                className={`text-xs px-2 py-0.5 border-0 bg-gradient-to-r from-green-400 to-emerald-500 text-white cursor-pointer ${className}`}
-              >
-                <Zap className="w-3 h-3 mr-1" />
-                {isZh ? "无限畅聊" : "Unlimited"}
-              </Badge>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs max-w-xs">
-              <div className="space-y-2">
-                <div className="font-semibold flex items-center">
-                  <Zap className="w-4 h-4 mr-1 text-green-500" />
-                  {isZh ? "通用模型 - 无限制" : "General Model - Unlimited"}
-                </div>
-                <div className="text-gray-600 dark:text-gray-300">
-                  {isZh
-                    ? "该模型属于通用模型，Free 用户可无限使用。"
-                    : "This model is a general model with unlimited usage for Free users."}
-                </div>
-                {quotaData.contextMsgLimit && (
-                  <div className="text-amber-600 dark:text-amber-400 text-[11px]">
-                    <AlertCircle className="w-3 h-3 inline mr-1" />
-                    {isZh
-                      ? `上下文限制: 最近 ${quotaData.contextMsgLimit} 条消息`
-                      : `Context limit: Last ${quotaData.contextMsgLimit} messages`}
-                  </div>
-                )}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Badge
+              variant="outline"
+              className={`text-xs px-2 py-0.5 border-0 bg-gradient-to-r from-green-400 to-emerald-500 text-white cursor-pointer ${className}`}
+            >
+              <Zap className="w-3 h-3 mr-1" />
+              {isZh ? "无限畅聊" : "Unlimited"}
+            </Badge>
+          </PopoverTrigger>
+          <PopoverContent side="bottom" className="w-72 p-3 text-xs">
+            <div className="space-y-2">
+              <div className="font-semibold flex items-center text-green-600 dark:text-green-400">
+                <Zap className="w-4 h-4 mr-1" />
+                {isZh ? "通用模型 - 无限制" : "General model - unlimited"}
               </div>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+              <div className="text-gray-600 dark:text-gray-300">
+                {isZh
+                  ? "该模型属于通用模型，Free 用户可无限使用。"
+                  : "This is a general model with unlimited usage for Free users."}
+              </div>
+              {quotaData.contextMsgLimit && (
+                <div className="text-amber-600 dark:text-amber-400 text-[11px]">
+                  <AlertCircle className="w-3 h-3 inline mr-1" />
+                  {isZh
+                    ? `上下文限制: 最近 ${quotaData.contextMsgLimit} 条消息`
+                    : `Context limit: Last ${quotaData.contextMsgLimit} messages`}
+                </div>
+              )}
+
+              {quotaData.wallet && (
+                <div className="border-t pt-2 mt-2 space-y-1">
+                  <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                    {isZh ? "加油包（永久）" : "Add-on credits"}
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-amber-700 dark:text-amber-300">
+                    <span className="flex items-center space-x-1">
+                      <Image className="w-3 h-3" />
+                      <span>{addonImage}</span>
+                    </span>
+                    <span className="flex items-center space-x-1">
+                      <Video className="w-3 h-3" />
+                      <span>{addonVideo}</span>
+                    </span>
+                  </div>
+                  {(addonImage === 0 && addonVideo === 0) && (
+                    <div className="text-[10px] text-amber-500">
+                      {isZh ? "暂无加油包额度" : "No add-on credits yet"}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
       );
     }
 
@@ -220,6 +278,8 @@ export function QuotaDisplay({
       const { used, limit, remaining } = quotaData.daily;
       const percent = limit > 0 ? Math.min(100, (remaining / limit) * 100) : 0;
       const isLow = remaining <= 2;
+      const addonImage = quotaData.wallet?.addon?.image ?? 0;
+      const addonVideo = quotaData.wallet?.addon?.video ?? 0;
 
       return (
         <Popover>
@@ -252,17 +312,35 @@ export function QuotaDisplay({
                   ? `今日剩余 ${remaining} 次，每日 0 点重置`
                   : `${remaining} remaining today, resets at midnight`}
               </div>
-              {quotaData.contextMsgLimit && (
-                <div className="text-amber-600 dark:text-amber-400 text-[11px] border-t pt-2">
-                  <AlertCircle className="w-3 h-3 inline mr-1" />
-                  {isZh
-                    ? `上下文限制: 最近 ${quotaData.contextMsgLimit} 条消息`
-                    : `Context limit: Last ${quotaData.contextMsgLimit} messages`}
-                </div>
-              )}
-            </div>
-          </PopoverContent>
-        </Popover>
+                {quotaData.contextMsgLimit && (
+                  <div className="text-amber-600 dark:text-amber-400 text-[11px] border-t pt-2">
+                    <AlertCircle className="w-3 h-3 inline mr-1" />
+                    {isZh
+                      ? `上下文限制: 最近 ${quotaData.contextMsgLimit} 条消息`
+                      : `Context limit: Last ${quotaData.contextMsgLimit} messages`}
+                  </div>
+                )}
+
+                {quotaData.wallet && (
+                  <div className="border-t pt-2 mt-2 text-xs space-y-1">
+                    <div className="font-medium text-amber-700 dark:text-amber-300">
+                      {isZh ? "加油包永久额度" : "Add-on credits"}
+                    </div>
+                    <div className="flex items-center justify-between text-amber-700 dark:text-amber-300">
+                      <span className="flex items-center space-x-1">
+                        <Image className="w-3 h-3" />
+                        <span>{addonImage}</span>
+                      </span>
+                      <span className="flex items-center space-x-1">
+                        <Video className="w-3 h-3" />
+                        <span>{addonVideo}</span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
       );
     }
 
@@ -279,6 +357,14 @@ export function QuotaDisplay({
       const videoPercent = videoAudioLimit > 0 ? Math.min(100, (videoAudioRemaining / videoAudioLimit) * 100) : 0;
       const isPhotoLow = photoRemaining <= 5;
       const isVideoLow = videoAudioRemaining <= 1;
+      const addonImage = quotaData.wallet?.addon?.image ?? 0;
+      const addonVideo = quotaData.wallet?.addon?.video ?? 0;
+      const addonTotalImage = addonImage + photoRemaining;
+      const addonTotalVideo = addonVideo + videoAudioRemaining;
+      const addonImagePercent =
+        addonTotalImage > 0 ? Math.min(100, (addonImage / addonTotalImage) * 100) : 0;
+      const addonVideoPercent =
+        addonTotalVideo > 0 ? Math.min(100, (addonVideo / addonTotalVideo) * 100) : 0;
 
       return (
         <Popover>
@@ -343,10 +429,61 @@ export function QuotaDisplay({
                 <Progress value={videoPercent} className="h-1.5" />
               </div>
 
+              {/* 新增：如果有 wallet 数据，显示月度和加油包的分离统计 */}
+              {quotaData.wallet && (
+                <div className="space-y-2 border-t pt-2">
+                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {isZh ? "配额明细" : "Quota Breakdown"}
+                  </div>
+                  
+                  {/* 月度配额 */}
+                  <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded">
+                    <div className="text-[11px] font-medium text-blue-700 dark:text-blue-300 mb-1">
+                      {isZh ? "本月配额" : "Monthly Quota"}
+                    </div>
+                    <div className="flex justify-between text-[10px] text-blue-600 dark:text-blue-400">
+                      <span>{isZh ? "图片" : "Image"}: {quotaData.wallet.monthly.image}</span>
+                      <span>{isZh ? "视频/音频" : "Video/Audio"}: {quotaData.wallet.monthly.video}</span>
+                    </div>
+                  </div>
+                  
+                  {/* 加油包配额 */}
+                  <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded">
+                    <div className="text-[11px] font-medium text-amber-700 dark:text-amber-300 mb-1">
+                      {isZh ? "永久额度（加油包）" : "Add-on Credits"}
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-amber-700 dark:text-amber-300 mb-1">
+                      <span className="flex items-center space-x-1">
+                        <Image className="w-3 h-3 text-amber-500" />
+                        <span>{addonImage}</span>
+                      </span>
+                      <span className="flex items-center space-x-1">
+                        <Video className="w-3 h-3 text-amber-500" />
+                        <span>{addonVideo}</span>
+                      </span>
+                    </div>
+                    <div className="mt-1 space-y-1">
+                      <Progress value={addonImagePercent} className="h-1 bg-amber-200/60" />
+                      <Progress value={addonVideoPercent} className="h-1 bg-amber-200/60" />
+                    </div>
+                    {addonImage + addonVideo === 0 && (
+                      <div className="text-[10px] text-amber-500 dark:text-amber-300 mt-1">
+                        {isZh ? "暂无加油包额度" : "No add-on credits yet"}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-gray-600 dark:text-gray-400">
+                    {isZh
+                      ? `总剩余：图 ${quotaData.wallet.total.image} / 视频 ${quotaData.wallet.total.video}`
+                      : `Total left: Img ${quotaData.wallet.total.image} / Video ${quotaData.wallet.total.video}`}
+                  </div>
+                </div>
+              )}
+
               <div className="text-xs text-gray-500 dark:text-gray-400 border-t pt-2">
                 {isZh
-                  ? "文本对话消耗每日配额；图片/视频/音频消耗月度媒体配额，每月 1 日重置。"
-                  : "Text chats use the daily quota; images/video/audio use monthly media quota and reset on the 1st."}
+                  ? "文本对话消耗每日配额；图片/视频/音频消耗月度媒体配额，每月 1 日重置。加油包额度永久有效。"
+                  : "Text chats use daily quota; images/video/audio use monthly quota and reset on the 1st. Add-on credits never expire."}
               </div>
 
               {quotaData.contextMsgLimit && (
@@ -366,13 +503,93 @@ export function QuotaDisplay({
     // 默认显示（无特定模型或未知类型）
     if (quotaData.daily) {
       const { remaining, limit } = quotaData.daily;
+      const addonImage = quotaData.wallet?.addon?.image ?? 0;
+      const addonVideo = quotaData.wallet?.addon?.video ?? 0;
+      const photoRemaining = quotaData.monthlyMedia?.photoRemaining ?? quotaData.monthlyMedia?.photoLimit ?? 0;
+      const photoLimit = quotaData.monthlyMedia?.photoLimit ?? 0;
+      const videoRemaining = quotaData.monthlyMedia?.videoAudioRemaining ?? quotaData.monthlyMedia?.videoAudioLimit ?? 0;
+      const videoLimit = quotaData.monthlyMedia?.videoAudioLimit ?? 0;
+      const dailyPercent = limit > 0 ? Math.min(100, (remaining / limit) * 100) : 0;
+      const photoPercent = photoLimit > 0 ? Math.min(100, (photoRemaining / photoLimit) * 100) : 0;
+      const videoPercent = videoLimit > 0 ? Math.min(100, (videoRemaining / videoLimit) * 100) : 0;
+
       return (
-        <Badge
-          variant="outline"
-          className={`text-xs px-2 py-0.5 border-0 bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 ${className}`}
-        >
-          {remaining}/{limit}
-        </Badge>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Badge
+              variant="outline"
+              className={`text-xs px-2 py-0.5 border-0 bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 cursor-pointer ${className}`}
+            >
+              {remaining}/{limit}
+            </Badge>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-3" side="bottom">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center">
+                  <MessageSquare className="w-3 h-3 mr-1 text-blue-500" />
+                  {isZh ? "每日外部模型" : "External (daily)"}
+                </span>
+                <span className="font-bold text-blue-600">{remaining}/{limit}</span>
+              </div>
+              <Progress value={dailyPercent} className="h-1.5" />
+
+              {quotaData.monthlyMedia && (
+                <>
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <span className="flex items-center">
+                      <Image className="w-3 h-3 mr-1 text-purple-500" />
+                      {isZh ? "本月图片" : "Photos"}
+                    </span>
+                    <span className="font-bold text-purple-600">{photoRemaining}/{photoLimit}</span>
+                  </div>
+                  <Progress value={photoPercent} className="h-1.5" />
+
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <span className="flex items-center">
+                      <Video className="w-3 h-3 mr-1 text-purple-500" />
+                      {isZh ? "本月视频/音频" : "Video/Audio"}
+                    </span>
+                    <span className="font-bold text-purple-600">{videoRemaining}/{videoLimit}</span>
+                  </div>
+                  <Progress value={videoPercent} className="h-1.5" />
+                </>
+              )}
+
+              {quotaData.wallet && (
+                <div className="border-t pt-2 mt-2 space-y-1">
+                  <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                    {isZh ? "加油包（永久）" : "Add-on credits"}
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-amber-700 dark:text-amber-300">
+                    <span className="flex items-center space-x-1">
+                      <Image className="w-3 h-3" />
+                      <span>{addonImage}</span>
+                    </span>
+                    <span className="flex items-center space-x-1">
+                      <Video className="w-3 h-3" />
+                      <span>{addonVideo}</span>
+                    </span>
+                  </div>
+                  {(addonImage === 0 && addonVideo === 0) && (
+                    <div className="text-[10px] text-amber-500">
+                      {isZh ? "暂无加油包额度" : "No add-on credits yet"}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {quotaData.contextMsgLimit && (
+                <div className="text-amber-600 dark:text-amber-400 text-[11px] border-t pt-2">
+                  <AlertCircle className="w-3 h-3 inline mr-1" />
+                  {isZh
+                    ? `上下文限制: 最近 ${quotaData.contextMsgLimit} 条消息`
+                    : `Context limit: Last ${quotaData.contextMsgLimit} messages`}
+                </div>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
       );
     }
   }
@@ -389,6 +606,8 @@ export function QuotaDisplay({
     const videoRemaining = quotaData.monthlyMedia?.videoAudioRemaining ?? videoLimit;
     const photoPercent = photoLimit > 0 ? Math.min(100, Math.max(0, (photoRemaining / photoLimit) * 100)) : 0;
     const videoPercent = videoLimit > 0 ? Math.min(100, Math.max(0, (videoRemaining / videoLimit) * 100)) : 0;
+    const addonImage = quotaData.wallet?.addon?.image ?? 0;
+    const addonVideo = quotaData.wallet?.addon?.video ?? 0;
 
     return (
       <Popover>
@@ -444,6 +663,24 @@ export function QuotaDisplay({
               </div>
               <Progress value={videoPercent} className="h-1.5" />
             </div>
+
+            {quotaData.wallet && (
+              <div className="space-y-1 border-t pt-2">
+                <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                  {isZh ? "加油包（永久）" : "Add-on credits"}
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-amber-700 dark:text-amber-300">
+                  <span className="flex items-center space-x-1">
+                    <Image className="w-3 h-3" />
+                    <span>{addonImage}</span>
+                  </span>
+                  <span className="flex items-center space-x-1">
+                    <Video className="w-3 h-3" />
+                    <span>{addonVideo}</span>
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </PopoverContent>
       </Popover>

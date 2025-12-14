@@ -14,6 +14,7 @@ export function getStripe(): Stripe {
 
 /**
  * 创建 Stripe Checkout Session（一次性支付）
+ * 支持订阅和加油包两种商品类型
  */
 export async function createStripeCheckoutSession(params: {
   amount: number;
@@ -25,8 +26,41 @@ export async function createStripeCheckoutSession(params: {
   description?: string;
   billingCycle?: "monthly" | "annual";
   planName?: string;
+  // 加油包专用参数
+  addonPackageId?: string;
+  imageCredits?: string;
+  videoAudioCredits?: string;
 }) {
   const stripeClient = getStripe();
+
+  // 判断是加油包还是订阅
+  const isAddon = !!params.addonPackageId;
+  
+  // 商品描述
+  const productDescription = isAddon
+    ? `${params.imageCredits || 0} images + ${params.videoAudioCredits || 0} video/audio credits`
+    : `${params.billingCycle === "annual" ? "365 days" : "30 days"} premium access`;
+
+  // 构建 metadata
+  const metadata: Record<string, string> = {
+    userId: params.userId || "",
+    customId: params.customId || "",
+    paymentType: "onetime",
+  };
+
+  if (isAddon) {
+    // 加油包 metadata
+    metadata.productType = "ADDON";
+    metadata.addonPackageId = params.addonPackageId || "";
+    metadata.imageCredits = params.imageCredits || "0";
+    metadata.videoAudioCredits = params.videoAudioCredits || "0";
+  } else {
+    // 订阅 metadata
+    metadata.productType = "SUBSCRIPTION";
+    metadata.billingCycle = params.billingCycle || "monthly";
+    metadata.planName = params.planName || "Pro";
+    metadata.days = params.billingCycle === "annual" ? "365" : "30";
+  }
 
   const session = await stripeClient.checkout.sessions.create({
     payment_method_types: ["card"],
@@ -36,7 +70,7 @@ export async function createStripeCheckoutSession(params: {
           currency: params.currency.toLowerCase(),
           product_data: {
             name: params.description || "Premium Subscription",
-            description: `${params.billingCycle === "annual" ? "365 days" : "30 days"} premium access`,
+            description: productDescription,
           },
           unit_amount: Math.round(params.amount * 100), // Stripe 使用分为单位
         },
@@ -46,14 +80,7 @@ export async function createStripeCheckoutSession(params: {
     mode: "payment", // 一次性支付模式
     success_url: `${params.successUrl}?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: params.cancelUrl,
-    metadata: {
-      userId: params.userId || "",
-      customId: params.customId || "",
-      paymentType: "onetime",
-      billingCycle: params.billingCycle || "monthly",
-      planName: params.planName || "Pro",
-      days: params.billingCycle === "annual" ? "365" : "30",
-    },
+    metadata,
   });
 
   return {

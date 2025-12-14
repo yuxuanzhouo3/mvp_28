@@ -7,6 +7,7 @@ export { PrivacyDialog } from "./PrivacyDialog";
 export { BillingDialog } from "./BillingDialog";
 export { FontDialog } from "./FontDialog";
 export { ShortcutDialog } from "./ShortcutDialog";
+export { AddonPackageTab } from "./AddonPackageTab";
 export { default as ResetConfirmDialog } from "./ResetConfirmDialog";
 export { default as CreateFolderDialog } from "./CreateFolderDialog";
 export { default as RegistrationPromptDialog } from "./RegistrationPromptDialog";

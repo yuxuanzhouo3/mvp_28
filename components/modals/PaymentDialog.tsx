@@ -46,6 +46,7 @@ interface PaymentDialogProps {
   pricingPlans: PricingPlan[];
   handlePayment: (e: React.FormEvent) => void;
   appUserId?: string | null;
+  appUser?: any;
 }
 
 export function PaymentDialog({
@@ -60,18 +61,29 @@ export function PaymentDialog({
   pricingPlans,
   handlePayment,
   appUserId,
+  appUser,
 }: PaymentDialogProps) {
   const { currentLanguage, isDomesticVersion } = useLanguage();
   const isZh = currentLanguage === "zh";
   const useRmb = isDomesticVersion;
   const [isProcessing, setIsProcessing] = useState(false);
+  const proBasicLimit = (() => {
+    const raw = process.env.NEXT_PUBLIC_PRO_BASIC_SUBSCRIPTION_LIMIT || "1";
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 1;
+  })();
+  const planLower = (appUser?.plan || "").toLowerCase?.() || "";
+  const proBasicAddonCount = appUser?.proBasicAddonCount ?? 0;
+  const isProUser = planLower === "pro";
+  const basicAddOnDisabled = false;
   const localizedPlans = React.useMemo(
     () =>
       pricingPlans.map((p) => ({
         ...p,
-        name: isZh ? p.nameZh || p.name : p.name,
-        price: useRmb && p.priceZh ? p.priceZh : p.price,
-        annualPrice: useRmb && p.annualPriceZh ? p.annualPriceZh : p.annualPrice,
+        rawName: p.name,
+        displayName: isZh ? p.nameZh || p.name : p.name,
+        displayPrice: useRmb && p.priceZh ? p.priceZh : p.price,
+        displayAnnualPrice: useRmb && p.annualPriceZh ? p.annualPriceZh : p.annualPrice,
       })),
     [pricingPlans, isZh, useRmb],
   );
@@ -136,42 +148,57 @@ export function PaymentDialog({
               <Label className="text-gray-900 dark:text-[#ececf1] text-sm">
                 {isZh ? "选择套餐" : "Choose Your Plan"}
               </Label>
-              {localizedPlans.map((plan) => (
-                <div
-                  key={plan.name}
-                  onClick={() => setSelectedPlan(plan)}
-                  className={`p-3 rounded-lg cursor-pointer border-2 transition-all ${
-                    selectedPlan?.name === plan.name
-                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                      : "border-gray-200 dark:border-[#565869] hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h4 className="font-medium text-gray-900 dark:text-[#ececf1]">
-                        {isZh ? plan.nameZh || plan.name : plan.name}
-                      </h4>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {plan.features[0]}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold text-gray-900 dark:text-[#ececf1]">
-                        {billingPeriod === "annual"
-                          ? useRmb && plan.annualPriceZh
-                            ? plan.annualPriceZh
-                            : plan.annualPrice
-                          : useRmb && plan.priceZh
-                          ? plan.priceZh
-                          : plan.price}
+              {localizedPlans.map((plan) => {
+                const rawName = (plan as any).rawName || plan.name;
+                const displayName = (plan as any).displayName || (isZh ? (plan as any).nameZh || plan.name : plan.name);
+                const displayPrice = (plan as any).displayPrice || plan.price;
+                const displayAnnualPrice = (plan as any).displayAnnualPrice || plan.annualPrice;
+                const isBasicPlan = rawName.toLowerCase() === "basic";
+                const disabled = isBasicPlan && basicAddOnDisabled;
+                const isSelected = selectedPlan?.name === rawName || selectedPlan?.name === displayName;
+                return (
+                  <div
+                    key={rawName}
+                    onClick={() => {
+                      if (disabled) return;
+                      setSelectedPlan({ ...plan, name: rawName } as any);
+                    }}
+                    className={`p-3 rounded-lg border-2 transition-all ${
+                      disabled
+                        ? "cursor-not-allowed opacity-60 border-gray-200 dark:border-[#565869] bg-gray-100 dark:bg-[#2e2f3b]"
+                        : "cursor-pointer " +
+                          (isSelected
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                            : "border-gray-200 dark:border-[#565869] hover:border-gray-300")
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h4 className="font-medium text-gray-900 dark:text-[#ececf1]">
+                          {displayName}
+                        </h4>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {disabled
+                            ? isZh
+                              ? "当前 Pro 套餐已达 Basic 加购上限"
+                              : "Basic add-on limit reached for Pro"
+                            : plan.features[0]}
+                        </p>
                       </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {isZh ? "每月" : "per month"}
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-gray-900 dark:text-[#ececf1]">
+                          {billingPeriod === "annual"
+                            ? displayAnnualPrice
+                            : displayPrice}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {isZh ? "每月" : "per month"}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -235,7 +262,7 @@ export function PaymentDialog({
                         : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
                     }`}
                   >
-                    💳 Card
+                    Card
                   </button>
                   <button
                     type="button"
@@ -246,7 +273,7 @@ export function PaymentDialog({
                         : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
                     }`}
                   >
-                    💰 PayPal
+                    PayPal
                   </button>
                   <button
                     type="button"
@@ -257,7 +284,7 @@ export function PaymentDialog({
                         : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
                     }`}
                   >
-                    💳 Stripe
+                    Stripe
                   </button>
                   <button
                     type="button"
@@ -268,7 +295,7 @@ export function PaymentDialog({
                         : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
                     }`}
                   >
-                    💬 WeChat
+                    WeChat
                   </button>
                   <button
                     type="button"
@@ -279,7 +306,7 @@ export function PaymentDialog({
                         : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
                     }`}
                   >
-                    💳 Alipay
+                    Alipay
                   </button>
                   <button
                     type="button"
@@ -290,7 +317,7 @@ export function PaymentDialog({
                         : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
                     }`}
                   >
-                    ₿ USDT
+                    USDT
                   </button>
                 </div>
               </div>
@@ -301,6 +328,11 @@ export function PaymentDialog({
                   
                   // 对于 Stripe 和 PayPal，使用跳转支付
                   if (selectedPaymentMethod === "stripe" && selectedPlan) {
+                    const isBasicPlan = selectedPlan.name.toLowerCase() === "basic";
+                    if (isBasicPlan && basicAddOnDisabled) {
+                      alert(isZh ? "当前 Pro 套餐已达 Basic 加购上限" : "Basic add-on limit reached for your Pro plan");
+                      return;
+                    }
                     setIsProcessing(true);
                     try {
                       const res = await fetch("/api/payment/stripe/create", {
@@ -327,6 +359,11 @@ export function PaymentDialog({
                   }
                   
                   if (selectedPaymentMethod === "paypal" && selectedPlan) {
+                    const isBasicPlan = selectedPlan.name.toLowerCase() === "basic";
+                    if (isBasicPlan && basicAddOnDisabled) {
+                      alert(isZh ? "当前 Pro 套餐已达 Basic 加购上限" : "Basic add-on limit reached for your Pro plan");
+                      return;
+                    }
                     setIsProcessing(true);
                     try {
                       const res = await fetch("/api/payment/paypal/create", {

@@ -3,13 +3,18 @@ import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import {
   getModelCategory,
   getFreeContextMsgLimit,
-  getFreeDailyLimit,
-  getFreeMonthlyPhotoLimit,
-  getFreeMonthlyVideoAudioLimit,
   getQuotaExceededMessage,
   getImageCount,
   getVideoAudioCount,
 } from "@/utils/model-limits";
+import {
+  checkQuota,
+  consumeQuota,
+  seedWalletForPlan,
+  checkDailyExternalQuota,
+  consumeDailyExternalQuota,
+} from "@/services/wallet";
+import { isAfter } from "date-fns";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,12 +29,15 @@ function getPlanInfo(meta: any) {
     (meta?.plan as string | undefined) ||
     (meta?.subscriptionTier as string | undefined) ||
     "";
-  const planLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
+  const rawPlanLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
+  const planExp = meta?.plan_exp ? new Date(meta.plan_exp) : null;
+  const planActive = planExp ? isAfter(planExp, new Date()) : true;
+  const planLower = planActive ? rawPlanLower : "free";
   const isProFlag = !!meta?.pro && planLower !== "free" && planLower !== "basic";
   const isBasic = planLower === "basic";
   const isPro = planLower === "pro" || planLower === "enterprise" || isProFlag;
   const isFree = !isPro && !isBasic;
-  return { planLower, isPro, isBasic, isFree };
+  return { planLower, isPro, isBasic, isFree, planActive, planExp };
 }
 
 /**
@@ -114,7 +122,6 @@ export async function POST(req: Request) {
       images = [],
       videos = [],
       audios = [],
-      quotaChecked,
     } =
       (await req.json()) as {
         model?: string;
@@ -125,7 +132,6 @@ export async function POST(req: Request) {
         images?: string[];
         videos?: string[];
         audios?: string[];
-        quotaChecked?: boolean;
       };
 
     // ============================================================
@@ -135,8 +141,16 @@ export async function POST(req: Request) {
     let processedMessages = [...messages];
     
     // 需要 auth-token 才允许调用，保证额度可计入数据库
-    const rawToken = req.headers.get("cookie")?.match(/auth-token=([^;]+)/)?.[1];
-    const authToken = rawToken ? decodeURIComponent(rawToken) : null;
+    const rawTokenCookie = req.headers.get("cookie")?.match(/auth-token=([^;]+)/)?.[1];
+    const headerToken =
+      req.headers.get("x-auth-token") ||
+      req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+      null;
+    const authToken = rawTokenCookie
+      ? decodeURIComponent(rawTokenCookie)
+      : headerToken
+        ? decodeURIComponent(headerToken)
+        : null;
     if (!authToken) {
       console.warn("[quota][stream] missing auth-token cookie");
       return new Response(
@@ -195,205 +209,76 @@ export async function POST(req: Request) {
     }
 
     // ============================================================
-    // Free 用户配额扣减（未提前扣减时）
+    // 媒体额度 & 外部模型日额度校验（仅检查，扣减在响应成功后）
     // ============================================================
-    const connector = new CloudBaseConnector();
-    await connector.initialize();
-    const db = connector.getClient();
+    const category = getModelCategory(finalModelId);
+    const imageCount = getImageCount({ images });
+    const videoAudioCount = getVideoAudioCount({ videos, audios });
+    const requiresMediaQuota =
+      category === "advanced_multimodal" && (imageCount > 0 || videoAudioCount > 0);
+    const shouldDeductMediaQuota = requiresMediaQuota;
+    const shouldDeductDailyExternal = category === "external";
+    console.log("[quota][stream] model", finalModelId, "category", category, {
+      imageCount,
+      videoAudioCount,
+      requiresMediaQuota,
+      shouldDeductDailyExternal,
+    });
 
-    // 即使 quotaChecked=true，也要阻止超限的媒体请求（不重复扣减）
-    if (plan.isFree && quotaChecked) {
-      const category = getModelCategory(finalModelId);
-      const imageCount = getImageCount({ images });
-      const videoAudioCount = getVideoAudioCount({ videos, audios });
+    if (requiresMediaQuota) {
+      if (!plan.planActive) {
+        plan.planLower = "free";
+      }
 
-      if (category === "advanced_multimodal" && (imageCount > 0 || videoAudioCount > 0)) {
-        const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
-        const quotaColl = db.collection("free_quotas");
-        const existing = await quotaColl.where({ userId: user.id, month: currentMonth }).limit(1).get();
-        const row = existing?.data?.[0];
-        const usedPhoto = row?.month_used_photo ?? 0;
-        const usedVideoAudio = row?.month_used_video_audio ?? 0;
-        const photoLimit = getFreeMonthlyPhotoLimit();
-        const videoAudioLimit = getFreeMonthlyVideoAudioLimit();
+      await seedWalletForPlan(user.id, plan.planLower || "free");
+      const quotaCheck = await checkQuota(user.id, imageCount, videoAudioCount);
 
-        if (imageCount > 0 && usedPhoto + imageCount > photoLimit) {
-          return new Response(
-            JSON.stringify({ success: false, error: getQuotaExceededMessage("monthly_photo", language === "zh" ? "zh" : "en") }),
-            { status: 402, headers: { "Content-Type": "application/json" } },
-          );
-        }
-        if (videoAudioCount > 0 && usedVideoAudio + videoAudioCount > videoAudioLimit) {
-          return new Response(
-            JSON.stringify({ success: false, error: getQuotaExceededMessage("monthly_video_audio", language === "zh" ? "zh" : "en") }),
-            { status: 402, headers: { "Content-Type": "application/json" } },
-          );
-        }
+      if (!quotaCheck.hasEnoughQuota) {
+        const errorKey =
+          quotaCheck.totalImageBalance < imageCount ? "monthly_photo" : "monthly_video_audio";
+        console.warn("[quota][stream] media quota insufficient", {
+          userId: user.id,
+          effectivePlanLower: plan.planLower,
+          quotaCheck,
+          requested: { imageCount, videoAudioCount },
+        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: getQuotaExceededMessage(errorKey as any, language === "zh" ? "zh" : "en"),
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
       }
     }
-
-    if (plan.isFree && !quotaChecked) {
-      const today = getTodayString();
-      const currentMonth = getCurrentYearMonth();
-      const quotaColl = db.collection("free_quotas");
-      const category = getModelCategory(finalModelId);
-      const imageCount = getImageCount({ images });
-      const videoAudioCount = getVideoAudioCount({ videos, audios });
-      console.log("[quota][stream] begin", {
-        user: user.id,
-        modelId: finalModelId,
-        category,
-        today,
-        currentMonth,
-        imageCount,
-        videoAudioCount,
+    if (shouldDeductDailyExternal) {
+      const effectivePlanLower = plan.planActive ? plan.planLower || "free" : "free";
+      const dailyCheck = await checkDailyExternalQuota(user.id, effectivePlanLower, 1);
+      console.log("[quota][stream] daily check", {
+        userId: user.id,
+        effectivePlanLower,
+        dailyCheck,
       });
-
-      const consumeDaily = async () => {
-        const dailyLimit = getFreeDailyLimit();
-        const existing = await quotaColl.where({ userId: user.id, day: today }).limit(1).get();
-        const row = existing?.data?.[0];
-        const used = row?.daily_count ?? row?.used ?? 0;
-        console.log("[quota][stream] daily check", { used, dailyLimit, rowId: row?._id });
-        if (used >= dailyLimit) {
-          return {
-            allowed: false,
-            error: getQuotaExceededMessage("daily", language === "zh" ? "zh" : "en"),
-          };
-        }
-        const payload: any = {
+      if (!dailyCheck.allowed) {
+        console.warn("[quota][stream] daily external insufficient", {
           userId: user.id,
-          day: today,
-          daily_count: used + 1,
-          updatedAt: new Date().toISOString(),
-          createdAt: new Date(),
-        };
-        if (row?._id) {
-          await quotaColl.doc(row._id).update(payload);
-        } else {
-          await quotaColl.add(payload);
-        }
-        console.log("[quota][stream] daily updated", { user: user.id, used: used + 1, dailyLimit });
-        return { allowed: true };
-      };
-
-      if (category === "general") {
-        // 通用模型：无限制
-      } else if (category === "external") {
-        const res = await consumeDaily();
-        if (!res.allowed) {
-          return new Response(JSON.stringify({ success: false, error: res.error }), {
-            status: 402,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-      } else if (category === "advanced_multimodal") {
-        const photoLimit = getFreeMonthlyPhotoLimit();
-        const videoAudioLimit = getFreeMonthlyVideoAudioLimit();
-
-        if (imageCount === 0 && videoAudioCount === 0) {
-          const res = await consumeDaily();
-          if (!res.allowed) {
-            return new Response(JSON.stringify({ success: false, error: res.error }), {
-              status: 402,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-        } else {
-          // 使用事务保证并发安全的额度扣减
-          const txn = await db.startTransaction();
-          try {
-            const quotaTxColl = txn.collection("free_quotas");
-            const existing = await quotaTxColl.where({ userId: user.id, month: currentMonth }).limit(1).get();
-            const row = existing?.data?.[0];
-            const usedPhoto = row?.month_used_photo ?? 0;
-            const usedVideoAudio = row?.month_used_video_audio ?? 0;
-
-            console.log("[quota][stream][tx] monthly check", {
-              usedPhoto,
-              usedVideoAudio,
-              photoLimit,
-              videoAudioLimit,
-              rowId: row?._id,
-            });
-
-            if (imageCount > 0 && usedPhoto + imageCount > photoLimit) {
-              await txn.rollback();
-              return new Response(
-                JSON.stringify({ success: false, error: getQuotaExceededMessage("monthly_photo", language === "zh" ? "zh" : "en") }),
-                { status: 402, headers: { "Content-Type": "application/json" } },
-              );
-            }
-            if (videoAudioCount > 0 && usedVideoAudio + videoAudioCount > videoAudioLimit) {
-              await txn.rollback();
-              return new Response(
-                JSON.stringify({ success: false, error: getQuotaExceededMessage("monthly_video_audio", language === "zh" ? "zh" : "en") }),
-                { status: 402, headers: { "Content-Type": "application/json" } },
-              );
-            }
-
-            const payload: any = {
-              userId: user.id,
-              month: currentMonth,
-              month_used_photo: usedPhoto + imageCount,
-              month_used_video_audio: usedVideoAudio + videoAudioCount,
-              updatedAt: new Date().toISOString(),
-              createdAt: new Date(),
-            };
-            if (row?._id) {
-              await quotaTxColl.doc(row._id).update(payload);
-            } else {
-              await quotaTxColl.add(payload);
-            }
-
-            await txn.commit();
-            console.log("[quota][stream][tx] monthly updated", {
-              user: user.id,
-              photo: payload.month_used_photo,
-              photoLimit,
-              videoAudio: payload.month_used_video_audio,
-              videoAudioLimit,
-            });
-          } catch (err) {
-            console.error("[quota][stream][tx] monthly update failed", err);
-            try {
-              await txn.rollback();
-            } catch {}
-            return new Response(
-              JSON.stringify({ success: false, error: "Quota check failed, please retry." }),
-              { status: 500, headers: { "Content-Type": "application/json" } },
-            );
-          }
-        }
-      } else {
-        // 未知模型：按外部模型处理
-        const res = await consumeDaily();
-        if (!res.allowed) {
-          return new Response(JSON.stringify({ success: false, error: res.error }), {
-            status: 402,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
+          effectivePlanLower,
+          dailyCheck,
+        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: getQuotaExceededMessage("daily", language === "zh" ? "zh" : "en"),
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
       }
     }
 
     const mergedMessages: IncomingMessage[] =
       Array.isArray(processedMessages) && processedMessages.length > 0
-        ? [...processedMessages]
+        ? [...processedMessages, { role: "user", content: message || "", images, videos, audios }]
         : [{ role: "user", content: message || "", images, videos, audios }];
-
-    if ((images?.length || videos?.length || audios?.length) && mergedMessages.length > 0) {
-      const lastUserIdx = [...mergedMessages].reverse().findIndex((m) => m.role === "user");
-      if (lastUserIdx !== -1) {
-        const realIdx = mergedMessages.length - 1 - lastUserIdx;
-        mergedMessages[realIdx] = {
-          ...mergedMessages[realIdx],
-          images: Array.from(new Set([...(mergedMessages[realIdx].images || []), ...(images || [])])),
-          videos: Array.from(new Set([...(mergedMessages[realIdx].videos || []), ...(videos || [])])),
-          audios: Array.from(new Set([...(mergedMessages[realIdx].audios || []), ...(audios || [])])),
-        };
-      }
-    }
 
     const allImageIds = mergedMessages
       .flatMap((m) => m.images || [])
@@ -405,15 +290,17 @@ export async function POST(req: Request) {
       .flatMap((m) => (m as any).audios || [])
       .filter((v) => typeof v === "string" && !v.startsWith("http"));
 
-    const audioCount = mergedMessages.reduce(
-      (acc, m) => acc + ((m as any).audios?.length || 0),
-      0,
-    );
-    if (audioCount > 1) {
-      return new Response(
-        JSON.stringify({ success: false, error: "音频输入目前仅支持单个文件，请分开发送。" }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
-      );
+    // 仅限制本次请求的用户消息音频数量（当前请求的最后一条用户消息）
+    const lastUserIdx = [...mergedMessages].reverse().findIndex((m) => m.role === "user");
+    if (lastUserIdx !== -1) {
+      const realIdx = mergedMessages.length - 1 - lastUserIdx;
+      const currentAudios = (mergedMessages[realIdx] as any).audios || [];
+      if (currentAudios.length > 1) {
+        return new Response(
+          JSON.stringify({ success: false, error: "音频输入目前仅支持单个文件，请分开发送。" }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+      }
     }
 
     let tempUrlMap: Record<string, string> = {};
@@ -538,6 +425,7 @@ export async function POST(req: Request) {
       let buffer = "";
       let doneSent = false;
       let closed = false;
+      let streamFinished = false;
       const safeWrite = async (data: Uint8Array) => {
         if (closed) return;
         try {
@@ -549,6 +437,7 @@ export async function POST(req: Request) {
       const sendDone = async () => {
         if (doneSent) return;
         doneSent = true;
+        streamFinished = true;
         await safeWrite(encoder.encode("data: [DONE]\n\n"));
       };
       const closeWriter = async () => {
@@ -587,6 +476,7 @@ export async function POST(req: Request) {
             }
           }
         }
+        streamFinished = true;
       } catch (err) {
         await safeWrite(
           encoder.encode(
@@ -595,9 +485,50 @@ export async function POST(req: Request) {
             })}\n\n`
           )
         );
+        console.warn("[quota][stream] upstream interrupted", err instanceof Error ? err.message : err);
       } finally {
+        // 如果未显式标记完成，但已经发送了 [DONE]，兜底标记
+        if (doneSent && !streamFinished) {
+          streamFinished = true;
+        }
         await sendDone();
         await closeWriter();
+        if (shouldDeductMediaQuota && streamFinished) {
+          const consumeResult = await consumeQuota({
+            userId: user.id,
+            imageCount,
+            videoAudioCount,
+          });
+          if (!consumeResult.success) {
+            console.error("[quota][stream][consume-error]", consumeResult.error);
+          } else {
+            console.log("[quota][stream][consume-media-ok]", {
+              userId: user.id,
+              deducted: consumeResult.deducted,
+              remaining: consumeResult.remaining,
+            });
+          }
+        } else if (shouldDeductMediaQuota && !streamFinished) {
+          console.warn("[quota][stream] media consume skipped because stream not finished");
+        }
+        if (shouldDeductDailyExternal && streamFinished) {
+          const consumeDailyResult = await consumeDailyExternalQuota(
+            user.id,
+            plan.planActive ? plan.planLower || "free" : "free",
+            1,
+          );
+          if (!consumeDailyResult.success) {
+            console.error("[quota][stream][daily-consume-error]", consumeDailyResult.error);
+          } else {
+            console.log("[quota][stream][daily-consume-ok]", {
+              userId: user.id,
+              plan: plan.planLower,
+              count: 1,
+            });
+          }
+        } else if (shouldDeductDailyExternal && !streamFinished) {
+          console.warn("[quota][stream] daily consume skipped because stream not finished");
+        }
       }
     })();
 

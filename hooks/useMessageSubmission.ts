@@ -708,6 +708,14 @@ export const useMessageSubmission = (
               setIsLoading(false);
               setIsStreaming(false);
               setStreamingController(null);
+              // 流结束后立即刷新配额（服务端已扣费）
+              if (refreshQuota) {
+                await refreshQuota();
+              }
+              // 通知需要实时刷新的组件（悬浮层/铭牌/额度弹层）
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(new Event("quota:refresh"));
+              }
 
               // Remove streaming indicator when complete and update final message
               setMessages((prev) =>

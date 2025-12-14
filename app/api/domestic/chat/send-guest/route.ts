@@ -1,4 +1,20 @@
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
+import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
+import {
+  getModelCategory,
+  getFreeContextMsgLimit,
+  getQuotaExceededMessage,
+  getImageCount,
+  getVideoAudioCount,
+} from "@/utils/model-limits";
+import {
+  checkQuota,
+  consumeQuota,
+  seedWalletForPlan,
+  checkDailyExternalQuota,
+  consumeDailyExternalQuota,
+} from "@/services/wallet";
+import { isAfter } from "date-fns";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +52,33 @@ function stripThinkContent(text: string): string {
   cleaned = cleaned.replace(/^[\s\u00A0]+/, "");
   cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
   return cleaned.trim();
+}
+
+/**
+ * 获取用户套餐信息
+ */
+function getPlanInfo(meta: any) {
+  const rawPlan =
+    (meta?.plan as string | undefined) ||
+    (meta?.subscriptionTier as string | undefined) ||
+    "";
+  const rawPlanLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
+  const planExp = meta?.plan_exp ? new Date(meta.plan_exp) : null;
+  const planActive = planExp ? isAfter(planExp, new Date()) : true;
+  const planLower = planActive ? rawPlanLower : "free";
+  const isProFlag = !!meta?.pro && planLower !== "free" && planLower !== "basic";
+  const isBasic = planLower === "basic";
+  const isPro = planLower === "pro" || planLower === "enterprise" || isProFlag;
+  const isFree = !isPro && !isBasic;
+  return { planLower, isPro, isBasic, isFree, planActive, planExp };
+}
+
+/**
+ * 截断消息历史以符合上下文限制
+ */
+function truncateContextMessages<T>(messages: T[], limit: number): T[] {
+  if (messages.length <= limit) return messages;
+  return messages.slice(-limit);
 }
 
 const buildOpenAIMessages = (
@@ -107,7 +150,60 @@ export async function POST(req: Request) {
       msgCount: Array.isArray(messages) ? messages.length : 0,
     });
 
+    // ============================================================
+    // 校验登录 & 读取套餐信息 (确保额度可扣减)
+    // ============================================================
+    let contextTruncated = false;
+    let processedMessages = [...(messages || [])];
+    const rawTokenCookie = req.headers.get("cookie")?.match(/auth-token=([^;]+)/)?.[1];
+    const headerToken =
+      req.headers.get("x-auth-token") ||
+      req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+      null;
+    const authToken = rawTokenCookie
+      ? decodeURIComponent(rawTokenCookie)
+      : headerToken
+        ? decodeURIComponent(headerToken)
+        : null;
+    console.log("[quota][send] auth headerToken", headerToken ? "present" : "missing", "cookieToken", rawTokenCookie ? "present" : "missing");
+    if (!authToken) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized: auth-token required" }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    let user: any = null;
+    let plan = { isFree: true, isBasic: false, isPro: false, planLower: "free", planActive: false };
+    try {
+      const auth = new CloudBaseAuthService();
+      user = await auth.validateToken(authToken);
+      if (!user) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Unauthorized" }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      plan = getPlanInfo(user.metadata);
+      console.log("[quota][send] user", user.id, "plan", plan.planLower, "planActive", plan.planActive);
+    } catch {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    // Free 用户：截断上下文消息，避免占满上下文
+    if (plan.isFree && processedMessages.length > 0) {
+      const contextLimit = getFreeContextMsgLimit();
+      if (processedMessages.length > contextLimit) {
+        processedMessages = truncateContextMessages(processedMessages, contextLimit);
+        contextTruncated = true;
+      }
+    }
+
     const modelName = hasMediaPayload ? "qwen3-omni-flash" : model || modelId || "qwen3-omni-flash";
+    const finalModelId = modelId || modelName;
     const provider = getDashScopeProvider(modelName);
     if (!provider) {
       return new Response(JSON.stringify({ success: false, error: "Unsupported model or missing API key" }), {
@@ -117,20 +213,66 @@ export async function POST(req: Request) {
     }
 
     const mergedMessages: IncomingMessage[] =
-      Array.isArray(messages) && messages.length > 0
-        ? [...messages]
+      Array.isArray(processedMessages) && processedMessages.length > 0
+        ? [...processedMessages, { role: "user", content: message || "", images, videos, audios }]
         : [{ role: "user", content: message || "", images, videos, audios }];
 
-    if ((images?.length || videos?.length || audios?.length) && mergedMessages.length > 0) {
-      const lastUserIdx = [...mergedMessages].reverse().findIndex((m) => m.role === "user");
-      if (lastUserIdx !== -1) {
-        const realIdx = mergedMessages.length - 1 - lastUserIdx;
-        mergedMessages[realIdx] = {
-          ...mergedMessages[realIdx],
-          images: Array.from(new Set([...(mergedMessages[realIdx].images || []), ...(images || [])])),
-          videos: Array.from(new Set([...(mergedMessages[realIdx].videos || []), ...(videos || [])])),
-          audios: Array.from(new Set([...(mergedMessages[realIdx].audios || []), ...(audios || [])])),
-        };
+    // ============================================================
+    // 外部模型每日配额 & 媒体配额校验（仅检查，扣减在成功后）
+    // ============================================================
+    const category = getModelCategory(finalModelId);
+    const imageCount = getImageCount({ images });
+    const videoAudioCount = getVideoAudioCount({ videos, audios });
+    const requiresMediaQuota =
+      category === "advanced_multimodal" && (imageCount > 0 || videoAudioCount > 0);
+    const shouldDeductMediaQuota = requiresMediaQuota;
+    const shouldDeductDailyExternal = category === "external";
+    console.log("[quota][send] model", finalModelId, "category", category, {
+      imageCount,
+      videoAudioCount,
+      requiresMediaQuota,
+      shouldDeductDailyExternal,
+    });
+
+    if (requiresMediaQuota) {
+      const effectivePlanLower = plan.planActive ? plan.planLower || "free" : "free";
+      await seedWalletForPlan(user.id, effectivePlanLower);
+      const quotaCheck = await checkQuota(user.id, imageCount, videoAudioCount);
+
+      if (!quotaCheck.hasEnoughQuota) {
+        const errorKey =
+          quotaCheck.totalImageBalance < imageCount ? "monthly_photo" : "monthly_video_audio";
+        console.warn("[quota][send] media quota insufficient", {
+          userId: user.id,
+          effectivePlanLower,
+          quotaCheck,
+          requested: { imageCount, videoAudioCount },
+        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: getQuotaExceededMessage(errorKey as any, language === "zh" ? "zh" : "en"),
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
+      }
+    }
+    if (shouldDeductDailyExternal) {
+      const effectivePlanLower = plan.planActive ? plan.planLower || "free" : "free";
+      const dailyCheck = await checkDailyExternalQuota(user.id, effectivePlanLower, 1);
+      if (!dailyCheck.allowed) {
+        console.warn("[quota][send] daily external insufficient", {
+          userId: user.id,
+          effectivePlanLower,
+          dailyCheck,
+        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: getQuotaExceededMessage("daily", language === "zh" ? "zh" : "en"),
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
       }
     }
 
@@ -144,15 +286,17 @@ export async function POST(req: Request) {
       .flatMap((m) => (m as any).audios || [])
       .filter((v) => typeof v === "string" && !v.startsWith("http"));
 
-    const audioCount = mergedMessages.reduce(
-      (acc, m) => acc + ((m as any).audios?.length || 0),
-      0,
-    );
-    if (audioCount > 1) {
-      return new Response(
-        JSON.stringify({ success: false, error: "音频输入目前仅支持单个文件，请分开发送。" }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
-      );
+    // 仅限制本次请求的用户消息音频数量（当前请求的最后一条用户消息）
+    const lastUserIdx = [...mergedMessages].reverse().findIndex((m) => m.role === "user");
+    if (lastUserIdx !== -1) {
+      const realIdx = mergedMessages.length - 1 - lastUserIdx;
+      const currentAudios = (mergedMessages[realIdx] as any).audios || [];
+      if (currentAudios.length > 1) {
+        return new Response(
+          JSON.stringify({ success: false, error: "音频输入目前仅支持单个文件，请分开发送。" }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+      }
     }
 
     let tempUrlMap: Record<string, string> = {};
@@ -225,8 +369,45 @@ export async function POST(req: Request) {
     const data = await upstream.json();
     const content = stripThinkContent(extractFullText(data));
 
+    // 成功后再扣除媒体额度（FEFO）
+    if (shouldDeductMediaQuota) {
+      const consumeResult = await consumeQuota({
+        userId: user.id,
+        imageCount,
+        videoAudioCount,
+      });
+      if (!consumeResult.success) {
+        console.error("[quota][send][consume-error]", consumeResult.error);
+      } else {
+        console.log("[quota][send][consume-media-ok]", {
+          userId: user.id,
+          deducted: consumeResult.deducted,
+          remaining: consumeResult.remaining,
+        });
+      }
+    }
+    if (shouldDeductDailyExternal) {
+      const consumeDailyResult = await consumeDailyExternalQuota(
+        user.id,
+        plan.planActive ? plan.planLower || "free" : "free",
+        1,
+      );
+      if (!consumeDailyResult.success) {
+        console.error("[quota][send][daily-consume-error]", consumeDailyResult.error);
+      } else {
+        console.log("[quota][send][daily-consume-ok]", {
+          userId: user.id,
+          plan: plan.planLower,
+          count: 1,
+        });
+      }
+    }
+
     return new Response(
-      JSON.stringify({ success: true, data: { response: content, chatId: Date.now().toString() } }),
+      JSON.stringify({
+        success: true,
+        data: { response: content, chatId: Date.now().toString(), contextTruncated },
+      }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {

@@ -4,6 +4,8 @@ import { capturePayPalOrder, paypalErrorResponse } from "@/lib/paypal";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
+import { addAddonCredits, upgradeMonthlyQuota, renewMonthlyQuota, getPlanMediaLimits, seedWalletForPlan } from "@/services/wallet";
+import { type ProductType } from "@/constants/addon-packages";
 
 const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
 const CYCLE_DAYS: Record<"monthly" | "annual", number> = {
@@ -11,30 +13,85 @@ const CYCLE_DAYS: Record<"monthly" | "annual", number> = {
   annual: 365,
 };
 
+// 统一套餐名称，兼容中文/英文，返回英文 canonical key
+const normalizePlanName = (p?: string) => {
+  const lower = (p || "").toLowerCase();
+  if (lower === "basic" || lower === "基础版") return "Basic";
+  if (lower === "pro" || lower === "专业版") return "Pro";
+  if (lower === "enterprise" || lower === "企业版") return "Enterprise";
+  return p || "";
+};
+
+/**
+ * 解析 customId，判断是订阅还是加油包
+ * 
+ * customId 格式:
+ * - 订阅: userId|planName|billingPeriod
+ * - 加油包: userId|ADDON|packageId|imageCredits|videoCredits
+ */
+interface ParsedCustomId {
+  userId: string;
+  productType: ProductType;
+  // 订阅专用
+  plan?: string;
+  period?: "monthly" | "annual";
+  // 加油包专用
+  addonPackageId?: string;
+  imageCredits?: number;
+  videoAudioCredits?: number;
+}
+
+function parseCustomId(customId?: string | null, description?: string | null): ParsedCustomId {
+  const result: ParsedCustomId = {
+    userId: "",
+    productType: "SUBSCRIPTION",
+    plan: "Pro",
+    period: "monthly",
+  };
+
+  if (!customId) {
+    // 从 description 回退解析
+    if (description) {
+      const parts = description.split(" - ");
+      if (parts[0]) result.plan = parts[0];
+      if (parts[1]) {
+        const p = parts[1].toLowerCase();
+        result.period = p === "annual" || p === "yearly" ? "annual" : "monthly";
+      }
+    }
+    return result;
+  }
+
+  const parts = customId.split("|");
+  result.userId = parts[0] || "";
+
+  // 判断是加油包还是订阅
+  if (parts[1] === "ADDON" && parts.length >= 5) {
+    // 加油包格式: userId|ADDON|packageId|imageCredits|videoCredits
+    result.productType = "ADDON";
+    result.addonPackageId = parts[2];
+    result.imageCredits = parseInt(parts[3], 10) || 0;
+    result.videoAudioCredits = parseInt(parts[4], 10) || 0;
+  } else if (parts.length >= 3) {
+    // 订阅格式: userId|planName|billingPeriod
+    result.productType = "SUBSCRIPTION";
+    result.plan = parts[1] || "Pro";
+    const p = (parts[2] || "").toLowerCase();
+    result.period = p === "annual" || p === "yearly" ? "annual" : "monthly";
+  }
+
+  // 确保 plan 有值
+  if (!result.plan || result.plan.trim() === "") {
+    result.plan = "Pro";
+  }
+
+  return result;
+}
+
+// 保留旧函数以兼容现有代码
 function parsePlanPeriod(customId?: string | null, description?: string | null) {
-  let plan = "Pro";
-  let period: "monthly" | "annual" = "monthly";
-
-  if (customId) {
-    const parts = customId.split("|");
-    if (parts.length >= 3) {
-      plan = parts[1] || plan;
-      const p = (parts[2] || "").toLowerCase();
-      period = p === "annual" || p === "yearly" ? "annual" : "monthly";
-    }
-  }
-
-  if ((!plan || plan.trim() === "") && description) {
-    const parts = description.split(" - ");
-    if (parts[0]) plan = parts[0];
-    if (parts[1]) {
-      const p = parts[1].toLowerCase();
-      period = p === "annual" || p === "yearly" ? "annual" : "monthly";
-    }
-  }
-
-  plan = plan.trim() || "Pro";
-  return { plan, period };
+  const parsed = parseCustomId(customId, description);
+  return { plan: parsed.plan || "Pro", period: parsed.period || "monthly" };
 }
 
 async function upsertCloudbaseSubscription(params: {
@@ -108,6 +165,7 @@ async function upsertCloudbaseSubscription(params: {
   return all?.data || [];
 }
 
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -136,12 +194,104 @@ export async function POST(request: NextRequest) {
 
     const customId = unit?.custom_id || capture?.custom_id || null;
     const description = unit?.description || null;
-    const { plan, period } = parsePlanPeriod(customId, description);
+    
+    // 解析 customId，判断是订阅还是加油包
+    const parsed = parseCustomId(customId, description);
+    const { plan: rawPlan, period } = parsePlanPeriod(customId, description);
+    const plan = normalizePlanName(rawPlan);
 
     const userId =
+      parsed.userId ||
       (customId && customId.split("|")[0]) ||
       (capture?.custom_id && capture.custom_id.split("|")[0]) ||
       null;
+
+    // ========================================
+    // 加油包 (ADDON) 处理分支
+    // 注意：加油包购买不影响用户的 tier 和 expired_at
+    // ========================================
+    if (parsed.productType === "ADDON" && userId) {
+      console.log("[paypal][addon-capture]", {
+        userId,
+        packageId: parsed.addonPackageId,
+        imageCredits: parsed.imageCredits,
+        videoAudioCredits: parsed.videoAudioCredits,
+        amount: amountValue,
+        currency,
+        orderId,
+      });
+
+      // 记录支付 (payments 集合)
+      if (IS_DOMESTIC_VERSION) {
+        const connector = new CloudBaseConnector();
+        await connector.initialize();
+        const db = connector.getClient();
+        
+        await db.collection("payments").add({
+          userId,
+          provider: "paypal",
+          providerOrderId: orderId,
+          amount: amountValue,
+          currency,
+          status: status || "COMPLETED",
+          type: "ADDON",
+          addonPackageId: parsed.addonPackageId,
+          imageCredits: parsed.imageCredits,
+          videoAudioCredits: parsed.videoAudioCredits,
+          createdAt: new Date().toISOString(),
+        });
+      } else if (supabaseAdmin) {
+        await supabaseAdmin.from("payments").insert({
+          user_id: userId,
+          provider: "paypal",
+          provider_order_id: orderId,
+          amount: amountValue,
+          currency,
+          status: status || "COMPLETED",
+          type: "ADDON",
+          addon_package_id: parsed.addonPackageId,
+          image_credits: parsed.imageCredits,
+          video_audio_credits: parsed.videoAudioCredits,
+        });
+      }
+
+      // 使用原子操作增加加油包额度 (wallet.addon_*_balance)
+      // 严禁修改 tier 或 expired_at
+      const addResult = await addAddonCredits(
+        userId,
+        parsed.imageCredits || 0,
+        parsed.videoAudioCredits || 0
+      );
+
+      if (!addResult.success) {
+        console.error("[paypal][addon-credit-error]", addResult.error);
+        // 即使增加额度失败，支付已完成，仍返回成功但标记错误
+        return NextResponse.json({
+          success: true,
+          status,
+          productType: "ADDON",
+          addonPackageId: parsed.addonPackageId,
+          imageCredits: parsed.imageCredits,
+          videoAudioCredits: parsed.videoAudioCredits,
+          creditError: addResult.error,
+          raw: result,
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        status,
+        productType: "ADDON",
+        addonPackageId: parsed.addonPackageId,
+        imageCredits: parsed.imageCredits,
+        videoAudioCredits: parsed.videoAudioCredits,
+        raw: result,
+      });
+    }
+
+    // ========================================
+    // 订阅 (SUBSCRIPTION) 处理分支 (原有逻辑)
+    // ========================================
 
   // defaults in case we cannot reach database
   let effectivePlan = plan;
@@ -225,48 +375,129 @@ export async function POST(request: NextRequest) {
   // Domestic版：写入 CloudBase
   if (IS_DOMESTIC_VERSION && userId) {
     const now = new Date();
-    // fetch and upsert in CloudBase
-    const subs = await upsertCloudbaseSubscription({
-      userId,
-      plan,
-      period,
-      provider: "paypal",
-      providerOrderId: orderId,
-      expiresAt,
-      startedAt: now,
-      amount: amountValue,
-      currency,
-      status: status || "COMPLETED",
-    });
-
-    // determine highest active plan
-    const nowIso = new Date();
-    const active = (subs || []).filter(
-      (s: any) =>
-        !s.expiresAt || isAfter(new Date(s.expiresAt), nowIso),
-    );
-    if (active.length > 0) {
-      active.sort(
-        (a: any, b: any) => (PLAN_RANK[b.plan] || 0) - (PLAN_RANK[a.plan] || 0),
-      );
-      const top = active[0];
-      effectivePlan = top.plan || plan;
-      effectivePeriod = (top.period as "monthly" | "annual") || period;
-      expiresAt = top.expiresAt ? new Date(top.expiresAt) : expiresAt;
-    }
-
-    // update user document with plan info
-    isProFlag = effectivePlan.toLowerCase() !== "basic";
+    const nowIso = now.toISOString();
     const connector = new CloudBaseConnector();
     await connector.initialize();
     const db = connector.getClient();
-    await db.collection("users").doc(userId).update({
-      pro: isProFlag,
-      plan: effectivePlan,
-      plan_exp: expiresAt.toISOString(),
-      subscriptionTier: effectivePlan,
-      updatedAt: new Date().toISOString(),
+    const userRes = await db.collection("users").doc(userId).get();
+    const userDoc = userRes?.data?.[0] || null;
+
+    const normalizePlanKey = (p: string) => normalizePlanName(p) || "";
+
+    const purchasePlanLower = plan.toLowerCase();
+    const purchasePlanKey = normalizePlanKey(plan);
+    const currentPlanKey = normalizePlanKey(userDoc?.plan || "");
+    const currentPlanExp = userDoc?.plan_exp
+      ? new Date(userDoc.plan_exp)
+      : null;
+    const currentPlanActive = currentPlanExp ? isAfter(currentPlanExp, now) : false;
+    const purchaseRank = PLAN_RANK[purchasePlanKey] || 0;
+    const currentRank = PLAN_RANK[currentPlanKey] || 0;
+    const isUpgrade = purchaseRank > currentRank && currentPlanActive;
+    const isDowngrade = purchaseRank < currentRank && currentPlanActive;
+    const isSameActive = purchaseRank === currentRank && currentPlanActive;
+    const isNewOrExpired = !currentPlanActive || !currentPlanKey;
+
+    const extendDays = CYCLE_DAYS[period] || 30;
+    const { imageLimit, videoLimit } = getPlanMediaLimits(purchasePlanLower);
+    const baseDate = isSameActive && currentPlanExp ? currentPlanExp : now;
+    let purchaseExpiresAt = addDays(baseDate, extendDays);
+    let pendingDowngrade: { targetPlan: string; effectiveAt?: string } | null = null;
+
+    // 记录支付
+    await db.collection("payments").add({
+      userId,
+      provider: "paypal",
+      providerOrderId: orderId,
+      amount: amountValue,
+      currency,
+      status: status || "COMPLETED",
+      plan,
+      period,
+      type: "SUBSCRIPTION",
+      createdAt: nowIso,
     });
+
+    const subsColl = db.collection("subscriptions");
+
+    if (isDowngrade) {
+      const scheduledStart = currentPlanExp && currentPlanActive ? currentPlanExp : now;
+      const scheduledExpire = addDays(scheduledStart, extendDays);
+      pendingDowngrade = {
+        targetPlan: plan,
+        effectiveAt: scheduledStart.toISOString(),
+      };
+
+      await subsColl.add({
+        userId,
+        plan,
+        period,
+        status: "pending",
+        provider: "paypal",
+        providerOrderId: orderId,
+        startedAt: scheduledStart.toISOString(),
+        expiresAt: scheduledExpire.toISOString(),
+        updatedAt: nowIso,
+        createdAt: nowIso,
+        type: "SUBSCRIPTION",
+      });
+
+      await db.collection("users").doc(userId).update({
+        pendingDowngrade,
+        updatedAt: nowIso,
+      });
+
+      effectivePlan = currentPlanKey || plan;
+      effectivePeriod = period;
+      expiresAt = currentPlanExp || purchaseExpiresAt;
+    } else {
+      const subPayload = {
+        userId,
+        plan,
+        period,
+        status: "active",
+        provider: "paypal",
+        providerOrderId: orderId,
+        startedAt: nowIso,
+        expiresAt: purchaseExpiresAt.toISOString(),
+        updatedAt: nowIso,
+        type: "SUBSCRIPTION",
+      };
+
+      const existing = await subsColl
+        .where({ userId, provider: "paypal", plan })
+        .limit(1)
+        .get();
+
+      if (existing?.data?.[0]?._id) {
+        await subsColl.doc(existing.data[0]._id).update(subPayload);
+      } else {
+        await subsColl.add({ ...subPayload, createdAt: nowIso });
+      }
+
+      effectivePlan = plan;
+      effectivePeriod = period;
+      expiresAt = purchaseExpiresAt;
+
+      await db.collection("users").doc(userId).update({
+        pro: purchasePlanLower !== "basic",
+        plan,
+        plan_exp: purchaseExpiresAt.toISOString(),
+        subscriptionTier: plan,
+        pendingDowngrade: null,
+        updatedAt: nowIso,
+      });
+
+      if (isUpgrade || isNewOrExpired) {
+        await upgradeMonthlyQuota(userId, imageLimit, videoLimit);
+      } else if (isSameActive) {
+        await renewMonthlyQuota(userId);
+      }
+
+      await seedWalletForPlan(userId, purchasePlanLower, {
+        forceReset: isUpgrade || isNewOrExpired,
+      });
+    }
   }
 
     return NextResponse.json({

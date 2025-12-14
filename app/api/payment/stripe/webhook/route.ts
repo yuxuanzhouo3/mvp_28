@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addDays, isAfter } from "date-fns";
-import { verifyStripeWebhook, retrieveStripeSession } from "@/lib/stripe";
+import { verifyStripeWebhook } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
+import { addAddonCredits } from "@/services/wallet";
+import { type ProductType } from "@/constants/addon-packages";
 import Stripe from "stripe";
 
 // Stripe Webhook 必须使用 Node.js Runtime
@@ -13,13 +15,18 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
-const CYCLE_DAYS: Record<"monthly" | "annual", number> = {
-  monthly: 30,
-  annual: 365,
+
+// 统一套餐名称，兼容中文/英文，返回英文 canonical key
+const normalizePlanName = (p?: string) => {
+  const lower = (p || "").toLowerCase();
+  if (lower === "basic" || lower === "基础版") return "Basic";
+  if (lower === "pro" || lower === "专业版") return "Pro";
+  if (lower === "enterprise" || lower === "企业版") return "Enterprise";
+  return p || "";
 };
 
 function parseMetadata(metadata: Record<string, string>) {
-  const plan = metadata.planName || "Pro";
+  const plan = normalizePlanName(metadata.planName || "Pro");
   const periodStr = (metadata.billingCycle || "monthly").toLowerCase();
   const period: "monthly" | "annual" =
     periodStr === "annual" || periodStr === "yearly" ? "annual" : "monthly";
@@ -27,74 +34,6 @@ function parseMetadata(metadata: Record<string, string>) {
   const days = parseInt(metadata.days || "30", 10);
 
   return { plan, period, userId, days };
-}
-
-async function upsertCloudbaseSubscription(params: {
-  userId: string;
-  plan: string;
-  period: "monthly" | "annual";
-  provider: string;
-  providerOrderId: string;
-  expiresAt: Date;
-  startedAt: Date;
-  amount: number;
-  currency: string;
-  status: string;
-}) {
-  const connector = new CloudBaseConnector();
-  await connector.initialize();
-  const db = connector.getClient();
-  const {
-    userId,
-    plan,
-    period,
-    provider,
-    providerOrderId,
-    expiresAt,
-    startedAt,
-    amount,
-    currency,
-    status,
-  } = params;
-
-  const subsColl = db.collection("subscriptions");
-  const existing = await subsColl
-    .where({ userId, provider, plan })
-    .limit(1)
-    .get();
-  const nowIso = new Date().toISOString();
-  const subPayload = {
-    userId,
-    plan,
-    period,
-    status,
-    provider,
-    providerOrderId,
-    startedAt: startedAt.toISOString(),
-    expiresAt: expiresAt.toISOString(),
-    updatedAt: nowIso,
-  };
-  if (existing?.data?.[0]?._id) {
-    await subsColl.doc(existing.data[0]._id).update(subPayload);
-  } else {
-    await subsColl.add({ ...subPayload, createdAt: nowIso });
-  }
-
-  const payColl = db.collection("payments");
-  await payColl.add({
-    userId,
-    provider,
-    providerOrderId,
-    amount,
-    currency,
-    status,
-    plan,
-    period,
-    createdAt: nowIso,
-  });
-
-  const all = await subsColl.where({ userId, provider }).get();
-  return all?.data || [];
 }
 
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
@@ -109,11 +48,44 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
   const amount = (session.amount_total || 0) / 100;
   const currency = session.currency?.toUpperCase() || "USD";
   const sessionId = session.id;
+  const productType = (metadata.productType as ProductType) || "SUBSCRIPTION";
 
   let effectivePlan = plan;
   let effectivePeriod: "monthly" | "annual" = period;
   let expiresAt = addDays(new Date(), days);
   let isProFlag = effectivePlan.toLowerCase() !== "basic";
+
+  // 国内版：支付状态由前端 /confirm 接口处理，这里仅处理加油包追加
+  if (IS_DOMESTIC_VERSION) {
+    if (productType === "ADDON" && userId) {
+      try {
+        const connector = new CloudBaseConnector();
+        await connector.initialize();
+        const db = connector.getClient();
+        const imageCredits = parseInt(metadata.imageCredits || "0", 10);
+        const videoAudioCredits = parseInt(metadata.videoAudioCredits || "0", 10);
+
+        await db.collection("payments").add({
+          userId,
+          provider: "stripe",
+          providerOrderId: sessionId,
+          amount,
+          currency,
+          status: "COMPLETED",
+          type: "ADDON",
+          addonPackageId: metadata.addonPackageId || "",
+          imageCredits,
+          videoAudioCredits,
+          createdAt: new Date().toISOString(),
+        });
+
+        await addAddonCredits(userId, imageCredits, videoAudioCredits);
+      } catch (err) {
+        console.error("[stripe webhook][addon] error", err);
+      }
+    }
+    return true;
+  }
 
   // 国际版：使用 Supabase
   if (!IS_DOMESTIC_VERSION && supabaseAdmin) {
@@ -196,50 +168,6 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
       expiresAt: expiresAt.toISOString(),
     });
   }
-
-  // 国内版：使用 CloudBase
-  if (IS_DOMESTIC_VERSION) {
-    const now = new Date();
-    const subs = await upsertCloudbaseSubscription({
-      userId,
-      plan,
-      period,
-      provider: "stripe",
-      providerOrderId: sessionId,
-      expiresAt,
-      startedAt: now,
-      amount,
-      currency,
-      status: "COMPLETED",
-    });
-
-    const nowIso = new Date();
-    const active = (subs || []).filter(
-      (s: any) => !s.expiresAt || isAfter(new Date(s.expiresAt), nowIso)
-    );
-    if (active.length > 0) {
-      active.sort(
-        (a: any, b: any) => (PLAN_RANK[b.plan] || 0) - (PLAN_RANK[a.plan] || 0)
-      );
-      const top = active[0];
-      effectivePlan = top.plan || plan;
-      effectivePeriod = (top.period as "monthly" | "annual") || period;
-      expiresAt = top.expiresAt ? new Date(top.expiresAt) : expiresAt;
-    }
-
-    isProFlag = effectivePlan.toLowerCase() !== "basic";
-    const connector = new CloudBaseConnector();
-    await connector.initialize();
-    const db = connector.getClient();
-    await db.collection("users").doc(userId).update({
-      pro: isProFlag,
-      plan: effectivePlan,
-      plan_exp: expiresAt.toISOString(),
-      subscriptionTier: effectivePlan,
-      updatedAt: new Date().toISOString(),
-    });
-  }
-
   return true;
 }
 
@@ -313,6 +241,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-
-

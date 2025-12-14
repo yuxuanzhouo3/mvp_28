@@ -374,8 +374,11 @@ export const useMessageSubmission = (
             ? getEnterpriseContextMsgLimit()
             : getFreeContextMsgLimit();
 
+    // 轮次：以“助手回复数”近似完成的问答轮；为避免尾部多余用户消息导致误差，取用户/助手计数的较小值
+    const userCount = messages.filter((m) => m.role === "user").length;
     const assistantCount = messages.filter((m) => m.role === "assistant").length;
-    const remainingRounds = Math.max(0, ctxLimit - assistantCount);
+    const completedRounds = Math.min(userCount, assistantCount);
+    const remainingRounds = Math.max(0, ctxLimit - completedRounds);
     if (remainingRounds <= 0) {
       openUpgrade?.();
       alert(

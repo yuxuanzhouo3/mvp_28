@@ -6,7 +6,12 @@ import { apiService } from "../lib/api";
 import { detectLanguage, getSelectedModelDisplay } from "../utils";
 import { createClient } from "@/lib/supabase/client";
 import { GENERAL_MODEL_ID } from "@/utils/model-limits";
-import { getFreeContextMsgLimit } from "@/utils/model-limits";
+import {
+  getFreeContextMsgLimit,
+  getBasicContextMsgLimit,
+  getProContextMsgLimit,
+  getEnterpriseContextMsgLimit,
+} from "@/utils/model-limits";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const useMessageSubmission = (
@@ -357,25 +362,43 @@ export const useMessageSubmission = (
 
     setIsLoading(true);
 
-    // 准备上下文（用户与助手消息）用于流式接口
-    let preparedHistory = [...messages, userMessage];
+    // =============================
+    // 上下文限额（按“轮次”计：一问一答算 1 条）
+    // =============================
+    const ctxLimit =
+      planLower === "basic"
+        ? getBasicContextMsgLimit()
+        : planLower === "pro"
+          ? getProContextMsgLimit()
+          : planLower === "enterprise"
+            ? getEnterpriseContextMsgLimit()
+            : getFreeContextMsgLimit();
 
-    // 上下文截断：Free 用户按环境限制，只保留最近 N 条
-    if (isFreeUser) {
-      const ctxLimit = getFreeContextMsgLimit();
-      if (messages.length >= ctxLimit) {
-        openUpgrade?.();
-        alert(
-          selectedLanguage === "zh"
-            ? `上下文已达上限（${ctxLimit}条）。请订阅以提升额度，或新建对话后再试。`
-            : `Context limit reached (${ctxLimit} messages). Subscribe to increase your context size or start a new chat.`
-        );
-        releaseLock();
-        return;
-      }
-      if (preparedHistory.length > ctxLimit) {
-        preparedHistory = preparedHistory.slice(-ctxLimit);
-      }
+    const assistantCount = messages.filter((m) => m.role === "assistant").length;
+    const remainingRounds = Math.max(0, ctxLimit - assistantCount);
+    if (remainingRounds <= 0) {
+      openUpgrade?.();
+      alert(
+        selectedLanguage === "zh"
+          ? `上下文已达上限（${ctxLimit}条）。请升级或新建对话后再试。`
+          : `Context limit reached (${ctxLimit} messages). Please upgrade or start a new chat.`
+      );
+      releaseLock();
+      return;
+    }
+    if (remainingRounds <= 10) {
+      alert(
+        selectedLanguage === "zh"
+          ? `上下文剩余 ${remainingRounds} 条（上限 ${ctxLimit} 条）。为避免中断，请尽快升级或新建对话。`
+          : `Context remaining ${remainingRounds} of ${ctxLimit}. Please upgrade or start a new chat soon.`
+      );
+    }
+
+    // 准备上下文（仅保留最近 ctxLimit 轮：用户+助手≈2条/轮）
+    let preparedHistory = [...messages, userMessage];
+    const maxHistoryMessages = ctxLimit * 2;
+    if (preparedHistory.length > maxHistoryMessages) {
+      preparedHistory = preparedHistory.slice(-maxHistoryMessages);
     }
 
     const historyMessages = preparedHistory.map((msg) => ({
@@ -409,6 +432,8 @@ export const useMessageSubmission = (
           const quotaType = body?.quotaType || "daily";
           const planLower = (appUser?.plan || "").toLowerCase?.() || "";
           const isBasic = planLower === "basic";
+          const isPro = planLower === "pro";
+          const isEnterprise = planLower === "enterprise";
           let msg: string;
           openUpgrade?.();
           if (quotaType === "monthly_photo") {
@@ -422,10 +447,14 @@ export const useMessageSubmission = (
           } else {
             const defaultZh = isBasic
               ? "今日基础版额度已用完，请升级套餐或切换到通用模型（General Model）继续使用。"
-              : "今日免费额度已用完，请升级套餐或切换到通用模型（General Model）继续使用。";
+              : isPro || isEnterprise
+                ? "当前套餐额度已用完，请升级更高套餐或切换到通用模型（General Model）继续使用。"
+                : "今日免费额度已用完，请升级套餐或切换到通用模型（General Model）继续使用。";
             const defaultEn = isBasic
               ? "Today's Basic quota is used up. Please upgrade or switch to the General Model."
-              : "Today's free quota is used up. Please upgrade or switch to the General Model.";
+              : isPro || isEnterprise
+                ? "Your current plan quota is used up. Please upgrade to a higher plan or switch to the General Model."
+                : "Today's free quota is used up. Please upgrade or switch to the General Model.";
             msg = selectedLanguage === "zh"
               ? body?.error || defaultZh
               : body?.error || defaultEn;

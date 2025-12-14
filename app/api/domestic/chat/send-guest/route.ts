@@ -141,14 +141,14 @@ export async function POST(req: Request) {
       (Array.isArray(messages) &&
         messages.some((m) => (m?.images || m?.videos || m?.audios || []).length > 0));
 
-    console.log("[media][send] incoming", {
-      model,
-      modelId,
-      images: Array.isArray(images) ? images.length : 0,
-      videos: Array.isArray(videos) ? videos.length : 0,
-      audios: Array.isArray(audios) ? audios.length : 0,
-      msgCount: Array.isArray(messages) ? messages.length : 0,
-    });
+    // console.log("[media][send] incoming", {
+    //   model,
+    //   modelId,
+    //   images: Array.isArray(images) ? images.length : 0,
+    //   videos: Array.isArray(videos) ? videos.length : 0,
+    //   audios: Array.isArray(audios) ? audios.length : 0,
+    //   msgCount: Array.isArray(messages) ? messages.length : 0,
+    // });
 
     // ============================================================
     // 校验登录 & 读取套餐信息 (确保额度可扣减)
@@ -165,7 +165,7 @@ export async function POST(req: Request) {
       : headerToken
         ? decodeURIComponent(headerToken)
         : null;
-    console.log("[quota][send] auth headerToken", headerToken ? "present" : "missing", "cookieToken", rawTokenCookie ? "present" : "missing");
+    // console.log("[quota][send] auth headerToken", headerToken ? "present" : "missing", "cookieToken", rawTokenCookie ? "present" : "missing");
     if (!authToken) {
       return new Response(
         JSON.stringify({ success: false, error: "Unauthorized: auth-token required" }),
@@ -185,7 +185,7 @@ export async function POST(req: Request) {
         );
       }
       plan = getPlanInfo(user.metadata);
-      console.log("[quota][send] user", user.id, "plan", plan.planLower, "planActive", plan.planActive);
+      // console.log("[quota][send] user", user.id, "plan", plan.planLower, "planActive", plan.planActive);
     } catch {
       return new Response(
         JSON.stringify({ success: false, error: "Unauthorized" }),
@@ -227,12 +227,12 @@ export async function POST(req: Request) {
       category === "advanced_multimodal" && (imageCount > 0 || videoAudioCount > 0);
     const shouldDeductMediaQuota = requiresMediaQuota;
     const shouldDeductDailyExternal = category === "external";
-    console.log("[quota][send] model", finalModelId, "category", category, {
-      imageCount,
-      videoAudioCount,
-      requiresMediaQuota,
-      shouldDeductDailyExternal,
-    });
+    // console.log("[quota][send] model", finalModelId, "category", category, {
+    //   imageCount,
+    //   videoAudioCount,
+    //   requiresMediaQuota,
+    //   shouldDeductDailyExternal,
+    // });
 
     if (requiresMediaQuota) {
       const effectivePlanLower = plan.planActive ? plan.planLower || "free" : "free";
@@ -312,10 +312,10 @@ export async function POST(req: Request) {
         (tempRes.fileList || []).map((f: { fileID: string; tempFileURL: string }) => [f.fileID, f.tempFileURL])
       );
 
-      console.log("[media][send] resolved temp URLs", {
-        requested: needIds.length,
-        resolved: Object.keys(tempUrlMap).length,
-      });
+      // console.log("[media][send] resolved temp URLs", {
+      //   requested: needIds.length,
+      //   resolved: Object.keys(tempUrlMap).length,
+      // });
     }
 
     const resolveImageUrl = (v: string) => (v.startsWith("http") ? v : tempUrlMap[v] || null);
@@ -333,10 +333,10 @@ export async function POST(req: Request) {
     try {
       openaiMessages = buildOpenAIMessages(mergedMessages, resolveImageUrl, resolveVideoUrl, resolveAudioUrl);
       const firstUser = openaiMessages.find((m: any) => m.role === "user");
-      console.log("[media][send] openaiMessages sample", {
-        count: openaiMessages.length,
-        firstUser,
-      });
+      // console.log("[media][send] openaiMessages sample", {
+      //   count: openaiMessages.length,
+      //   firstUser,
+      // });
     } catch (err) {
       return new Response(JSON.stringify({ success: false, error: (err as Error).message }), {
         status: 400,
@@ -379,11 +379,7 @@ export async function POST(req: Request) {
       if (!consumeResult.success) {
         console.error("[quota][send][consume-error]", consumeResult.error);
       } else {
-        console.log("[quota][send][consume-media-ok]", {
-          userId: user.id,
-          deducted: consumeResult.deducted,
-          remaining: consumeResult.remaining,
-        });
+        // log suppressed
       }
     }
     if (shouldDeductDailyExternal) {
@@ -395,11 +391,7 @@ export async function POST(req: Request) {
       if (!consumeDailyResult.success) {
         console.error("[quota][send][daily-consume-error]", consumeDailyResult.error);
       } else {
-        console.log("[quota][send][daily-consume-ok]", {
-          userId: user.id,
-          plan: plan.planLower,
-          count: 1,
-        });
+        // log suppressed
       }
     }
 

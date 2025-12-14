@@ -428,7 +428,6 @@ export async function POST(
   const user = await getDomesticUser(req);
   if (!user) return new Response("Unauthorized", { status: 401 });
   const plan = getPlanInfo(user.metadata);
-  console.log("[quota][messages] user", user.id, "plan", plan.planLower, "rawModelId", modelId);
 
   const connector = new CloudBaseConnector();
   await connector.initialize();

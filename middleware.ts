@@ -173,7 +173,7 @@ export async function middleware(request: NextRequest) {
       // 正常地理位置检测
       // 获取客户端真实IP并检测地理位置
       const clientIP = getClientIP(request);
-      console.log("[GeoDetect] clientIP:", clientIP || "null", "xff:", request.headers.get("x-forwarded-for") || "none");
+      // console.log("[GeoDetect] clientIP:", clientIP || "null", "xff:", request.headers.get("x-forwarded-for") || "none");
 
       if (!clientIP) {
         console.warn("无法获取客户端IP，使用默认处理");
@@ -184,10 +184,10 @@ export async function middleware(request: NextRequest) {
       geoResult = await geoRouter.detect(clientIP);
     }
 
-    console.log(
-      `IP检测结果 - 国家: ${geoResult.countryCode}, 地区: ${geoResult.region}${debugParam && isDevelopment ? " (调试模式)" : ""
-      }`
-    );
+    // console.log(
+    //   `IP检测结果 - 国家: ${geoResult.countryCode}, 地区: ${geoResult.region}${debugParam && isDevelopment ? " (调试模式)" : ""
+    //   }`
+    // );
 
     // 1. 禁止欧洲IP访问（开发环境调试模式除外）
     if (

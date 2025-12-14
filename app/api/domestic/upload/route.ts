@@ -70,12 +70,12 @@ export async function POST(req: NextRequest) {
       console.warn("[upload] failed to get temp url", err);
     }
 
-    console.log("[media][upload] file uploaded", {
-      name: file.name,
-      size: file.size,
-      fileId: res.fileID,
-      tempUrl: !!tempUrl,
-    });
+    // console.log("[media][upload] file uploaded", {
+    //   name: file.name,
+    //   size: file.size,
+    //   fileId: res.fileID,
+    //   tempUrl: !!tempUrl,
+    // });
 
     return NextResponse.json({ fileId: res.fileID, tempUrl });
   } catch (error) {

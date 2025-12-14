@@ -182,11 +182,18 @@ export default function Header({
 
   const quotaText = isUnlimited ? "∞/∞" : null;
   // 实时钱包（用于显示加油包最新额度）
-  const [liveWallet, setLiveWallet] = useState<{ addon_image_balance: number; addon_video_balance: number } | null>(
+  const [liveWallet, setLiveWallet] = useState<{
+    addon_image_balance: number;
+    addon_video_balance: number;
+    monthly_image_balance?: number;
+    monthly_video_balance?: number;
+  } | null>(
     appUser?.wallet
       ? {
           addon_image_balance: appUser.wallet.addon_image_balance ?? 0,
           addon_video_balance: appUser.wallet.addon_video_balance ?? 0,
+          monthly_image_balance: appUser.wallet.monthly_image_balance ?? undefined,
+          monthly_video_balance: appUser.wallet.monthly_video_balance ?? undefined,
         }
       : null
   );
@@ -203,6 +210,8 @@ export default function Header({
           setLiveWallet({
             addon_image_balance: data.wallet.addon?.image ?? 0,
             addon_video_balance: data.wallet.addon?.video ?? 0,
+            monthly_image_balance: data.wallet.monthly?.image,
+            monthly_video_balance: data.wallet.monthly?.video,
           });
         }
       } catch {
@@ -233,6 +242,8 @@ export default function Header({
     if (!isFreeUser && !isBasicUser && !isProUserLimited && !isEnterpriseUser) return null;
     const addonImage = liveWallet?.addon_image_balance ?? 0;
     const addonVideo = liveWallet?.addon_video_balance ?? 0;
+    const monthlyImageBalance = liveWallet?.monthly_image_balance;
+    const monthlyVideoBalance = liveWallet?.monthly_video_balance;
     const isBasic = isBasicUser;
     const isPro = isProUserLimited;
     const isEnterprise = isEnterpriseUser;
@@ -264,13 +275,20 @@ export default function Header({
         : isEnterprise
           ? enterprisePhotoLimit ?? 0
           : freePhotoLimit ?? 0;
-    const photoRemainingSafe = isBasic
-      ? basicPhotoRemaining ?? photoLimitSafe
-      : isPro
-        ? proPhotoRemaining ?? photoLimitSafe
-        : isEnterprise
-          ? enterprisePhotoRemaining ?? photoLimitSafe
-          : freePhotoRemaining ?? photoLimitSafe;
+    const photoRemainingRaw =
+      monthlyImageBalance ??
+      (isBasic
+        ? basicPhotoRemaining
+        : isPro
+          ? proPhotoRemaining
+          : isEnterprise
+            ? enterprisePhotoRemaining
+            : freePhotoRemaining);
+    const photoRemainingSafe = typeof photoRemainingRaw === "number" ? photoRemainingRaw : photoLimitSafe;
+    const photoBaseLimit = Math.max(
+      photoRemainingSafe,
+      photoLimitSafe > 0 ? photoLimitSafe - addonImage : 0
+    );
     const videoLimitSafe = isBasic
       ? basicVideoAudioLimit ?? 0
       : isPro
@@ -278,17 +296,24 @@ export default function Header({
         : isEnterprise
           ? enterpriseVideoAudioLimit ?? 0
           : freeVideoAudioLimit ?? 0;
-    const videoRemainingSafe = isBasic
-      ? basicVideoAudioRemaining ?? videoLimitSafe
-      : isPro
-        ? proVideoAudioRemaining ?? videoLimitSafe
-        : isEnterprise
-          ? enterpriseVideoAudioRemaining ?? videoLimitSafe
-          : freeVideoAudioRemaining ?? videoLimitSafe;
+    const videoRemainingRaw =
+      monthlyVideoBalance ??
+      (isBasic
+        ? basicVideoAudioRemaining
+        : isPro
+          ? proVideoAudioRemaining
+          : isEnterprise
+            ? enterpriseVideoAudioRemaining
+            : freeVideoAudioRemaining);
+    const videoRemainingSafe = typeof videoRemainingRaw === "number" ? videoRemainingRaw : videoLimitSafe;
+    const videoBaseLimit = Math.max(
+      videoRemainingSafe,
+      videoLimitSafe > 0 ? videoLimitSafe - addonVideo : 0
+    );
     const photoPercent =
-      photoLimitSafe > 0 ? Math.min(100, Math.max(0, (photoRemainingSafe / photoLimitSafe) * 100)) : 0;
+      photoBaseLimit > 0 ? Math.min(100, Math.max(0, (photoRemainingSafe / photoBaseLimit) * 100)) : 0;
     const videoPercent =
-      videoLimitSafe > 0 ? Math.min(100, Math.max(0, (videoRemainingSafe / videoLimitSafe) * 100)) : 0;
+      videoBaseLimit > 0 ? Math.min(100, Math.max(0, (videoRemainingSafe / videoBaseLimit) * 100)) : 0;
     const dailyText =
       dailyLimit > 0 && dailyRemaining !== Infinity
         ? `${Math.max(0, Math.min(dailyLimit, Math.ceil(dailyRemaining)))} / ${dailyLimit}`
@@ -307,65 +332,72 @@ export default function Header({
           : parseLimit(freeContextLimit, parseInt(process.env.NEXT_PUBLIC_FREE_CONTEXT_MSG_LIMIT || "10", 10) || 10);
 
     return (
-      <div className="space-y-2 pt-1 border-t border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="text-gray-700 dark:text-gray-200">
-            {selectedLanguage === "zh" ? "每日外部模型额度" : "Daily external quota"}
-          </span>
-          <span className="font-semibold text-gray-900 dark:text-gray-50">{dailyText}</span>
-        </div>
-        <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-green-400 via-blue-400 to-blue-600 transition-[width] duration-300"
-            style={{ width: `${dailyPercent}%` }}
-          />
-        </div>
-
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="text-gray-700 dark:text-gray-200">
-            {selectedLanguage === "zh" ? "本月图片额度" : "Monthly photos"}
-          </span>
-          <span className="font-semibold text-gray-900 dark:text-gray-50">
-            {photoLimitSafe ? `${Math.max(0, photoRemainingSafe)} / ${photoLimitSafe}` : "—"}
-          </span>
-        </div>
-        <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-purple-300 via-purple-400 to-purple-600 transition-[width] duration-300"
-            style={{ width: `${photoPercent}%` }}
-          />
-        </div>
-
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="text-gray-700 dark:text-gray-200">
-            {selectedLanguage === "zh" ? "本月视频/音频额度" : "Monthly video/audio"}
-          </span>
-          <span className="font-semibold text-gray-900 dark:text-gray-50">
-            {videoLimitSafe ? `${Math.max(0, videoRemainingSafe)} / ${videoLimitSafe}` : "—"}
-          </span>
-        </div>
-        <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-orange-300 via-orange-400 to-red-500 transition-[width] duration-300"
-            style={{ width: `${videoPercent}%` }}
-          />
-        </div>
-
-        {/* 加油包永久额度展示 */}
-        <div className="flex items-center justify-between text-[11px] text-amber-700 dark:text-amber-300 pt-1 border-t border-gray-200 dark:border-gray-700">
-          <span className="font-medium">
-            {selectedLanguage === "zh" ? "加油包（永久）" : "Add-on credits"}
-          </span>
-          <span className="flex items-center space-x-2">
-            <span className="flex items-center space-x-1">
-              <span>📷</span>
-              <span>{addonImage}</span>
+      <div className="space-y-3 pt-1 border-t border-gray-200 dark:border-gray-700">
+        {/* 订阅额度 */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-gray-700 dark:text-gray-200">
+              {selectedLanguage === "zh" ? "每日外部模型额度" : "Daily external quota"}
             </span>
-            <span className="flex items-center space-x-1">
-              <span>🎬</span>
-              <span>{addonVideo}</span>
+            <span className="font-semibold text-gray-900 dark:text-gray-50">{dailyText}</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-green-400 via-blue-400 to-blue-600 transition-[width] duration-300"
+              style={{ width: `${dailyPercent}%` }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-gray-700 dark:text-gray-200">
+              {selectedLanguage === "zh" ? "本月图片额度" : "Monthly photos"}
             </span>
+          <span className="font-semibold text-gray-900 dark:text-gray-50">
+            {photoBaseLimit ? `${Math.max(0, photoRemainingSafe)} / ${photoBaseLimit}` : "—"}
           </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-purple-300 via-purple-400 to-purple-600 transition-[width] duration-300"
+              style={{ width: `${photoPercent}%` }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-gray-700 dark:text-gray-200">
+              {selectedLanguage === "zh" ? "本月视频/音频额度" : "Monthly video/audio"}
+            </span>
+          <span className="font-semibold text-gray-900 dark:text-gray-50">
+            {videoBaseLimit ? `${Math.max(0, videoRemainingSafe)} / ${videoBaseLimit}` : "—"}
+          </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-orange-300 via-orange-400 to-red-500 transition-[width] duration-300"
+              style={{ width: `${videoPercent}%` }}
+            />
+          </div>
+        </div>
+
+        {/* 加油包额度 */}
+        <div className="space-y-2 pt-2 border-t border-dashed border-amber-200 dark:border-amber-900/50">
+          <div className="flex items-center justify-between text-[11px] text-amber-700 dark:text-amber-300">
+            <span className="font-medium">
+              {selectedLanguage === "zh" ? "加油包图片额度" : "Add-on images"}
+            </span>
+            <span className="font-semibold text-gray-900 dark:text-gray-50">
+              {`${addonImage}`}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-amber-700 dark:text-amber-300">
+            <span className="font-medium">
+              {selectedLanguage === "zh" ? "加油包视频/音频额度" : "Add-on video/audio"}
+            </span>
+            <span className="font-semibold text-gray-900 dark:text-gray-50">
+              {`${addonVideo}`}
+            </span>
+          </div>
         </div>
 
         {typeof contextLimit === "number" && contextLimit > 0 && (

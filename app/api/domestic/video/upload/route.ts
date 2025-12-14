@@ -71,12 +71,12 @@ export async function POST(req: NextRequest) {
       console.warn("[video/upload] failed to get temp url", err);
     }
 
-    console.log("[media][video-upload] file uploaded", {
-      name: file.name,
-      size: file.size,
-      fileId: uploadRes.fileID,
-      tempUrl: !!tempUrl,
-    });
+    // console.log("[media][video-upload] file uploaded", {
+    //   name: file.name,
+    //   size: file.size,
+    //   fileId: uploadRes.fileID,
+    //   tempUrl: !!tempUrl,
+    // });
 
     return NextResponse.json({ fileId: uploadRes.fileID, tempUrl });
   } catch (error) {

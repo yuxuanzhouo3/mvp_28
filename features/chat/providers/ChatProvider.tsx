@@ -1380,6 +1380,15 @@ const loadMessagesForConversation = useCallback(
     appUserRef.current = appUser as AppUser | null;
   }, [appUser]);
 
+  // 登录后默认选择通用模型（General Model），避免默认选中外部模型
+  useEffect(() => {
+    if (appUser && (!currentChatId || chatSessions.length === 0)) {
+      setSelectedModelType("general");
+      setSelectedModel(GENERAL_MODEL_ID);
+      setSelectedCategory("general");
+    }
+  }, [appUser, currentChatId, chatSessions.length, setSelectedModel, setSelectedModelType, setSelectedCategory]);
+
   useEffect(() => {
     chatSessionsRef.current = chatSessions;
   }, [chatSessions]);

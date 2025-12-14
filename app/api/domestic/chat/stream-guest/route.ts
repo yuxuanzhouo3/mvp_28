@@ -172,7 +172,7 @@ export async function POST(req: Request) {
         );
       }
       plan = getPlanInfo(user.metadata);
-      console.log("[quota][stream] user", user.id, "plan", plan.planLower);
+      // console.log("[quota][stream] user", user.id, "plan", plan.planLower);
     } catch {
       console.warn("[quota][stream] auth validate failed");
       return new Response(
@@ -187,7 +187,7 @@ export async function POST(req: Request) {
       if (processedMessages.length > contextLimit) {
         processedMessages = truncateContextMessages(processedMessages, contextLimit);
         contextTruncated = true;
-        console.log("[context] Free user messages truncated:", messages.length, "->", processedMessages.length, "limit:", contextLimit);
+        // context truncated for free user
       }
     }
 
@@ -218,12 +218,12 @@ export async function POST(req: Request) {
       category === "advanced_multimodal" && (imageCount > 0 || videoAudioCount > 0);
     const shouldDeductMediaQuota = requiresMediaQuota;
     const shouldDeductDailyExternal = category === "external";
-    console.log("[quota][stream] model", finalModelId, "category", category, {
-      imageCount,
-      videoAudioCount,
-      requiresMediaQuota,
-      shouldDeductDailyExternal,
-    });
+    // console.log("[quota][stream] model", finalModelId, "category", category, {
+    //   imageCount,
+    //   videoAudioCount,
+    //   requiresMediaQuota,
+    //   shouldDeductDailyExternal,
+    // });
 
     if (requiresMediaQuota) {
       if (!plan.planActive) {
@@ -254,11 +254,11 @@ export async function POST(req: Request) {
     if (shouldDeductDailyExternal) {
       const effectivePlanLower = plan.planActive ? plan.planLower || "free" : "free";
       const dailyCheck = await checkDailyExternalQuota(user.id, effectivePlanLower, 1);
-      console.log("[quota][stream] daily check", {
-        userId: user.id,
-        effectivePlanLower,
-        dailyCheck,
-      });
+      // console.log("[quota][stream] daily check", {
+      //   userId: user.id,
+      //   effectivePlanLower,
+      //   dailyCheck,
+      // });
       if (!dailyCheck.allowed) {
         console.warn("[quota][stream] daily external insufficient", {
           userId: user.id,
@@ -316,10 +316,10 @@ export async function POST(req: Request) {
         (tempRes.fileList || []).map((f: { fileID: string; tempFileURL: string }) => [f.fileID, f.tempFileURL])
       );
 
-      console.log("[media][stream] resolved temp URLs", {
-        requested: needIds.length,
-        resolved: Object.keys(tempUrlMap).length,
-      });
+      // console.log("[media][stream] resolved temp URLs", {
+      //   requested: needIds.length,
+      //   resolved: Object.keys(tempUrlMap).length,
+      // });
     }
 
     const resolveImageUrl = (v: string) => (v.startsWith("http") ? v : tempUrlMap[v] || null);
@@ -337,10 +337,10 @@ export async function POST(req: Request) {
     try {
       openaiMessages = buildOpenAIMessages(mergedMessages, resolveImageUrl, resolveVideoUrl, resolveAudioUrl);
       const firstUser = openaiMessages.find((m: any) => m.role === "user");
-      console.log("[media][stream] openaiMessages sample", {
-        count: openaiMessages.length,
-        firstUser,
-      });
+      // console.log("[media][stream] openaiMessages sample", {
+      //   count: openaiMessages.length,
+      //   firstUser,
+      // });
     } catch (err) {
       return new Response(JSON.stringify({ success: false, error: (err as Error).message }), {
         status: 400,
@@ -502,11 +502,11 @@ export async function POST(req: Request) {
           if (!consumeResult.success) {
             console.error("[quota][stream][consume-error]", consumeResult.error);
           } else {
-            console.log("[quota][stream][consume-media-ok]", {
-              userId: user.id,
-              deducted: consumeResult.deducted,
-              remaining: consumeResult.remaining,
-            });
+            // console.log("[quota][stream][consume-media-ok]", {
+            //   userId: user.id,
+            //   deducted: consumeResult.deducted,
+            //   remaining: consumeResult.remaining,
+            // });
           }
         } else if (shouldDeductMediaQuota && !streamFinished) {
           console.warn("[quota][stream] media consume skipped because stream not finished");
@@ -520,11 +520,11 @@ export async function POST(req: Request) {
           if (!consumeDailyResult.success) {
             console.error("[quota][stream][daily-consume-error]", consumeDailyResult.error);
           } else {
-            console.log("[quota][stream][daily-consume-ok]", {
-              userId: user.id,
-              plan: plan.planLower,
-              count: 1,
-            });
+            // console.log("[quota][stream][daily-consume-ok]", {
+            //   userId: user.id,
+            //   plan: plan.planLower,
+            //   count: 1,
+            // });
           }
         } else if (shouldDeductDailyExternal && !streamFinished) {
           console.warn("[quota][stream] daily consume skipped because stream not finished");

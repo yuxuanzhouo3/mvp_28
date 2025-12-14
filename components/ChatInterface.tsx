@@ -97,9 +97,14 @@ function ChatInterface({
     ? messages
     : guestChatSessions.find((c) => c.id === currentChatId)?.messages || [];
   const ctxLimit = typeof contextLimit === "number" ? contextLimit : null;
-  const ctxUsed = ctxLimit !== null ? Math.min(ctxLimit, activeMessages.length) : null;
-  const ctxRemaining = ctxLimit !== null && ctxUsed !== null ? Math.max(0, ctxLimit - ctxUsed) : null;
-  const showContextBanner = isFreeUser && ctxLimit !== null && ctxRemaining !== null;
+  const roundsUsed =
+    ctxLimit !== null
+      ? Math.min(ctxLimit, activeMessages.filter((m) => m.role === "assistant").length)
+      : null;
+  const ctxRemaining =
+    ctxLimit !== null && roundsUsed !== null ? Math.max(0, ctxLimit - roundsUsed) : null;
+  const showContextBanner =
+    ctxLimit !== null && ctxRemaining !== null && ctxRemaining <= 10 && ctxRemaining > 0;
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [mediaPreviewMap, setMediaPreviewMap] = useState<Record<string, string>>({});
   const [imagePreviewSrc, setImagePreviewSrc] = useState<string | null>(null);

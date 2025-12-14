@@ -39,6 +39,8 @@ interface UpgradeDialogProps {
   handleUpgradeClick?: (plan: PricingPlan) => void;
   appUserId?: string | null;
   defaultTab?: UpgradeTabType;
+  currentPlan?: string | null;
+  currentPlanExp?: string | null;
 }
 
 export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
@@ -53,6 +55,8 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
   handleUpgradeClick = () => {},
   appUserId,
   defaultTab = "subscription",
+  currentPlan,
+  currentPlanExp,
 }) => {
   const { currentLanguage, isDomesticVersion } = useLanguage();
   const isZh = currentLanguage === "zh";
@@ -61,6 +65,47 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
   const [selectedPayment, setSelectedPayment] = useState<"stripe" | "paypal">("stripe");
   const [isProcessing, setIsProcessing] = useState(false);
   const useRmb = isDomesticVersion;
+  const planRank: Record<string, number> = { basic: 1, pro: 2, enterprise: 3 };
+  const msPerDay = 1000 * 60 * 60 * 24;
+
+  const normalizePlanName = useCallback((p?: string | null) => {
+    const lower = (p || "").toLowerCase();
+    if (lower === "basic" || lower === "基础版") return "Basic";
+    if (lower === "pro" || lower === "专业版") return "Pro";
+    if (lower === "enterprise" || lower === "企业版") return "Enterprise";
+    return p || "";
+  }, []);
+
+  const resolvePlanByName = useCallback(
+    (name?: string | null) => {
+      if (!name) return undefined;
+      const lower = name.toLowerCase();
+      return pricingPlansRaw.find(
+        (p) =>
+          p.name.toLowerCase() === lower ||
+          (p.nameZh && p.nameZh.toLowerCase() === lower),
+      );
+    },
+    [],
+  );
+
+  const getPlanAmount = useCallback(
+    (planKey: string, period: "monthly" | "annual", useDomesticPrice: boolean) => {
+      const plan = resolvePlanByName(planKey);
+      if (!plan) return 0;
+      const label =
+        period === "annual"
+          ? useDomesticPrice
+            ? plan.annualPriceZh || plan.annualPrice
+            : plan.annualPrice
+          : useDomesticPrice
+            ? plan.priceZh || plan.price
+            : plan.price;
+      const numeric = parseFloat(label.replace(/[^0-9.]/g, "") || "0");
+      return period === "annual" ? numeric * 12 : numeric;
+    },
+    [resolvePlanByName],
+  );
 
   const localizedPlans = (pricingPlans || pricingPlansRaw).map((p) => ({
     ...p,
@@ -115,6 +160,96 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
       setIsProcessing(false);
     }
   };
+
+  const pricingInfo = React.useMemo(() => {
+    if (!selectedPlanInDialog) {
+      return {
+        payable: null,
+        targetAmount: null,
+        isUpgrade: false,
+        remainingDays: 0,
+        deduction: 0,
+        symbol: "",
+      };
+    }
+
+    const target = resolvePlanByName(selectedPlanInDialog.name);
+    if (!target) {
+      return {
+        payable: null,
+        targetAmount: null,
+        isUpgrade: false,
+        remainingDays: 0,
+        deduction: 0,
+        symbol: "",
+      };
+    }
+
+    const targetAmount = getPlanAmount(target.name, billingPeriod, useRmb);
+    const priceLabel =
+      billingPeriod === "annual"
+        ? selectedPlanInDialog.annualPrice || selectedPlanInDialog.price
+        : selectedPlanInDialog.price;
+    const trimmed = priceLabel.trim();
+    const symbol = trimmed.startsWith("￥") ? "￥" : trimmed.startsWith("$") ? "$" : "";
+
+    if (!isDomesticVersion) {
+      return {
+        payable: targetAmount,
+        targetAmount,
+        isUpgrade: false,
+        remainingDays: 0,
+        deduction: 0,
+        symbol,
+      };
+    }
+
+    const currentKey = normalizePlanName(currentPlan);
+    const currentRank = planRank[currentKey.toLowerCase()] || 0;
+    const targetRank = planRank[target.name.toLowerCase()] || 0;
+    const now = Date.now();
+    const exp = currentPlanExp ? new Date(currentPlanExp).getTime() : null;
+    const currentActive = exp ? exp > now : false;
+    const isUpgrade = currentActive && targetRank > currentRank && currentRank > 0;
+
+    if (!isUpgrade) {
+      return {
+        payable: targetAmount,
+        targetAmount,
+        isUpgrade: false,
+        remainingDays: 0,
+        deduction: 0,
+        symbol,
+      };
+    }
+
+    const remainingDays = Math.max(0, Math.ceil(((exp || now) - now) / msPerDay));
+    const currentMonthly = getPlanAmount(currentKey, "monthly", true);
+    const deduction = (currentMonthly / 30) * remainingDays;
+    const upgradePrice = Math.max(0, targetAmount - deduction);
+    const payable = Math.round(upgradePrice * 100) / 100;
+
+    return {
+      payable,
+      targetAmount,
+      isUpgrade: true,
+      remainingDays,
+      deduction: Math.round(deduction * 100) / 100,
+      symbol,
+    };
+  }, [
+    billingPeriod,
+    currentPlan,
+    currentPlanExp,
+    getPlanAmount,
+    isDomesticVersion,
+    normalizePlanName,
+    planRank,
+    selectedPlanInDialog,
+    useRmb,
+    resolvePlanByName,
+    msPerDay,
+  ]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -335,20 +470,23 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
                   ) : (
                     <>
                       <CreditCard className="w-4 h-4 mr-2" />
-                      {(() => {
-                        const monthly = selectedPlanInDialog.price;
-                        const annual = selectedPlanInDialog.annualPrice || monthly;
-                        if (billingPeriod === "annual") {
-                          const unit = parseFloat(annual.replace(/[^0-9.]/g, "") || "0");
-                          const total = (unit * 12).toFixed(2);
-                          const symbol = annual.trim().startsWith("￥") ? "￥" : annual.trim().startsWith("$") ? "$" : "";
-                          return isZh ? `立即支付 ${symbol}${total}` : `Pay ${symbol}${total}`;
-                        }
-                        return isZh ? `立即支付 ${monthly}` : `Pay ${monthly}`;
-                      })()}
+                      {pricingInfo.payable !== null
+                        ? isZh
+                          ? `立即支付 ${pricingInfo.symbol}${pricingInfo.payable.toFixed(2)}`
+                          : `Pay ${pricingInfo.symbol}${pricingInfo.payable.toFixed(2)}`
+                        : isZh
+                          ? "立即支付"
+                          : "Pay now"}
                     </>
                   )}
                 </Button>
+                {pricingInfo.isUpgrade && (
+                  <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-2">
+                    {isZh
+                      ? `升级价 = 目标价 ${pricingInfo.symbol}${pricingInfo.targetAmount?.toFixed(2) ?? ""} - (当前价/30 × 剩余${pricingInfo.remainingDays}天)，抵扣 ${pricingInfo.symbol}${pricingInfo.deduction.toFixed(2)}，需支付 ${pricingInfo.symbol}${pricingInfo.payable?.toFixed(2)}`
+                      : `Upgrade price = target ${pricingInfo.symbol}${pricingInfo.targetAmount?.toFixed(2) ?? ""} - (current/30 × ${pricingInfo.remainingDays} days), discount ${pricingInfo.symbol}${pricingInfo.deduction.toFixed(2)}, to pay ${pricingInfo.symbol}${pricingInfo.payable?.toFixed(2)}`}
+                  </p>
+                )}
                 <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-2">
                   {isZh ? "购买后订阅立即生效" : "Subscription activates immediately after payment"}
                 </p>

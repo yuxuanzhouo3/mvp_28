@@ -212,6 +212,8 @@ export default function ModalHub(props: ModalHubProps) {
         selectedPlanInDialog={selectedPlanInDialog}
         setSelectedPlanInDialog={setSelectedPlanInDialog}
         appUserId={appUser?.id || null}
+        currentPlan={appUser?.plan || null}
+        currentPlanExp={appUser?.planExp || null}
       />
 
       {/* Pro Upgrade Dialog */}

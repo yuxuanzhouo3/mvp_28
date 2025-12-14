@@ -1,13 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPayPalOrder, paypalErrorResponse } from "@/lib/paypal";
-import { pricingPlans } from "@/constants/pricing";
+import { pricingPlans, type PricingPlan } from "@/constants/pricing";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import { IS_DOMESTIC_VERSION } from "@/config";
+import { CloudBaseConnector } from "@/lib/cloudbase/connector";
+import { isAfter } from "date-fns";
+import { calculateUpgradePrice } from "@/services/wallet";
 import {
   getAddonPackageById,
   getAddonDescription,
   type ProductType,
 } from "@/constants/addon-packages";
+
+const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
+
+// 统一套餐名称，兼容中文/英文，返回英文 canonical key
+const normalizePlanName = (p?: string) => {
+  const lower = (p || "").toLowerCase();
+  if (lower === "basic" || lower === "基础版") return "Basic";
+  if (lower === "pro" || lower === "专业版") return "Pro";
+  if (lower === "enterprise" || lower === "企业版") return "Enterprise";
+  return p || "";
+};
+
+const extractPlanAmount = (
+  plan: PricingPlan,
+  period: "monthly" | "annual",
+  useDomesticPrice: boolean
+) => {
+  const priceLabel =
+    period === "annual"
+      ? useDomesticPrice
+        ? plan.annualPriceZh || plan.annualPrice
+        : plan.annualPrice
+      : useDomesticPrice
+        ? plan.priceZh || plan.price
+        : plan.price;
+  const numeric = parseFloat(priceLabel.replace(/[^0-9.]/g, "") || "0");
+  return period === "annual" ? numeric * 12 : numeric;
+};
 
 // 根据英文/中文名称解析套餐，始终返回英文 name 作为 canonical key
 function resolvePlan(planName?: string) {
@@ -107,17 +138,66 @@ export async function POST(request: NextRequest) {
     } else {
       // === 订阅购买 (原有逻辑) ===
       const resolvedPlan = resolvePlan(planName);
-      const effectivePlanName = resolvedPlan.name;
       const effectiveBillingPeriod = billingPeriod || "monthly";
-      
-      // PayPal 不支持 CNY，订阅统一使用美元价格字段
-      const monthlyLabel = resolvedPlan.price;
-      const annualLabel = resolvedPlan.annualPrice;
-      const monthlyPrice = parseFloat(monthlyLabel.replace(/[^0-9.]/g, "") || "0");
-      const annualMonthlyPrice = parseFloat(annualLabel.replace(/[^0-9.]/g, "") || "0");
-      
+      const useDomesticPrice = false; // PayPal 始终用美元字段
+
       // Annual UI 显示“每月折后价”，实际一次性收取 12 个月
-      amount = effectiveBillingPeriod === "annual" ? annualMonthlyPrice * 12 : monthlyPrice;
+      const baseAmount = extractPlanAmount(
+        resolvedPlan,
+        effectiveBillingPeriod,
+        useDomesticPrice
+      );
+      amount = baseAmount;
+
+      // 国内版升级：差价计算（按剩余天数折算）
+      if (IS_DOMESTIC_VERSION) {
+        try {
+          const connector = new CloudBaseConnector();
+          await connector.initialize();
+          const db = connector.getClient();
+          const userRes = await db.collection("users").doc(resolvedUserId).get();
+          const userDoc = userRes?.data?.[0] || null;
+
+          const currentPlanKey = normalizePlanName(
+            userDoc?.plan || userDoc?.subscriptionTier || ""
+          );
+          const currentPlanExp = userDoc?.plan_exp
+            ? new Date(userDoc.plan_exp)
+            : null;
+          const now = new Date();
+          const currentActive = currentPlanExp
+            ? isAfter(currentPlanExp, now)
+            : false;
+          const purchaseRank = PLAN_RANK[normalizePlanName(resolvedPlan.name)] || 0;
+          const currentRank = PLAN_RANK[currentPlanKey] || 0;
+          const isUpgrade = currentActive && purchaseRank > currentRank;
+
+          if (isUpgrade && currentPlanKey) {
+            const remainingDays = Math.max(
+              0,
+              Math.ceil(
+                ((currentPlanExp?.getTime() || 0) - now.getTime()) /
+                  (1000 * 60 * 60 * 24)
+              )
+            );
+            const currentPlanDef = resolvePlan(currentPlanKey);
+            const currentPlanPrice = extractPlanAmount(
+              currentPlanDef,
+              "monthly",
+              useDomesticPrice
+            );
+
+            amount = calculateUpgradePrice(
+              currentPlanPrice / 30,
+              remainingDays,
+              baseAmount
+            );
+          }
+        } catch (error) {
+          console.error("[paypal][create] upgrade price calc failed", error);
+          amount = baseAmount;
+        }
+      }
       currency = "USD";
       
       // customId 格式: userId|planName|billingPeriod (保持兼容)

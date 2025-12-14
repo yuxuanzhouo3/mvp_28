@@ -6,6 +6,7 @@
 
 import bcrypt from "bcryptjs";
 import { CloudBaseConnector } from "./connector";
+import { seedWalletForPlan } from "@/services/wallet";
 
 export interface CloudBaseUser {
   _id?: string;
@@ -24,6 +25,10 @@ export interface CloudBaseUser {
   plan_exp?: string | null;
   planExp?: string | null;
   paymentMethod: string | null;
+  pendingDowngrade?: {
+    targetPlan: string;
+    effectiveAt?: string;
+  } | null;
 }
 
 export interface CloudBaseSession {
@@ -73,7 +78,7 @@ export class CloudBaseAuthService {
     try {
       await this.ensureReady();
       const result = await this.db.collection("users").where({ email }).get();
-      const user = result.data[0] as CloudBaseUser | undefined;
+      let user = result.data[0] as CloudBaseUser | undefined;
       if (!user || !user.password) {
         return { user: null, error: new Error("User not found") };
       }
@@ -81,6 +86,10 @@ export class CloudBaseAuthService {
       const ok = await bcrypt.compare(password, user.password);
       if (!ok) {
         return { user: null, error: new Error("Invalid password") };
+      }
+
+      if (user._id) {
+        user = await this.applyPendingDowngradeIfNeeded(user._id, user);
       }
 
       const authUser = this.mapUser(user._id!, user);
@@ -155,11 +164,13 @@ export class CloudBaseAuthService {
       }
 
       const users = await this.db.collection("users").doc(session.userId).get();
-      const user = users.data[0] as CloudBaseUser | undefined;
+      let user = users.data[0] as CloudBaseUser | undefined;
       if (!user || !user._id) {
         console.warn("[cloudbase] validateToken: user not found for session", session);
         return null;
       }
+
+      user = await this.applyPendingDowngradeIfNeeded(user._id, user);
       return this.mapUser(user._id, user);
     } catch (error) {
       console.error("[cloudbase] validate token error", error);
@@ -238,6 +249,8 @@ export class CloudBaseAuthService {
         return { user: null, error: new Error("Failed to load/create user") };
       }
 
+      user = await this.applyPendingDowngradeIfNeeded(user._id, user);
+
       const authUser = this.mapUser(user._id, user);
       const session = await this.createSession(user._id);
 
@@ -272,6 +285,76 @@ export class CloudBaseAuthService {
       expires_at: expiresAt,
       user: authUser,
     };
+  }
+
+  /**
+   * 处理已过期的降级请求：
+   * - 等到当前套餐到期后，自动切换到用户预先购买的低阶套餐
+   * - 激活 pending 订阅记录，并重置对应套餐的钱包额度
+   */
+  private async applyPendingDowngradeIfNeeded(
+    userId: string,
+    userDoc: CloudBaseUser
+  ): Promise<CloudBaseUser> {
+    const pending = userDoc?.pendingDowngrade;
+    if (!pending?.targetPlan) return userDoc;
+
+    const effectiveAt = pending.effectiveAt
+      ? new Date(pending.effectiveAt)
+      : userDoc.plan_exp
+        ? new Date(userDoc.plan_exp)
+        : null;
+    if (!effectiveAt || effectiveAt.getTime() > Date.now()) {
+      return userDoc;
+    }
+
+    const now = new Date();
+    const subsColl = this.db.collection("subscriptions");
+
+    try {
+      const pendingRes = await subsColl
+        .where({ userId, plan: pending.targetPlan, status: "pending" })
+        .get();
+
+      const pendingSub =
+        pendingRes?.data?.find(
+          (s: any) => !s.startedAt || new Date(s.startedAt) <= now
+        ) || pendingRes?.data?.[0] || null;
+
+      const nextExpire = pendingSub?.expiresAt
+        ? new Date(pendingSub.expiresAt)
+        : null;
+
+      const updatePayload: Record<string, any> = {
+        plan: pending.targetPlan,
+        subscriptionTier: pending.targetPlan,
+        plan_exp: nextExpire ? nextExpire.toISOString() : null,
+        pro: (pending.targetPlan || "").toLowerCase() !== "basic",
+        pendingDowngrade: null,
+        updatedAt: now.toISOString(),
+      };
+
+      await this.db.collection("users").doc(userId).update(updatePayload);
+
+      if (pendingSub?._id) {
+        await subsColl.doc(pendingSub._id).update({
+          status: "active",
+          startedAt: pendingSub.startedAt || effectiveAt.toISOString(),
+          updatedAt: now.toISOString(),
+        });
+      }
+
+      await seedWalletForPlan(userId, (pending.targetPlan as string).toLowerCase(), {
+        forceReset: true,
+      });
+
+      const refreshed = await this.db.collection("users").doc(userId).get();
+      const refreshedDoc = refreshed?.data?.[0] as CloudBaseUser | undefined;
+      return refreshedDoc || ({ ...userDoc, ...updatePayload } as CloudBaseUser);
+    } catch (error) {
+      console.error("[cloudbase] applyPendingDowngrade error", error);
+      return userDoc;
+    }
   }
 
   private mapUser(id: string, user: CloudBaseUser): CloudBaseAuthUser {

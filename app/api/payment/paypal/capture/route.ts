@@ -286,23 +286,23 @@ export async function POST(request: NextRequest) {
 
         // 国际版：使用 Supabase 钱包服务增加加油包额度
         const addResult = await addSupabaseAddonCredits(
-          userId,
-          parsed.imageCredits || 0,
-          parsed.videoAudioCredits || 0
-        );
+        userId,
+        parsed.imageCredits || 0,
+        parsed.videoAudioCredits || 0
+      );
 
-        if (!addResult.success) {
-          console.error("[paypal][addon-credit-error]", addResult.error);
-          return NextResponse.json({
-            success: true,
-            status,
-            productType: "ADDON",
-            addonPackageId: parsed.addonPackageId,
-            imageCredits: parsed.imageCredits,
-            videoAudioCredits: parsed.videoAudioCredits,
-            creditError: addResult.error,
-            raw: result,
-          });
+      if (!addResult.success) {
+        console.error("[paypal][addon-credit-error]", addResult.error);
+        return NextResponse.json({
+          success: true,
+          status,
+          productType: "ADDON",
+          addonPackageId: parsed.addonPackageId,
+          imageCredits: parsed.imageCredits,
+          videoAudioCredits: parsed.videoAudioCredits,
+          creditError: addResult.error,
+          raw: result,
+        });
         }
       }
 
@@ -428,13 +428,13 @@ export async function POST(request: NextRequest) {
       isProFlag = plan.toLowerCase() !== "basic" && plan.toLowerCase() !== "free";
 
       // 更新用户元数据
-      await supabaseAdmin.auth.admin.updateUserById(userId, {
-        user_metadata: {
-          pro: isProFlag,
-          plan: effectivePlan,
-          plan_exp: expiresAt.toISOString(),
-        },
-      });
+    await supabaseAdmin.auth.admin.updateUserById(userId, {
+      user_metadata: {
+        pro: isProFlag,
+        plan: effectivePlan,
+        plan_exp: expiresAt.toISOString(),
+      },
+    });
 
       // 更新钱包订阅信息
       await updateSupabaseSubscription(

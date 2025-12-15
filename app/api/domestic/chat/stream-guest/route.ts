@@ -217,7 +217,9 @@ export async function POST(req: Request) {
     const requiresMediaQuota =
       category === "advanced_multimodal" && (imageCount > 0 || videoAudioCount > 0);
     const shouldDeductMediaQuota = requiresMediaQuota;
-    const shouldDeductDailyExternal = category === "external";
+    // 外部模型或多模态模型的纯文本对话都需要扣减每日外部模型额度
+    const shouldDeductDailyExternal = category === "external" || 
+      (category === "advanced_multimodal" && imageCount === 0 && videoAudioCount === 0);
     // console.log("[quota][stream] model", finalModelId, "category", category, {
     //   imageCount,
     //   videoAudioCount,

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Image, Video, Zap, Loader2, Sparkles } from "lucide-react";
+import { Check, Image, Video, Zap, Loader2, Sparkles, CreditCard, Rocket } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { ADDON_PACKAGES, type AddonPackage } from "@/constants/addon-packages";
 import { fetchQuotaShared } from "@/utils/quota-fetcher";
@@ -16,6 +16,14 @@ interface AddonPackageTabProps {
 interface WalletStats {
   addon: { image: number; video: number };
 }
+
+// 为不同加油包获取颜色
+const getPackageColors = (tier: string) => {
+  if (tier === "starter") return { bg: "from-emerald-500 to-teal-600", light: "emerald", ring: "ring-emerald-500/50" };
+  if (tier === "standard") return { bg: "from-violet-500 to-purple-600", light: "violet", ring: "ring-violet-500/50" };
+  if (tier === "premium") return { bg: "from-amber-500 to-orange-600", light: "amber", ring: "ring-amber-500/50" };
+  return { bg: "from-blue-500 to-blue-600", light: "blue", ring: "ring-blue-500/50" };
+};
 
 /**
  * 加油包购买 Tab
@@ -33,15 +41,11 @@ export function AddonPackageTab({
   const [walletStats, setWalletStats] = useState<WalletStats | null>(null);
   const [loadingWallet, setLoadingWallet] = useState(false);
 
-  // 显示价格
   const formatPrice = (pkg: AddonPackage) => {
-    if (isDomesticVersion) {
-      return `￥${pkg.priceZh}`;
-    }
+    if (isDomesticVersion) return `￥${pkg.priceZh}`;
     return `$${pkg.price}`;
   };
 
-  // 拉取当前加油包余额
   const fetchWallet = async () => {
     if (!appUserId) return;
     try {
@@ -61,14 +65,12 @@ export function AddonPackageTab({
     fetchWallet();
   }, [appUserId]);
 
-  // 处理购买
   const handlePurchase = async () => {
     if (!selectedPackage) return;
 
     setIsProcessing(true);
     try {
-      const endpoint =
-        paymentMethod === "stripe" ? "/api/payment/stripe/create" : "/api/payment/paypal/create";
+      const endpoint = paymentMethod === "stripe" ? "/api/payment/stripe/create" : "/api/payment/paypal/create";
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -99,215 +101,189 @@ export function AddonPackageTab({
   };
 
   return (
-    <div className="space-y-6">
-      {/* 当前加油包余额 */}
-      {appUserId && (
-        <div className="p-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 flex items-center justify-between">
-          <div>
-            <div className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-              {isZh ? "当前加油包余额" : "Your add-on credits"}
-            </div>
-            <div className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-              {isZh ? "额度永久有效，可与订阅配额叠加" : "Never expires, stacks with subscription"}
-            </div>
+    <div className="space-y-4">
+      {/* 当前余额 + 说明 */}
+      <div className="flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border border-amber-200/50 dark:border-amber-700/50">
+        <div className="flex items-center space-x-2">
+          <div className="p-1.5 bg-amber-100 dark:bg-amber-900/40 rounded-lg">
+            <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400" />
           </div>
+          <div>
+            <span className="text-xs font-medium text-amber-800 dark:text-amber-200">
+              {isZh ? "额度永久有效" : "Never expires"}
+            </span>
+            <span className="text-xs text-amber-600 dark:text-amber-400 ml-2">
+              {isZh ? "与订阅叠加" : "Stacks with subscription"}
+            </span>
+          </div>
+        </div>
+        {appUserId && (
           <div className="text-right">
             {loadingWallet ? (
-              <div className="text-sm font-semibold text-amber-700 dark:text-amber-200">...</div>
+              <span className="text-xs text-amber-600">...</span>
             ) : (walletStats?.addon.image || 0) + (walletStats?.addon.video || 0) === 0 ? (
-              <div className="text-sm font-semibold text-amber-700 dark:text-amber-200">
-                {isZh ? "暂无加油包" : "No add-on yet"}
-              </div>
+              <span className="text-xs text-amber-600 dark:text-amber-400">{isZh ? "暂无余额" : "No credits"}</span>
             ) : (
-              <div className="flex items-center justify-end space-x-2 text-sm font-semibold text-amber-700 dark:text-amber-200">
-                <span className="flex items-center space-x-1">
-                  <Image className="w-4 h-4" />
-                  <span>{walletStats?.addon.image ?? 0} {isZh ? "图" : "img"}</span>
+              <div className="flex items-center space-x-2 text-xs font-medium text-amber-700 dark:text-amber-200">
+                <span className="flex items-center">
+                  <Image className="w-3 h-3 mr-0.5" />{walletStats?.addon.image ?? 0}
                 </span>
                 <span className="text-amber-400">·</span>
-                <span className="flex items-center space-x-1">
-                  <Video className="w-4 h-4" />
-                  <span>{walletStats?.addon.video ?? 0} {isZh ? "视频/音频" : "video/audio"}</span>
+                <span className="flex items-center">
+                  <Video className="w-3 h-3 mr-0.5" />{walletStats?.addon.video ?? 0}
                 </span>
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* 说明区域 */}
-      <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-        <div className="flex items-start space-x-3">
-          <div className="p-2 bg-amber-100 dark:bg-amber-900/40 rounded-lg">
-            <Sparkles className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-          </div>
-          <div>
-            <h4 className="font-medium text-gray-900 dark:text-[#ececf1]">
-              {isZh ? "额度加油包" : "Credit Add-on Packs"}
-            </h4>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              {isZh
-                ? "额度永久有效，不随订阅周期重置。适合临时需要更多配额的用户。"
-                : "Credits never expire and don't reset with your subscription. Perfect for occasional heavy usage."}
-            </p>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* 加油包列表 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {ADDON_PACKAGES.map((pkg) => (
-          <div
-            key={pkg.id}
-            onClick={() => setSelectedPackage(pkg)}
-            className={`relative p-5 rounded-xl border-2 cursor-pointer transition-all duration-200 hover:shadow-lg ${
-              selectedPackage?.id === pkg.id
-                ? "border-amber-500 bg-amber-50 dark:bg-amber-900/20 shadow-lg"
-                : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#40414f] hover:border-gray-300 dark:hover:border-[#565869]"
-            }`}
-          >
-            {/* 热门标签 */}
-            {pkg.popular && (
-              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                <Badge className="bg-amber-500 text-white">
-                  {isZh ? "最受欢迎" : "Best Value"}
-                </Badge>
-              </div>
-            )}
+      {/* 加油包卡片 - 紧凑横向布局 */}
+      <div className="grid grid-cols-3 gap-3">
+        {ADDON_PACKAGES.map((pkg) => {
+          const isSelected = selectedPackage?.id === pkg.id;
+          const colors = getPackageColors(pkg.tier);
+          
+          return (
+            <div
+              key={pkg.id}
+              onClick={() => setSelectedPackage(pkg)}
+              className={`relative cursor-pointer transition-all duration-300 ${
+                isSelected ? "scale-[1.02]" : "hover:scale-[1.01]"
+              }`}
+            >
+              {/* 选中发光效果 */}
+              {isSelected && (
+                <div className={`absolute inset-0 bg-gradient-to-r ${colors.bg} opacity-10 blur-xl rounded-xl`} />
+              )}
+              
+              <div className={`relative p-4 rounded-xl border-2 transition-all h-full ${
+                isSelected
+                  ? `border-transparent bg-white dark:bg-[#2a2b38] shadow-xl ring-2 ${colors.ring}`
+                  : "border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-[#2a2b38]/80 hover:shadow-lg"
+              }`}>
+                {/* 热门标签 */}
+                {pkg.popular && (
+                  <div className="absolute -top-2.5 left-1/2 transform -translate-x-1/2">
+                    <Badge className="bg-gradient-to-r from-violet-500 to-purple-600 text-white px-2 py-0.5 text-[9px] font-bold shadow-md border-0">
+                      <Sparkles className="w-2.5 h-2.5 mr-0.5" />
+                      {isZh ? "超值" : "Best"}
+                    </Badge>
+                  </div>
+                )}
 
-            {/* 套餐名称和价格 */}
-            <div className="text-center mb-4">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-[#ececf1]">
-                {isZh ? pkg.nameZh : pkg.name}
-              </h3>
-              <div className="mt-2">
-                <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                  {formatPrice(pkg)}
-                </span>
+                {/* 选中指示 */}
+                {isSelected && (
+                  <div className="absolute top-2 right-2">
+                    <div className={`w-5 h-5 rounded-full bg-gradient-to-r ${colors.bg} flex items-center justify-center shadow-md`}>
+                      <Check className="w-3 h-3 text-white" />
+                    </div>
+                  </div>
+                )}
+
+                {/* 套餐名称 */}
+                <div className="text-center mb-3 pt-1">
+                  <div className={`w-10 h-10 mx-auto mb-2 rounded-xl bg-gradient-to-br ${colors.bg} flex items-center justify-center shadow-md`}>
+                    <Zap className="w-4 h-4 text-white" />
+                  </div>
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                    {isZh ? pkg.nameZh : pkg.name}
+                  </h3>
+                </div>
+
+                {/* 价格 */}
+                <div className="text-center mb-3">
+                  <span className="text-2xl font-extrabold bg-gradient-to-r from-amber-600 to-orange-600 dark:from-amber-400 dark:to-orange-400 bg-clip-text text-transparent">
+                    {formatPrice(pkg)}
+                  </span>
+                </div>
+
+                {/* 额度详情 */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-[#3a3b48] rounded-lg">
+                    <div className="flex items-center space-x-1.5">
+                      <Image className="w-3.5 h-3.5 text-purple-500" />
+                      <span className="text-xs text-gray-600 dark:text-gray-400">
+                        {isZh ? "图片" : "Image"}
+                      </span>
+                    </div>
+                    <span className="text-xs font-bold text-gray-900 dark:text-white">+{pkg.imageCredits}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-[#3a3b48] rounded-lg">
+                    <div className="flex items-center space-x-1.5">
+                      <Video className="w-3.5 h-3.5 text-blue-500" />
+                      <span className="text-xs text-gray-600 dark:text-gray-400">
+                        {isZh ? "视频/音频" : "Video/Audio"}
+                      </span>
+                    </div>
+                    <span className="text-xs font-bold text-gray-900 dark:text-white">+{pkg.videoAudioCredits}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 支付区域 */}
+      <div className={`transition-all duration-300 ${selectedPackage ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+        <div className="p-4 bg-gradient-to-r from-amber-50/50 to-orange-50/50 dark:from-amber-900/10 dark:to-orange-900/10 rounded-xl border border-amber-200/50 dark:border-amber-700/50">
+          <div className="flex items-center justify-between gap-4">
+            {/* 支付方式选择 */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <CreditCard className="w-3.5 h-3.5 inline mr-1" />
+                {isZh ? "支付：" : "Pay:"}
+              </span>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("stripe")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    paymentMethod === "stripe"
+                      ? "bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 ring-1 ring-violet-400"
+                      : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
+                  }`}
+                >
+                  💳 Stripe
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("paypal")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    paymentMethod === "paypal"
+                      ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 ring-1 ring-blue-400"
+                      : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
+                  }`}
+                >
+                  🅿️ PayPal
+                </button>
               </div>
             </div>
 
-            {/* 额度详情 */}
-            <div className="space-y-3 mb-4">
-              <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-[#565869] rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Image className="w-4 h-4 text-purple-500" />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                    {isZh ? "图片额度" : "Image Credits"}
-                  </span>
-                </div>
-                <span className="font-bold text-gray-900 dark:text-[#ececf1]">+{pkg.imageCredits}</span>
-              </div>
-              <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-[#565869] rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Video className="w-4 h-4 text-purple-500" />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                    {isZh ? "视频/音频" : "Video/Audio"}
-                  </span>
-                </div>
-                <span className="font-bold text-gray-900 dark:text-[#ececf1]">
-                  +{pkg.videoAudioCredits}
-                </span>
-              </div>
-            </div>
-
-            {/* 特性说明 */}
-            <ul className="space-y-1 mb-4">
-              <li className="flex items-center text-xs text-gray-500 dark:text-gray-400">
-                <Check className="w-3 h-3 mr-1 text-green-500" />
-                {isZh ? "永久有效" : "Never expires"}
-              </li>
-              <li className="flex items-center text-xs text-gray-500 dark:text-gray-400">
-                <Check className="w-3 h-3 mr-1 text-green-500" />
-                {isZh ? "与订阅配额叠加" : "Stacks with subscription"}
-              </li>
-            </ul>
-
-            {/* 选中状态指示 */}
-            {selectedPackage?.id === pkg.id && (
-              <div className="absolute top-3 right-3">
-                <div className="w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center">
-                  <Check className="w-4 h-4 text-white" />
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* 支付方式选择 */}
-      {selectedPackage && (
-        <div className="p-4 bg-gray-50 dark:bg-[#565869] rounded-lg">
-          <h4 className="text-sm font-medium text-gray-900 dark:text-[#ececf1] mb-3">
-            {isZh ? "选择支付方式" : "Select Payment Method"}
-          </h4>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setPaymentMethod("stripe")}
-              className={`p-3 rounded-lg border-2 text-sm font-medium transition-all flex items-center justify-center space-x-2 ${
-                paymentMethod === "stripe"
-                  ? "border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300"
-                  : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#40414f] text-gray-700 dark:text-gray-300 hover:border-gray-300"
-              }`}
+            {/* 支付按钮 */}
+            <Button
+              disabled={isProcessing || !selectedPackage}
+              onClick={handlePurchase}
+              className="h-10 px-6 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-amber-500/20 transition-all hover:shadow-xl"
             >
-              <span className="text-xs font-semibold">Card</span>
-              <span>Stripe</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaymentMethod("paypal")}
-              className={`p-3 rounded-lg border-2 text-sm font-medium transition-all flex items-center justify-center space-x-2 ${
-                paymentMethod === "paypal"
-                  ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                  : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#40414f] text-gray-700 dark:text-gray-300 hover:border-gray-300"
-              }`}
-            >
-              <span className="text-xs font-semibold">Pay</span>
-              <span>PayPal</span>
-            </button>
+              {isProcessing ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <Rocket className="w-4 h-4 mr-2" />
+              )}
+              {isProcessing
+                ? (isZh ? "处理中..." : "Processing...")
+                : selectedPackage
+                  ? `${isZh ? "购买" : "Buy"} ${formatPrice(selectedPackage)}`
+                  : (isZh ? "选择加油包" : "Select pack")}
+            </Button>
           </div>
-
-          {/* 购买按钮 */}
-          <Button
-            onClick={handlePurchase}
-            disabled={isProcessing}
-            className="w-full mt-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white"
-          >
-            {isProcessing ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                {isZh ? "处理中..." : "Processing..."}
-              </>
-            ) : (
-              <>
-                <Zap className="w-4 h-4 mr-2" />
-                {isZh ? `立即购买 ${formatPrice(selectedPackage)}` : `Buy Now ${formatPrice(selectedPackage)}`}
-              </>
-            )}
-          </Button>
-
-          <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-2">
-            {isZh ? "购买后额度立即生效，不影响现有订阅" : "Credits are added immediately without affecting your subscription"}
-          </p>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
 export default AddonPackageTab;
-
-
-
-
-
-
-
-
-
-
-
-
-
 

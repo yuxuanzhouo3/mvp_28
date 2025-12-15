@@ -321,84 +321,84 @@ export function AuthPage({ mode }: { mode: Mode }) {
           <div className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
             <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/5 p-1">
               <div className="bg-slate-900/90 rounded-[22px] p-6 md:p-8">
-                <Tabs value={mode} onValueChange={(v) => handleTabChange(v as Mode)} className="w-full">
+            <Tabs value={mode} onValueChange={(v) => handleTabChange(v as Mode)} className="w-full">
                   <TabsList className="grid w-full grid-cols-2 bg-slate-800/50 p-1 rounded-xl">
                     <TabsTrigger 
                       value="login"
                       className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-blue-600 data-[state=active]:text-white rounded-lg transition-all duration-300"
                     >
                       <LogIn className="w-4 h-4 mr-2" />
-                      {isZhText ? "登录" : "Sign in"}
-                    </TabsTrigger>
+                  {isZhText ? "登录" : "Sign in"}
+                </TabsTrigger>
                     <TabsTrigger 
                       value="signup"
                       className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-purple-600 data-[state=active]:text-white rounded-lg transition-all duration-300"
                     >
                       <UserPlus className="w-4 h-4 mr-2" />
-                      {isZhText ? "注册" : "Sign up"}
-                    </TabsTrigger>
-                  </TabsList>
+                  {isZhText ? "注册" : "Sign up"}
+                </TabsTrigger>
+              </TabsList>
 
                   <TabsContent value="login" className="pt-8">
-                    <div className="grid md:grid-cols-[1.2fr,0.8fr] gap-8">
+                <div className="grid md:grid-cols-[1.2fr,0.8fr] gap-8">
                       <form className="space-y-5" onSubmit={handleSubmit}>
                         {/* Email Field */}
-                        <div className="space-y-2">
+                    <div className="space-y-2">
                           <Label className="text-slate-200 flex items-center gap-2">
                             <Mail className="w-4 h-4 text-blue-400" />
                             {isZhText ? "邮箱" : "Email"}
                           </Label>
                           <div className={`relative transition-all duration-300 ${focusedField === 'email' ? 'scale-[1.02]' : ''}`}>
-                            <Input
-                              type="email"
-                              value={form.email}
-                              onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      <Input
+                        type="email"
+                        value={form.email}
+                        onChange={(e) => setForm({ ...form, email: e.target.value })}
                               onFocus={() => setFocusedField('email')}
                               onBlur={() => setFocusedField(null)}
                               placeholder={isZhText ? "请输入邮箱" : "you@example.com"}
                               className="bg-slate-800/50 border-slate-700 text-slate-100 placeholder:text-slate-500 h-12 rounded-xl focus:border-blue-500 focus:ring-blue-500/20 transition-all duration-300"
-                              required
-                            />
+                        required
+                      />
                           </div>
-                        </div>
+                    </div>
 
                         {/* Password Field */}
-                        <div className="space-y-2">
+                    <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <Label className="text-slate-200 flex items-center gap-2">
                               <Lock className="w-4 h-4 text-blue-400" />
                               {isZhText ? "密码" : "Password"}
                             </Label>
-                            {!isDomestic && (
-                              <Link
-                                href="/auth/forgot-password"
+                        {!isDomestic && (
+                          <Link
+                            href="/auth/forgot-password"
                                 className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                              >
-                                {isZhText ? "忘记密码？" : "Forgot password?"}
-                              </Link>
-                            )}
-                          </div>
+                          >
+                            {isZhText ? "忘记密码？" : "Forgot password?"}
+                          </Link>
+                        )}
+                      </div>
                           <div className={`relative transition-all duration-300 ${focusedField === 'password' ? 'scale-[1.02]' : ''}`}>
-                            <Input
-                              type={showPassword ? "text" : "password"}
-                              value={form.password}
-                              onChange={(e) => setForm({ ...form, password: e.target.value })}
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          value={form.password}
+                          onChange={(e) => setForm({ ...form, password: e.target.value })}
                               onFocus={() => setFocusedField('password')}
                               onBlur={() => setFocusedField(null)}
                               className="bg-slate-800/50 border-slate-700 text-slate-100 placeholder:text-slate-500 h-12 rounded-xl pr-12 focus:border-blue-500 focus:ring-blue-500/20 transition-all duration-300"
-                              required
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
+                          required
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
                               className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50"
-                              onClick={() => setShowPassword((v) => !v)}
-                            >
-                              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </Button>
-                          </div>
-                        </div>
+                          onClick={() => setShowPassword((v) => !v)}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
 
                         {/* Error/Success Messages */}
                         {error && (
@@ -431,78 +431,78 @@ export function AuthPage({ mode }: { mode: Mode }) {
                               <span>{isZhText ? "登录" : "Sign in"}</span>
                             </div>
                           )}
-                        </Button>
+                    </Button>
 
                         {/* Divider */}
                         <div className="relative py-2">
-                          <div className="absolute inset-0 flex items-center">
+                        <div className="absolute inset-0 flex items-center">
                             <span className="w-full border-t border-slate-700" />
-                          </div>
-                          <div className="relative flex justify-center text-xs uppercase">
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
                             <span className="bg-slate-900/90 px-4 text-slate-500">
                               {isZhText ? "或使用" : "or continue with"}
-                            </span>
-                          </div>
+                          </span>
                         </div>
+                      </div>
 
                         {/* Social Login */}
-                        {isDomestic ? (
-                          <Button
-                            type="button"
+                      {isDomestic ? (
+                        <Button
+                          type="button"
                             variant="outline"
                             className="w-full h-12 bg-[#00c060] hover:bg-[#00a654] text-white border-none rounded-xl font-medium transition-all duration-300 hover:scale-[1.02]"
                             disabled={isWechatLoading}
-                            onClick={handleWechat}
-                          >
+                          onClick={handleWechat}
+                        >
                             {isWechatLoading ? (
                               <Loader2 className="h-5 w-5 animate-spin mr-2" />
                             ) : (
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                className="mr-2 h-5 w-5"
-                                fill="currentColor"
-                              >
-                                <path d="M5.5 4C2.46 4 0 6.24 0 8.99c0 2 1.33 3.74 3.3 4.62-.12.45-.76 2.8-.79 3.02 0 0-.02.17.09.24.11.07.24.02.24.02.32-.05 3.04-1.99 3.47-2.31.4.06.8.09 1.19.09 3.04 0 5.5-2.23 5.5-4.99C13 6.24 10.54 4 7.5 4h-2Zm12 4c-2.49 0-4.5 1.8-4.5 4.02 0 1.34.7 2.53 1.78 3.31-.09.36-.53 2.04-.55 2.2 0 0-.02.13.07.19.09.06.2.02.2.02.26-.04 2.45-1.6 2.8-1.85.32.05.65.07.97.07 2.49 0 4.5-1.8 4.5-4.02C22 9.8 19.99 8 17.5 8Z" />
-                              </svg>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            className="mr-2 h-5 w-5"
+                            fill="currentColor"
+                          >
+                            <path d="M5.5 4C2.46 4 0 6.24 0 8.99c0 2 1.33 3.74 3.3 4.62-.12.45-.76 2.8-.79 3.02 0 0-.02.17.09.24.11.07.24.02.24.02.32-.05 3.04-1.99 3.47-2.31.4.06.8.09 1.19.09 3.04 0 5.5-2.23 5.5-4.99C13 6.24 10.54 4 7.5 4h-2Zm12 4c-2.49 0-4.5 1.8-4.5 4.02 0 1.34.7 2.53 1.78 3.31-.09.36-.53 2.04-.55 2.2 0 0-.02.13.07.19.09.06.2.02.2.02.26-.04 2.45-1.6 2.8-1.85.32.05.65.07.97.07 2.49 0 4.5-1.8 4.5-4.02C22 9.8 19.99 8 17.5 8Z" />
+                          </svg>
                             )}
                             {isZhText ? "微信登录" : "WeChat"}
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="outline"
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
                             className="w-full h-12 bg-white hover:bg-slate-100 text-slate-900 border-none rounded-xl font-medium transition-all duration-300 hover:scale-[1.02]"
                             disabled={isGoogleLoading}
-                            onClick={handleGoogle}
-                          >
+                          onClick={handleGoogle}
+                        >
                             {isGoogleLoading ? (
                               <Loader2 className="h-5 w-5 animate-spin mr-2" />
                             ) : (
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 488 512"
-                                className="mr-2 h-4 w-4"
-                                fill="currentColor"
-                              >
-                                <path d="M488 261.8C488 403.3 391.1 504 248.4 504 111 504 0 393 0 255.5 0 118 111 7 248.4 7c66.8 0 123 24.5 166.3 64.9l-67.4 64.9C297 99.6 278.5 92 248.4 92c-86.2 0-156 70.9-156 163.5 0 92.6 69.8 163.5 156 163.5 99.5 0 136.8-71.6 142.6-108.9H248.4v-87.8h239.4c2.2 12.7 4.2 24.9 4.2 41.5z" />
-                              </svg>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 488 512"
+                            className="mr-2 h-4 w-4"
+                            fill="currentColor"
+                          >
+                            <path d="M488 261.8C488 403.3 391.1 504 248.4 504 111 504 0 393 0 255.5 0 118 111 7 248.4 7c66.8 0 123 24.5 166.3 64.9l-67.4 64.9C297 99.6 278.5 92 248.4 92c-86.2 0-156 70.9-156 163.5 0 92.6 69.8 163.5 156 163.5 99.5 0 136.8-71.6 142.6-108.9H248.4v-87.8h239.4c2.2 12.7 4.2 24.9 4.2 41.5z" />
+                          </svg>
                             )}
                             Google
-                          </Button>
-                        )}
+                        </Button>
+                      )}
 
                         {/* Sign up link */}
                         <p className="text-sm text-slate-400 text-center pt-2">
-                          {isZhText ? "没有账号？" : "Need an account?"}{" "}
+                      {isZhText ? "没有账号？" : "Need an account?"}{" "}
                           <Link 
                             href={`/auth/sign-up${next ? `?next=${encodeURIComponent(next)}` : ""}`} 
                             className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
                           >
                             {isZhText ? "立即注册" : "Sign up"}
-                          </Link>
-                        </p>
-                      </form>
+                      </Link>
+                    </p>
+                  </form>
 
                       {/* Features sidebar */}
                       <div className="hidden md:flex flex-col gap-3">
@@ -512,109 +512,109 @@ export function AuthPage({ mode }: { mode: Mode }) {
                         {features.map((feature, idx) => (
                           <FeatureCard key={idx} {...feature} />
                         ))}
-                      </div>
-                    </div>
-                  </TabsContent>
+                  </div>
+                </div>
+              </TabsContent>
 
                   <TabsContent value="signup" className="pt-8">
-                    <div className="grid md:grid-cols-[1.2fr,0.8fr] gap-8">
-                      <form className="space-y-4" onSubmit={handleSubmit}>
+                <div className="grid md:grid-cols-[1.2fr,0.8fr] gap-8">
+                  <form className="space-y-4" onSubmit={handleSubmit}>
                         {/* Name Field */}
-                        <div className="space-y-2">
+                    <div className="space-y-2">
                           <Label className="text-slate-200 flex items-center gap-2">
                             <User className="w-4 h-4 text-purple-400" />
                             {isZh ? "姓名" : "Name"}
                           </Label>
                           <div className={`relative transition-all duration-300 ${focusedField === 'name' ? 'scale-[1.02]' : ''}`}>
-                            <Input
-                              value={form.name}
-                              onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      <Input
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
                               onFocus={() => setFocusedField('name')}
                               onBlur={() => setFocusedField(null)}
                               placeholder={isZh ? "请输入姓名" : "Your name"}
                               className="bg-slate-800/50 border-slate-700 text-slate-100 placeholder:text-slate-500 h-12 rounded-xl focus:border-purple-500 focus:ring-purple-500/20 transition-all duration-300"
-                              required
-                            />
+                        required
+                      />
                           </div>
-                        </div>
+                    </div>
 
                         {/* Email Field */}
-                        <div className="space-y-2">
+                    <div className="space-y-2">
                           <Label className="text-slate-200 flex items-center gap-2">
                             <Mail className="w-4 h-4 text-purple-400" />
                             {isZh ? "邮箱" : "Email"}
                           </Label>
                           <div className={`relative transition-all duration-300 ${focusedField === 'signup-email' ? 'scale-[1.02]' : ''}`}>
-                            <Input
-                              type="email"
-                              value={form.email}
-                              onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      <Input
+                        type="email"
+                        value={form.email}
+                        onChange={(e) => setForm({ ...form, email: e.target.value })}
                               onFocus={() => setFocusedField('signup-email')}
                               onBlur={() => setFocusedField(null)}
                               placeholder={isZh ? "请输入邮箱" : "you@example.com"}
                               className="bg-slate-800/50 border-slate-700 text-slate-100 placeholder:text-slate-500 h-12 rounded-xl focus:border-purple-500 focus:ring-purple-500/20 transition-all duration-300"
-                              required
-                            />
+                        required
+                      />
                           </div>
-                        </div>
+                    </div>
 
                         {/* Password Field */}
-                        <div className="space-y-2">
+                    <div className="space-y-2">
                           <Label className="text-slate-200 flex items-center gap-2">
                             <Lock className="w-4 h-4 text-purple-400" />
                             {isZh ? "密码" : "Password"}
                           </Label>
                           <div className={`relative transition-all duration-300 ${focusedField === 'signup-password' ? 'scale-[1.02]' : ''}`}>
-                            <Input
-                              type={showPassword ? "text" : "password"}
-                              value={form.password}
-                              onChange={(e) => setForm({ ...form, password: e.target.value })}
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          value={form.password}
+                          onChange={(e) => setForm({ ...form, password: e.target.value })}
                               onFocus={() => setFocusedField('signup-password')}
                               onBlur={() => setFocusedField(null)}
                               placeholder={isZh ? "至少6个字符" : "At least 6 characters"}
                               className="bg-slate-800/50 border-slate-700 text-slate-100 placeholder:text-slate-500 h-12 rounded-xl pr-12 focus:border-purple-500 focus:ring-purple-500/20 transition-all duration-300"
-                              required
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
+                          required
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
                               className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50"
-                              onClick={() => setShowPassword((v) => !v)}
-                            >
-                              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </Button>
-                          </div>
-                        </div>
+                          onClick={() => setShowPassword((v) => !v)}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
 
                         {/* Confirm Password Field */}
-                        <div className="space-y-2">
+                    <div className="space-y-2">
                           <Label className="text-slate-200 flex items-center gap-2">
                             <Lock className="w-4 h-4 text-purple-400" />
                             {isZh ? "确认密码" : "Confirm password"}
                           </Label>
                           <div className={`relative transition-all duration-300 ${focusedField === 'confirm' ? 'scale-[1.02]' : ''}`}>
-                            <Input
-                              type={showConfirm ? "text" : "password"}
-                              value={form.confirm}
-                              onChange={(e) => setForm({ ...form, confirm: e.target.value })}
+                        <Input
+                          type={showConfirm ? "text" : "password"}
+                          value={form.confirm}
+                          onChange={(e) => setForm({ ...form, confirm: e.target.value })}
                               onFocus={() => setFocusedField('confirm')}
                               onBlur={() => setFocusedField(null)}
                               placeholder={isZh ? "再次输入密码" : "Re-enter password"}
                               className="bg-slate-800/50 border-slate-700 text-slate-100 placeholder:text-slate-500 h-12 rounded-xl pr-12 focus:border-purple-500 focus:ring-purple-500/20 transition-all duration-300"
-                              required
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
+                          required
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
                               className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50"
-                              onClick={() => setShowConfirm((v) => !v)}
-                            >
-                              {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </Button>
-                          </div>
-                        </div>
+                          onClick={() => setShowConfirm((v) => !v)}
+                        >
+                          {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
 
                         {/* Error/Success Messages */}
                         {error && (
@@ -647,19 +647,19 @@ export function AuthPage({ mode }: { mode: Mode }) {
                               <span>{isZh ? "创建账号" : "Create account"}</span>
                             </div>
                           )}
-                        </Button>
+                    </Button>
 
                         {/* Divider */}
                         <div className="relative py-2">
-                          <div className="absolute inset-0 flex items-center">
+                        <div className="absolute inset-0 flex items-center">
                             <span className="w-full border-t border-slate-700" />
-                          </div>
-                          <div className="relative flex justify-center text-xs uppercase">
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
                             <span className="bg-slate-900/90 px-4 text-slate-500">
                               {isZh ? "或使用" : "or continue with"}
-                            </span>
-                          </div>
+                          </span>
                         </div>
+                      </div>
 
                         {/* Social Login */}
                         {isDomestic ? (
@@ -673,52 +673,52 @@ export function AuthPage({ mode }: { mode: Mode }) {
                             {isWechatLoading ? (
                               <Loader2 className="h-5 w-5 animate-spin mr-2" />
                             ) : (
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                className="mr-2 h-5 w-5"
-                                fill="currentColor"
-                              >
-                                <path d="M5.5 4C2.46 4 0 6.24 0 8.99c0 2 1.33 3.74 3.3 4.62-.12.45-.76 2.8-.79 3.02 0 0-.02.17.09.24.11.07.24.02.24.02.32-.05 3.04-1.99 3.47-2.31.4.06.8.09 1.19.09 3.04 0 5.5-2.23 5.5-4.99C13 6.24 10.54 4 7.5 4h-2Zm12 4c-2.49 0-4.5 1.8-4.5 4.02 0 1.34.7 2.53 1.78 3.31-.09.36-.53 2.04-.55 2.2 0 0-.02.13.07.19.09.06.2.02.2.02.26-.04 2.45-1.6 2.8-1.85.32.05.65.07.97.07 2.49 0 4.5-1.8 4.5-4.02C22 9.8 19.99 8 17.5 8Z" />
-                              </svg>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            className="mr-2 h-5 w-5"
+                            fill="currentColor"
+                          >
+                            <path d="M5.5 4C2.46 4 0 6.24 0 8.99c0 2 1.33 3.74 3.3 4.62-.12.45-.76 2.8-.79 3.02 0 0-.02.17.09.24.11.07.24.02.24.02.32-.05 3.04-1.99 3.47-2.31.4.06.8.09 1.19.09 3.04 0 5.5-2.23 5.5-4.99C13 6.24 10.54 4 7.5 4h-2Zm12 4c-2.49 0-4.5 1.8-4.5 4.02 0 1.34.7 2.53 1.78 3.31-.09.36-.53 2.04-.55 2.2 0 0-.02.13.07.19.09.06.2.02.2.02.26-.04 2.45-1.6 2.8-1.85.32.05.65.07.97.07 2.49 0 4.5-1.8 4.5-4.02C22 9.8 19.99 8 17.5 8Z" />
+                          </svg>
                             )}
                             {isZh ? "微信登录" : "WeChat"}
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="outline"
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
                             className="w-full h-12 bg-white hover:bg-slate-100 text-slate-900 border-none rounded-xl font-medium transition-all duration-300 hover:scale-[1.02]"
                             disabled={isGoogleLoading}
-                            onClick={handleGoogle}
-                          >
+                          onClick={handleGoogle}
+                        >
                             {isGoogleLoading ? (
                               <Loader2 className="h-5 w-5 animate-spin mr-2" />
                             ) : (
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 488 512"
-                                className="mr-2 h-4 w-4"
-                                fill="currentColor"
-                              >
-                                <path d="M488 261.8C488 403.3 391.1 504 248.4 504 111 504 0 393 0 255.5 0 118 111 7 248.4 7c66.8 0 123 24.5 166.3 64.9l-67.4 64.9C297 99.6 278.5 92 248.4 92c-86.2 0-156 70.9-156 163.5 0 92.6 69.8 163.5 156 163.5 99.5 0 136.8-71.6 142.6-108.9H248.4v-87.8h239.4c2.2 12.7 4.2 24.9 4.2 41.5z" />
-                              </svg>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 488 512"
+                            className="mr-2 h-4 w-4"
+                            fill="currentColor"
+                          >
+                            <path d="M488 261.8C488 403.3 391.1 504 248.4 504 111 504 0 393 0 255.5 0 118 111 7 248.4 7c66.8 0 123 24.5 166.3 64.9l-67.4 64.9C297 99.6 278.5 92 248.4 92c-86.2 0-156 70.9-156 163.5 0 92.6 69.8 163.5 156 163.5 99.5 0 136.8-71.6 142.6-108.9H248.4v-87.8h239.4c2.2 12.7 4.2 24.9 4.2 41.5z" />
+                          </svg>
                             )}
                             Google
-                          </Button>
-                        )}
+                        </Button>
+                      )}
 
                         {/* Sign in link */}
                         <p className="text-sm text-slate-400 text-center pt-2">
-                          {isZh ? "已有账号？" : "Already have an account?"}{" "}
+                      {isZh ? "已有账号？" : "Already have an account?"}{" "}
                           <Link 
                             href={`/auth/login${next ? `?next=${encodeURIComponent(next)}` : ""}`} 
                             className="text-purple-400 hover:text-purple-300 font-medium transition-colors"
                           >
                             {isZh ? "立即登录" : "Sign in"}
-                          </Link>
-                        </p>
-                      </form>
+                      </Link>
+                    </p>
+                  </form>
 
                       {/* Features sidebar */}
                       <div className="hidden md:flex flex-col gap-3">
@@ -742,19 +742,19 @@ export function AuthPage({ mode }: { mode: Mode }) {
                             <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                             <span className="text-sm text-slate-200">{isZh ? "访问所有基础模型" : "Access to all basic models"}</span>
                           </div>
-                        </div>
+                    </div>
                         <p className="text-xs text-slate-500 mt-2">
-                          {isZh 
+                      {isZh
                             ? "注册后会发送验证邮件，请注意查收。" 
                             : "A verification email will be sent after registration."}
-                        </p>
-                      </div>
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </div>
-            </div>
+                    </p>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
+        </div>
+      </div>
         </div>
 
         {/* Footer */}

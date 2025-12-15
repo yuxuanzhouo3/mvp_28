@@ -399,20 +399,11 @@ export const useMessageSubmission = (
       releaseLock();
       return;
     }
-    // 只在剩余恰好10条时提示一次（而不是每次都提示）
-    if (remainingRounds === 10) {
-      // 不阻塞发送，只是提示用户
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("quota:warning", {
-          detail: {
-            type: "context",
-            message: selectedLanguage === "zh"
-              ? `上下文剩余 ${remainingRounds} 条（上限 ${ctxLimit} 条）。为避免中断，建议升级或新建对话。`
-              : `Context remaining ${remainingRounds} of ${ctxLimit}. Consider upgrading or starting a new chat.`,
-          },
-        }));
-      }
-    }
+    // 上下文警告已通过ChatInterface顶部横幅展示（剩余≤5条时），此处不再重复提示
+    // 保留注释说明：如需恢复toast提示，可取消下方注释
+    // if (remainingRounds === 10) {
+    //   window.dispatchEvent(new CustomEvent("quota:warning", { detail: { type: "context", message: "..." } }));
+    // }
 
     // 准备上下文（仅保留最近 ctxLimit 轮：用户+助手≈2条/轮）
     let preparedHistory = [...messages, userMessage];

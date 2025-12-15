@@ -305,7 +305,7 @@ export async function GET(req: NextRequest) {
   const { data: walletRow, error: walletErr } = await supabase
     .from("user_wallets")
     .select("*")
-    .eq("user_id", userId)
+      .eq("user_id", userId)
     .single();
 
   // 如果钱包不存在，创建默认钱包
@@ -330,7 +330,7 @@ export async function GET(req: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .select()
-        .single();
+      .single();
       
       if (!createErr && newWallet) {
         wallet = newWallet;
@@ -388,40 +388,40 @@ export async function GET(req: NextRequest) {
   };
 
   // 根据模型类型返回不同的配额信息
-  if (modelCategory === "general") {
-    return Response.json({
+      if (modelCategory === "general") {
+        return Response.json({
       plan: limits.label,
-      quotaType: "unlimited",
-      modelCategory: "general",
+          quotaType: "unlimited",
+          modelCategory: "general",
       contextMsgLimit: limits.contextLimit,
       wallet: walletStats,
-    });
-  }
+        });
+      }
 
-  if (modelCategory === "external") {
-    return Response.json({
+      if (modelCategory === "external") {
+        return Response.json({
       plan: limits.label,
-      period: today,
+          period: today,
       used: daily.used,
       limit: daily.limit,
       remaining: daily.remaining,
-      quotaType: "daily",
-      modelCategory: "external",
+          quotaType: "daily",
+          modelCategory: "external",
       contextMsgLimit: limits.contextLimit,
       daily,
       wallet: walletStats,
-    });
-  }
+        });
+      }
 
-  if (modelCategory === "advanced_multimodal") {
-    return Response.json({
+      if (modelCategory === "advanced_multimodal") {
+        return Response.json({
       plan: limits.label,
-      period: currentMonth,
-      quotaType: "monthly_media",
-      modelCategory: "advanced_multimodal",
+          period: currentMonth,
+          quotaType: "monthly_media",
+          modelCategory: "advanced_multimodal",
       contextMsgLimit: limits.contextLimit,
       daily,
-      textConsumesDaily: true,
+          textConsumesDaily: true,
       photoUsed: monthlyMedia.photoUsed,
       photoLimit: monthlyMedia.photoLimit,
       photoRemaining: monthlyMedia.photoRemaining,

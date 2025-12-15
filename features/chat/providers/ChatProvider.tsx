@@ -7,6 +7,9 @@
  * Unauthorized copying, distribution, or use is strictly prohibited.
  */
 
+// Import toast for quota notifications
+import { toast } from "sonner";
+
 // Import types and constants
 import {
   Message,
@@ -535,6 +538,37 @@ export default function ChatProvider({
     isSidebarLoading,
     setIsSidebarLoading,
   } = uiState;
+
+  // Listen for quota exceeded/warning events and show toast notifications
+  useEffect(() => {
+    const handleQuotaExceeded = (e: CustomEvent<{ type: string; message: string }>) => {
+      toast.error(e.detail.message, {
+        duration: 6000,
+        action: {
+          label: isZh ? "查看套餐" : "View Plans",
+          onClick: () => setShowUpgradeDialog(true),
+        },
+      });
+    };
+
+    const handleQuotaWarning = (e: CustomEvent<{ type: string; message: string }>) => {
+      toast.warning(e.detail.message, {
+        duration: 5000,
+        action: {
+          label: isZh ? "升级" : "Upgrade",
+          onClick: () => setShowUpgradeDialog(true),
+        },
+      });
+    };
+
+    window.addEventListener("quota:exceeded", handleQuotaExceeded as EventListener);
+    window.addEventListener("quota:warning", handleQuotaWarning as EventListener);
+
+    return () => {
+      window.removeEventListener("quota:exceeded", handleQuotaExceeded as EventListener);
+      window.removeEventListener("quota:warning", handleQuotaWarning as EventListener);
+    };
+  }, [isZh, setShowUpgradeDialog]);
 
   // Auto-clear upload error after 5s to avoid lingering prompts
   useEffect(() => {

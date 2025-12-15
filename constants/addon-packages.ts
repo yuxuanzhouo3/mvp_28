@@ -26,9 +26,9 @@ export interface AddonPackage {
 
 /**
  * 加油包商品列表 (三档)
- * - Starter:  ¥9.9  / $1.99 - 30张图 + 5个视频/音频
- * - Standard: ¥29.9 / $4.99 - 100张图 + 20个视频/音频 (推荐)
- * - Premium:  ¥69.9 / $9.99 - 300张图 + 60个视频/音频
+ * - Starter:  ¥9.9  / $3.98 - 30张图 + 5个视频/音频
+ * - Standard: ¥29.9 / $9.98 - 100张图 + 20个视频/音频 (推荐)
+ * - Premium:  ¥69.9 / $29.98 - 300张图 + 60个视频/音频
  */
 export const ADDON_PACKAGES: AddonPackage[] = [
   {
@@ -36,7 +36,7 @@ export const ADDON_PACKAGES: AddonPackage[] = [
     tier: 'starter',
     name: 'Starter Pack',
     nameZh: '入门加油包',
-    price: 1.99,
+    price: 3.98,
     priceZh: 9.9,
     imageCredits: 30,
     videoAudioCredits: 5,
@@ -48,7 +48,7 @@ export const ADDON_PACKAGES: AddonPackage[] = [
     tier: 'standard',
     name: 'Standard Pack',
     nameZh: '标准加油包',
-    price: 4.99,
+    price: 9.98,
     priceZh: 29.9,
     imageCredits: 100,
     videoAudioCredits: 20,
@@ -61,7 +61,7 @@ export const ADDON_PACKAGES: AddonPackage[] = [
     tier: 'premium',
     name: 'Premium Pack',
     nameZh: '高级加油包',
-    price: 9.99,
+    price: 29.98,
     priceZh: 69.9,
     imageCredits: 300,
     videoAudioCredits: 60,

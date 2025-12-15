@@ -25,6 +25,7 @@ export const GENERAL_MODELS = [GENERAL_MODEL_ID];
  * 这些模型受每日配额限制
  */
 export const EXTERNAL_MODELS = [
+  // 国内版模型
   "qwen3-max",
   "qwen-plus",
   "qwen-flash",
@@ -36,6 +37,10 @@ export const EXTERNAL_MODELS = [
   "deepseek-v3.2-exp",
   "Moonshot-Kimi-K2-Instruct",
   "glm-4.6",
+  // 国际版模型 (Mistral)
+  "codestral-latest",
+  "codestral-2412",
+  "mistral-medium-latest",
 ];
 
 /**

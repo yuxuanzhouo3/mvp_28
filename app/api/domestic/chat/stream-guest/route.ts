@@ -426,6 +426,7 @@ export async function POST(req: Request) {
       let doneSent = false;
       let closed = false;
       let streamFinished = false;
+      let hasContentOutput = false; // 标记是否有内容输出（用于手动暂停时也扣费）
       const safeWrite = async (data: Uint8Array) => {
         if (closed) return;
         try {
@@ -469,6 +470,7 @@ export async function POST(req: Request) {
               const delta = extractDelta(parsed);
               const cleaned = filterThinkContent(delta);
               if (cleaned && cleaned.trim().length > 0) {
+                hasContentOutput = true; // AI已开始输出内容
                 await safeWrite(encoder.encode(`data: ${JSON.stringify({ chunk: cleaned })}\n\n`));
               }
             } catch {
@@ -493,7 +495,11 @@ export async function POST(req: Request) {
         }
         await sendDone();
         await closeWriter();
-        if (shouldDeductMediaQuota && streamFinished) {
+        
+        // AI成功输出内容后才扣费（手动暂停也算）
+        const shouldCharge = streamFinished || hasContentOutput;
+        
+        if (shouldDeductMediaQuota && shouldCharge) {
           const consumeResult = await consumeQuota({
             userId: user.id,
             imageCount,
@@ -501,17 +507,11 @@ export async function POST(req: Request) {
           });
           if (!consumeResult.success) {
             console.error("[quota][stream][consume-error]", consumeResult.error);
-          } else {
-            // console.log("[quota][stream][consume-media-ok]", {
-            //   userId: user.id,
-            //   deducted: consumeResult.deducted,
-            //   remaining: consumeResult.remaining,
-            // });
           }
-        } else if (shouldDeductMediaQuota && !streamFinished) {
-          console.warn("[quota][stream] media consume skipped because stream not finished");
+        } else if (shouldDeductMediaQuota && !shouldCharge) {
+          console.warn("[quota][stream] media consume skipped because no content output");
         }
-        if (shouldDeductDailyExternal && streamFinished) {
+        if (shouldDeductDailyExternal && shouldCharge) {
           const consumeDailyResult = await consumeDailyExternalQuota(
             user.id,
             plan.planActive ? plan.planLower || "free" : "free",
@@ -519,15 +519,9 @@ export async function POST(req: Request) {
           );
           if (!consumeDailyResult.success) {
             console.error("[quota][stream][daily-consume-error]", consumeDailyResult.error);
-          } else {
-            // console.log("[quota][stream][daily-consume-ok]", {
-            //   userId: user.id,
-            //   plan: plan.planLower,
-            //   count: 1,
-            // });
           }
-        } else if (shouldDeductDailyExternal && !streamFinished) {
-          console.warn("[quota][stream] daily consume skipped because stream not finished");
+        } else if (shouldDeductDailyExternal && !shouldCharge) {
+          console.warn("[quota][stream] daily consume skipped because no content output");
         }
       }
     })();

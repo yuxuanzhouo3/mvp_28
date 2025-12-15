@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { isAfter } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import {
@@ -239,7 +240,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // 国际版：使用 Supabase
+  // 国际版：使用 Supabase 新表结构 (user_wallets)
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
@@ -247,152 +248,198 @@ export async function GET(req: NextRequest) {
   }
   const userId = userData.user.id;
   const today = getTodayString();
-  const dailyLimit = getFreeDailyLimit();
-  const basicDailyLimit = getBasicDailyLimit();
-  const photoLimit = getFreeMonthlyPhotoLimit();
-  const videoAudioLimit = getFreeMonthlyVideoAudioLimit();
-  const basicPhotoLimit = getBasicMonthlyPhotoLimit();
-  const basicVideoAudioLimit = getBasicMonthlyVideoAudioLimit();
-  const freeContextLimit = getFreeContextMsgLimit();
-  const basicContextLimit = getBasicContextMsgLimit();
+  const currentMonth = getCurrentYearMonth();
+  
+  // 从 user_metadata 获取用户套餐信息
+  const userMeta = userData.user.user_metadata as any;
+  const rawPlan = userMeta?.plan || userMeta?.subscriptionTier || "";
+  const rawPlanLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
+  const planExp = userMeta?.plan_exp ? new Date(userMeta.plan_exp) : null;
+  const planActive = planExp ? planExp > new Date() : true;
+  const effectivePlanLower = planActive ? rawPlanLower : "free";
+  
+  const isBasic = effectivePlanLower === "basic";
+  const isProPlan = effectivePlanLower === "pro";
+  const isEnterprise = effectivePlanLower === "enterprise";
+  const isFree = !isBasic && !isProPlan && !isEnterprise;
 
-  const userPlan =
-    (userData.user.user_metadata as any)?.plan ||
-    ((userData.user.user_metadata as any)?.pro ? "Pro" : null);
-  const planLower = typeof userPlan === "string" ? userPlan.toLowerCase() : "";
-  const isFree = !planLower || planLower === "free";
-  const isBasic = planLower === "basic";
-
-  if (isBasic) {
-    // Basic 每日文本
-    const { data: dailyRow, error: dailyErr } = await supabase
-      .from("basic_quotas")
-      .select("used, limit_per_day")
-      .eq("user_id", userId)
-      .eq("day", today)
-      .single();
-    if (dailyErr && dailyErr.code !== "PGRST116") {
-      console.error("Basic quota fetch error", dailyErr);
-      return new Response("Failed to fetch quota", { status: 500 });
+  // 获取套餐对应的限制
+  const limits = (() => {
+    switch (effectivePlanLower) {
+      case "basic":
+        return {
+          dailyLimit: getBasicDailyLimit(),
+          contextLimit: getBasicContextMsgLimit(),
+          photoLimit: getBasicMonthlyPhotoLimit(),
+          videoLimit: getBasicMonthlyVideoAudioLimit(),
+          label: "basic",
+        };
+      case "pro":
+        return {
+          dailyLimit: getProDailyLimit(),
+          contextLimit: getProContextMsgLimit(),
+          photoLimit: getProMonthlyPhotoLimit(),
+          videoLimit: getProMonthlyVideoAudioLimit(),
+          label: "pro",
+        };
+      case "enterprise":
+        return {
+          dailyLimit: getEnterpriseDailyLimit(),
+          contextLimit: getEnterpriseContextMsgLimit(),
+          photoLimit: getEnterpriseMonthlyPhotoLimit(),
+          videoLimit: getEnterpriseMonthlyVideoAudioLimit(),
+          label: "enterprise",
+        };
+      default:
+        return {
+          dailyLimit: getFreeDailyLimit(),
+          contextLimit: getFreeContextMsgLimit(),
+          photoLimit: getFreeMonthlyPhotoLimit(),
+          videoLimit: getFreeMonthlyVideoAudioLimit(),
+          label: "free",
+        };
     }
-    const dailyUsed = dailyRow?.used ?? 0;
+  })();
 
-    // Basic 月度媒体
-    const currentMonth = getCurrentYearMonth();
-    const { data: mediaRow, error: mediaErr } = await supabase
-      .from("basic_quotas")
-      .select("month_used_photo, month_used_video_audio")
-      .eq("user_id", userId)
-      .eq("month", currentMonth)
-      .single();
-    if (mediaErr && mediaErr.code !== "PGRST116") {
-      console.error("Basic media quota fetch error", mediaErr);
-      return new Response("Failed to fetch quota", { status: 500 });
-    }
-    const monthUsedPhoto = mediaRow?.month_used_photo ?? 0;
-    const monthUsedVideoAudio = mediaRow?.month_used_video_audio ?? 0;
+  // 从 user_wallets 表获取钱包数据
+  const { data: walletRow, error: walletErr } = await supabase
+    .from("user_wallets")
+    .select("*")
+    .eq("user_id", userId)
+    .single();
 
-    if (modelId) {
-      const modelCategory = getModelCategory(modelId);
-      if (modelCategory === "general") {
-        return Response.json({
-          plan: "basic",
-          quotaType: "unlimited",
-          modelCategory: "general",
-          contextMsgLimit: basicContextLimit,
-        });
-      }
-      if (modelCategory === "external") {
-        return Response.json({
-          plan: "basic",
-          period: today,
-          used: dailyUsed,
-          limit: basicDailyLimit,
-          remaining: Math.max(0, basicDailyLimit - dailyUsed),
-          quotaType: "daily",
-          modelCategory: "external",
-          contextMsgLimit: basicContextLimit,
-        });
-      }
-      if (modelCategory === "advanced_multimodal") {
-        return Response.json({
-          plan: "basic",
-          period: currentMonth,
-          quotaType: "monthly_media",
-          modelCategory: "advanced_multimodal",
-          contextMsgLimit: basicContextLimit,
-          daily: {
-            period: today,
-            used: dailyUsed,
-            limit: basicDailyLimit,
-            remaining: Math.max(0, basicDailyLimit - dailyUsed),
-          },
-          textConsumesDaily: true,
-          photoUsed: monthUsedPhoto,
-          photoLimit: basicPhotoLimit,
-          photoRemaining: Math.max(0, basicPhotoLimit - monthUsedPhoto),
-          videoAudioUsed: monthUsedVideoAudio,
-          videoAudioLimit: basicVideoAudioLimit,
-          videoAudioRemaining: Math.max(0, basicVideoAudioLimit - monthUsedVideoAudio),
-          monthlyMedia: {
-            period: currentMonth,
-            photoUsed: monthUsedPhoto,
-            photoLimit: basicPhotoLimit,
-            photoRemaining: Math.max(0, basicPhotoLimit - monthUsedPhoto),
-            videoAudioUsed: monthUsedVideoAudio,
-            videoAudioLimit: basicVideoAudioLimit,
-            videoAudioRemaining: Math.max(0, basicVideoAudioLimit - monthUsedVideoAudio),
-          },
-        });
+  // 如果钱包不存在，创建默认钱包
+  let wallet = walletRow;
+  if (walletErr && walletErr.code === "PGRST116") {
+    // 钱包不存在，使用 supabaseAdmin 创建（因为 RLS 限制）
+    if (supabaseAdmin) {
+      const { data: newWallet, error: createErr } = await supabaseAdmin
+        .from("user_wallets")
+        .insert({
+          user_id: userId,
+          plan: limits.label === 'free' ? 'Free' : limits.label.charAt(0).toUpperCase() + limits.label.slice(1),
+          subscription_tier: limits.label === 'free' ? 'Free' : limits.label.charAt(0).toUpperCase() + limits.label.slice(1),
+          monthly_image_balance: limits.photoLimit,
+          monthly_video_balance: limits.videoLimit,
+          monthly_reset_at: new Date().toISOString(),
+          addon_image_balance: 0,
+          addon_video_balance: 0,
+          daily_external_day: today,
+          daily_external_plan: effectivePlanLower,
+          daily_external_used: 0,
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+      
+      if (!createErr && newWallet) {
+        wallet = newWallet;
       }
     }
+  } else if (walletErr) {
+    console.error("Wallet fetch error", walletErr);
+  }
 
+  // 构建钱包统计数据
+  const walletStats = wallet ? {
+    monthly: {
+      image: wallet.monthly_image_balance ?? limits.photoLimit,
+      video: wallet.monthly_video_balance ?? limits.videoLimit,
+      resetAt: wallet.monthly_reset_at,
+    },
+    addon: {
+      image: wallet.addon_image_balance ?? 0,
+      video: wallet.addon_video_balance ?? 0,
+    },
+    total: {
+      image: (wallet.monthly_image_balance ?? limits.photoLimit) + (wallet.addon_image_balance ?? 0),
+      video: (wallet.monthly_video_balance ?? limits.videoLimit) + (wallet.addon_video_balance ?? 0),
+    },
+  } : {
+    monthly: { image: limits.photoLimit, video: limits.videoLimit, resetAt: null },
+    addon: { image: 0, video: 0 },
+    total: { image: limits.photoLimit, video: limits.videoLimit },
+  };
+
+  // 计算每日配额
+  const isNewDay = wallet?.daily_external_day !== today;
+  const dailyUsed = isNewDay ? 0 : (wallet?.daily_external_used ?? 0);
+  const dailyRemaining = Math.max(0, limits.dailyLimit - dailyUsed);
+
+  // 计算月度配额
+  const monthlyImageRemaining = walletStats.total.image;
+  const monthlyVideoRemaining = walletStats.total.video;
+
+  const monthlyMedia = {
+    period: currentMonth,
+    photoUsed: Math.max(0, limits.photoLimit - (walletStats.monthly.image)),
+    photoLimit: limits.photoLimit + walletStats.addon.image,
+    photoRemaining: monthlyImageRemaining,
+    videoAudioUsed: Math.max(0, limits.videoLimit - (walletStats.monthly.video)),
+    videoAudioLimit: limits.videoLimit + walletStats.addon.video,
+    videoAudioRemaining: monthlyVideoRemaining,
+  };
+
+  const daily = {
+    period: today,
+    used: dailyUsed,
+    limit: limits.dailyLimit,
+    remaining: dailyRemaining,
+  };
+
+  // 根据模型类型返回不同的配额信息
+  if (modelCategory === "general") {
     return Response.json({
-      plan: "basic",
-      modelCategory: modelId ? getModelCategory(modelId) : null,
-      daily: {
-        period: today,
-        used: dailyUsed,
-        limit: basicDailyLimit,
-        remaining: Math.max(0, basicDailyLimit - dailyUsed),
-      },
-      monthlyMedia: {
-        period: currentMonth,
-        photoUsed: monthUsedPhoto,
-        photoLimit: basicPhotoLimit,
-        photoRemaining: Math.max(0, basicPhotoLimit - monthUsedPhoto),
-        videoAudioUsed: monthUsedVideoAudio,
-        videoAudioLimit: basicVideoAudioLimit,
-        videoAudioRemaining: Math.max(0, basicVideoAudioLimit - monthUsedVideoAudio),
-      },
-      contextMsgLimit: basicContextLimit,
+      plan: limits.label,
+      quotaType: "unlimited",
+      modelCategory: "general",
+      contextMsgLimit: limits.contextLimit,
+      wallet: walletStats,
     });
   }
 
-  // Free fallback
-  const { data: quotaRow, error: quotaErr } = await supabase
-    .from("free_quotas")
-    .select("used, limit_per_day")
-    .eq("user_id", userId)
-    .eq("day", today)
-    .single();
-
-  if (quotaErr && quotaErr.code !== "PGRST116") {
-    console.error("Quota fetch error", quotaErr);
-    return new Response("Failed to fetch quota", { status: 500 });
+  if (modelCategory === "external") {
+    return Response.json({
+      plan: limits.label,
+      period: today,
+      used: daily.used,
+      limit: daily.limit,
+      remaining: daily.remaining,
+      quotaType: "daily",
+      modelCategory: "external",
+      contextMsgLimit: limits.contextLimit,
+      daily,
+      wallet: walletStats,
+    });
   }
 
-  const used = quotaRow?.used ?? 0;
-  const limit = Number.isFinite(dailyLimit)
-    ? dailyLimit
-    : quotaRow?.limit_per_day ?? 10;
+  if (modelCategory === "advanced_multimodal") {
+    return Response.json({
+      plan: limits.label,
+      period: currentMonth,
+      quotaType: "monthly_media",
+      modelCategory: "advanced_multimodal",
+      contextMsgLimit: limits.contextLimit,
+      daily,
+      textConsumesDaily: true,
+      photoUsed: monthlyMedia.photoUsed,
+      photoLimit: monthlyMedia.photoLimit,
+      photoRemaining: monthlyMedia.photoRemaining,
+      videoAudioUsed: monthlyMedia.videoAudioUsed,
+      videoAudioLimit: monthlyMedia.videoAudioLimit,
+      videoAudioRemaining: monthlyMedia.videoAudioRemaining,
+      monthlyMedia,
+      wallet: walletStats,
+    });
+  }
 
+  // 默认返回全部配额信息
   return Response.json({
-    plan: "free",
-    period: today,
-    used,
-    limit,
-    remaining: Math.max(0, limit - used),
-    contextMsgLimit: freeContextLimit,
+    plan: limits.label,
+    daily,
+    monthlyMedia,
+    contextMsgLimit: limits.contextLimit,
+    modelCategory: modelCategory || null,
+    wallet: walletStats,
   });
 }

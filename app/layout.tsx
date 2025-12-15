@@ -4,6 +4,7 @@ import { GeistMono } from 'geist/font/mono'
 import './globals.css'
 import { DEFAULT_LANGUAGE } from '../config'
 import { LanguageProvider } from '../context/LanguageContext'
+import { Toaster } from '@/components/ui/sonner'
 
 export const metadata: Metadata = {
   title: "MornGPT",
@@ -30,6 +31,7 @@ html {
       <body>
         <LanguageProvider>
           {children}
+          <Toaster position="top-center" richColors closeButton />
         </LanguageProvider>
       </body>
     </html>

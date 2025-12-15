@@ -5,6 +5,14 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
 import { addAddonCredits, upgradeMonthlyQuota, renewMonthlyQuota, getPlanMediaLimits, seedWalletForPlan } from "@/services/wallet";
+import {
+  addSupabaseAddonCredits,
+  upgradeSupabaseMonthlyQuota,
+  renewSupabaseMonthlyQuota,
+  seedSupabaseWalletForPlan,
+  getSupabasePlanMediaLimits,
+  updateSupabaseSubscription,
+} from "@/services/wallet-supabase";
 import { type ProductType } from "@/constants/addon-packages";
 
 const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
@@ -240,7 +248,29 @@ export async function POST(request: NextRequest) {
           videoAudioCredits: parsed.videoAudioCredits,
           createdAt: new Date().toISOString(),
         });
+
+        // 国内版：使用原子操作增加加油包额度
+        const addResult = await addAddonCredits(
+          userId,
+          parsed.imageCredits || 0,
+          parsed.videoAudioCredits || 0
+        );
+
+        if (!addResult.success) {
+          console.error("[paypal][addon-credit-error]", addResult.error);
+          return NextResponse.json({
+            success: true,
+            status,
+            productType: "ADDON",
+            addonPackageId: parsed.addonPackageId,
+            imageCredits: parsed.imageCredits,
+            videoAudioCredits: parsed.videoAudioCredits,
+            creditError: addResult.error,
+            raw: result,
+          });
+        }
       } else if (supabaseAdmin) {
+        // 国际版：使用 Supabase 新表结构
         await supabaseAdmin.from("payments").insert({
           user_id: userId,
           provider: "paypal",
@@ -253,29 +283,27 @@ export async function POST(request: NextRequest) {
           image_credits: parsed.imageCredits,
           video_audio_credits: parsed.videoAudioCredits,
         });
-      }
 
-      // 使用原子操作增加加油包额度 (wallet.addon_*_balance)
-      // 严禁修改 tier 或 expired_at
-      const addResult = await addAddonCredits(
-        userId,
-        parsed.imageCredits || 0,
-        parsed.videoAudioCredits || 0
-      );
+        // 国际版：使用 Supabase 钱包服务增加加油包额度
+        const addResult = await addSupabaseAddonCredits(
+          userId,
+          parsed.imageCredits || 0,
+          parsed.videoAudioCredits || 0
+        );
 
-      if (!addResult.success) {
-        console.error("[paypal][addon-credit-error]", addResult.error);
-        // 即使增加额度失败，支付已完成，仍返回成功但标记错误
-        return NextResponse.json({
-          success: true,
-          status,
-          productType: "ADDON",
-          addonPackageId: parsed.addonPackageId,
-          imageCredits: parsed.imageCredits,
-          videoAudioCredits: parsed.videoAudioCredits,
-          creditError: addResult.error,
-          raw: result,
-        });
+        if (!addResult.success) {
+          console.error("[paypal][addon-credit-error]", addResult.error);
+          return NextResponse.json({
+            success: true,
+            status,
+            productType: "ADDON",
+            addonPackageId: parsed.addonPackageId,
+            imageCredits: parsed.imageCredits,
+            videoAudioCredits: parsed.videoAudioCredits,
+            creditError: addResult.error,
+            raw: result,
+          });
+        }
       }
 
       return NextResponse.json({
@@ -299,42 +327,37 @@ export async function POST(request: NextRequest) {
   let expiresAt = period === "annual" ? addDays(new Date(), 365) : addDays(new Date(), 30);
   let isProFlag = effectivePlan.toLowerCase() !== "basic";
 
-  // Persist subscription & payment
+  // 国际版：使用 Supabase 新表结构
   if (!IS_DOMESTIC_VERSION && supabaseAdmin && userId) {
     const now = new Date();
-    // fetch all existing subs for this user/provider
-    const { data: existingSubs } = await supabaseAdmin
-      .from("subscriptions")
-      .select("plan, period, expires_at")
+    const nowIso = now.toISOString();
+
+    // 获取用户当前钱包和订阅信息
+    const { data: walletRow } = await supabaseAdmin
+      .from("user_wallets")
+      .select("*")
       .eq("user_id", userId)
-      .eq("provider", "paypal");
+      .single();
 
-    // extend or insert current plan entry
-    const samePlan = existingSubs?.find((s) => s.plan === plan);
-    const baseDate =
-      samePlan?.expires_at && isAfter(new Date(samePlan.expires_at), now)
-        ? new Date(samePlan.expires_at)
-        : now;
-    expiresAt = addDays(baseDate, CYCLE_DAYS[period] || 30);
+    const currentPlanKey = normalizePlanName(walletRow?.plan || "");
+    const currentPlanExp = walletRow?.plan_exp ? new Date(walletRow.plan_exp) : null;
+    const currentPlanActive = currentPlanExp ? isAfter(currentPlanExp, now) : false;
 
-    await supabaseAdmin
-      .from("subscriptions")
-      .upsert(
-        {
-          user_id: userId,
-          plan,
-          period,
-          status: "active",
-          provider: "paypal",
-          provider_order_id: orderId,
-          started_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
-        },
-        { onConflict: "user_id,provider,plan" },
-      )
-      .select();
+    const purchasePlanKey = normalizePlanName(plan);
+    const purchaseRank = PLAN_RANK[purchasePlanKey] || 0;
+    const currentRank = PLAN_RANK[currentPlanKey] || 0;
+    const isUpgrade = purchaseRank > currentRank && currentPlanActive;
+    const isDowngrade = purchaseRank < currentRank && currentPlanActive;
+    const isSameActive = purchaseRank === currentRank && currentPlanActive;
+    const isNewOrExpired = !currentPlanActive || !currentPlanKey;
 
-    // insert payment record
+    const { imageLimit, videoLimit } = getSupabasePlanMediaLimits(plan.toLowerCase());
+    const extendDays = CYCLE_DAYS[period] || 30;
+    const baseDate = isSameActive && currentPlanExp ? currentPlanExp : now;
+    let purchaseExpiresAt = addDays(baseDate, extendDays);
+    let pendingDowngrade: string | null = null;
+
+    // 记录支付
     await supabaseAdmin.from("payments").insert({
       user_id: userId,
       provider: "paypal",
@@ -342,34 +365,98 @@ export async function POST(request: NextRequest) {
       amount: amountValue,
       currency,
       status: status || "COMPLETED",
-      plan,
-      period,
+      type: "SUBSCRIPTION",
     });
 
-    // determine highest active plan by rank
-    const nowIso = new Date();
-    const candidates = [
-      ...(existingSubs || []),
-      { plan, period, expires_at: expiresAt.toISOString() },
-    ].filter((s) => !s.expires_at || isAfter(new Date(s.expires_at), nowIso));
+    if (isDowngrade) {
+      // 降级处理：延迟生效
+      const scheduledStart = currentPlanExp && currentPlanActive ? currentPlanExp : now;
+      const scheduledExpire = addDays(scheduledStart, extendDays);
+      pendingDowngrade = JSON.stringify({
+        targetPlan: plan,
+        effectiveAt: scheduledStart.toISOString(),
+      });
 
-    if (candidates.length > 0) {
-      candidates.sort((a, b) => (PLAN_RANK[b.plan] || 0) - (PLAN_RANK[a.plan] || 0));
-      const top = candidates[0];
-      effectivePlan = top.plan;
-      effectivePeriod = (top.period as "monthly" | "annual") || period;
-      expiresAt = top.expires_at ? new Date(top.expires_at) : expiresAt;
+      // 创建待生效订阅
+      await supabaseAdmin.from("subscriptions").upsert(
+        {
+          user_id: userId,
+          plan,
+          period,
+          status: "pending",
+          provider: "paypal",
+          provider_order_id: orderId,
+          started_at: scheduledStart.toISOString(),
+          expires_at: scheduledExpire.toISOString(),
+          type: "SUBSCRIPTION",
+        },
+        { onConflict: "user_id" }
+      );
+
+      // 更新钱包的 pending_downgrade
+      await supabaseAdmin
+        .from("user_wallets")
+        .update({
+          pending_downgrade: pendingDowngrade,
+          updated_at: nowIso,
+        })
+        .eq("user_id", userId);
+
+      effectivePlan = currentPlanKey || plan;
+      effectivePeriod = period;
+      expiresAt = currentPlanExp || purchaseExpiresAt;
+    } else {
+      // 新购/续费/升级处理
+      await supabaseAdmin.from("subscriptions").upsert(
+        {
+          user_id: userId,
+          plan,
+          period,
+          status: "active",
+          provider: "paypal",
+          provider_order_id: orderId,
+          started_at: nowIso,
+          expires_at: purchaseExpiresAt.toISOString(),
+          type: "SUBSCRIPTION",
+        },
+        { onConflict: "user_id" }
+      );
+
+      effectivePlan = plan;
+      effectivePeriod = period;
+      expiresAt = purchaseExpiresAt;
+      isProFlag = plan.toLowerCase() !== "basic" && plan.toLowerCase() !== "free";
+
+      // 更新用户元数据
+      await supabaseAdmin.auth.admin.updateUserById(userId, {
+        user_metadata: {
+          pro: isProFlag,
+          plan: effectivePlan,
+          plan_exp: expiresAt.toISOString(),
+        },
+      });
+
+      // 更新钱包订阅信息
+      await updateSupabaseSubscription(
+        userId,
+        effectivePlan,
+        expiresAt.toISOString(),
+        isProFlag,
+        null
+      );
+
+      // 处理配额：升级或新购时重置，同级续费不重置
+      if (isUpgrade || isNewOrExpired) {
+        await upgradeSupabaseMonthlyQuota(userId, imageLimit, videoLimit);
+      } else if (isSameActive) {
+        await renewSupabaseMonthlyQuota(userId);
+      }
+
+      // 确保钱包结构存在
+      await seedSupabaseWalletForPlan(userId, plan.toLowerCase(), {
+        forceReset: isUpgrade || isNewOrExpired,
+      });
     }
-
-    // mark user metadata (Pro only for non-Basic)
-    isProFlag = effectivePlan.toLowerCase() !== "basic";
-    await supabaseAdmin.auth.admin.updateUserById(userId, {
-      user_metadata: {
-        pro: isProFlag,
-        plan: effectivePlan,
-        plan_exp: expiresAt.toISOString(),
-      },
-    });
   }
 
   // Domestic版：写入 CloudBase

@@ -380,21 +380,38 @@ export const useMessageSubmission = (
     const completedRounds = Math.min(userCount, assistantCount);
     const remainingRounds = Math.max(0, ctxLimit - completedRounds);
     if (remainingRounds <= 0) {
+      // 先弹出订阅界面，再通过toast提示用户
       openUpgrade?.();
-      alert(
-        selectedLanguage === "zh"
-          ? `上下文已达上限（${ctxLimit}条）。请升级或新建对话后再试。`
-          : `Context limit reached (${ctxLimit} messages). Please upgrade or start a new chat.`
-      );
+      // 延迟发送toast以确保弹窗先打开
+      setTimeout(() => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("quota:exceeded", {
+            detail: {
+              type: "context",
+              message: selectedLanguage === "zh"
+                ? `上下文已达上限（${ctxLimit}条）。请升级套餐获取更多额度，或新建对话。`
+                : `Context limit reached (${ctxLimit} messages). Upgrade for more quota or start a new chat.`,
+            },
+          }));
+        }
+      }, 100);
+      setIsLoading(false);
       releaseLock();
       return;
     }
-    if (remainingRounds <= 10) {
-      alert(
-        selectedLanguage === "zh"
-          ? `上下文剩余 ${remainingRounds} 条（上限 ${ctxLimit} 条）。为避免中断，请尽快升级或新建对话。`
-          : `Context remaining ${remainingRounds} of ${ctxLimit}. Please upgrade or start a new chat soon.`
-      );
+    // 只在剩余恰好10条时提示一次（而不是每次都提示）
+    if (remainingRounds === 10) {
+      // 不阻塞发送，只是提示用户
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("quota:warning", {
+          detail: {
+            type: "context",
+            message: selectedLanguage === "zh"
+              ? `上下文剩余 ${remainingRounds} 条（上限 ${ctxLimit} 条）。为避免中断，建议升级或新建对话。`
+              : `Context remaining ${remainingRounds} of ${ctxLimit}. Consider upgrading or starting a new chat.`,
+          },
+        }));
+      }
     }
 
     // 准备上下文（仅保留最近 ctxLimit 轮：用户+助手≈2条/轮）
@@ -438,31 +455,43 @@ export const useMessageSubmission = (
           const isPro = planLower === "pro";
           const isEnterprise = planLower === "enterprise";
           let msg: string;
+          
+          // 先弹出订阅界面
           openUpgrade?.();
+          
           if (quotaType === "monthly_photo") {
             msg = selectedLanguage === "zh"
-              ? "本月图片配额已用完，请升级套餐或下月再试。"
-              : body?.error || "Monthly photo quota reached. Please upgrade or try next month.";
+              ? "本月图片配额已用完，请升级套餐获取更多额度。"
+              : body?.error || "Monthly photo quota reached. Upgrade for more credits.";
           } else if (quotaType === "monthly_video_audio") {
             msg = selectedLanguage === "zh"
-              ? "本月视频/音频配额已用完，请升级套餐或下月再试。"
-              : body?.error || "Monthly video/audio quota reached. Please upgrade or try next month.";
+              ? "本月视频/音频配额已用完，请升级套餐获取更多额度。"
+              : body?.error || "Monthly video/audio quota reached. Upgrade for more credits.";
           } else {
             const defaultZh = isBasic
-              ? "今日基础版额度已用完，请升级套餐或切换到通用模型（General Model）继续使用。"
+              ? "今日基础版额度已用完，升级套餐可获取更多额度，或切换通用模型继续使用。"
               : isPro || isEnterprise
-                ? "当前套餐额度已用完，请升级更高套餐或切换到通用模型（General Model）继续使用。"
-                : "今日免费额度已用完，请升级套餐或切换到通用模型（General Model）继续使用。";
+                ? "当前套餐额度已用完，升级更高套餐可获取更多额度，或切换通用模型继续使用。"
+                : "今日免费额度已用完，升级套餐可获取更多额度，或切换通用模型继续使用。";
             const defaultEn = isBasic
-              ? "Today's Basic quota is used up. Please upgrade or switch to the General Model."
+              ? "Today's Basic quota is used up. Upgrade for more, or switch to General Model."
               : isPro || isEnterprise
-                ? "Your current plan quota is used up. Please upgrade to a higher plan or switch to the General Model."
-                : "Today's free quota is used up. Please upgrade or switch to the General Model.";
+                ? "Plan quota used up. Upgrade for more, or switch to General Model."
+                : "Today's free quota is used up. Upgrade for more, or switch to General Model.";
             msg = selectedLanguage === "zh"
               ? body?.error || defaultZh
               : body?.error || defaultEn;
           }
-          alert(msg);
+          
+          // 通过自定义事件发送消息，让ChatProvider处理toast
+          setTimeout(() => {
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("quota:exceeded", {
+                detail: { type: quotaType, message: msg },
+              }));
+            }
+          }, 100);
+          
           setIsLoading(false);
           releaseLock();
           return;

@@ -49,20 +49,32 @@ export function AuthPage({ mode }: { mode: Mode }) {
     setIsLoading(true);
     setError(null);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      console.info("[AuthPage] Starting Google OAuth login");
+      // 使用客户端回调页面处理，确保 PKCE code_verifier 可以被正确读取
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
         },
       });
-      if (error) throw error;
+      if (error) {
+        console.error("[AuthPage] Google OAuth error:", error);
+        throw error;
+      }
+      console.info("[AuthPage] Google OAuth initiated, redirecting to:", data?.url);
+      // OAuth 会自动重定向，不需要手动处理
     } catch (err) {
+      console.error("[AuthPage] Google OAuth exception:", err);
       setError(
         err instanceof Error
           ? err.message
           : isZhText
-            ? "发生错误，请稍后重试"
-            : "An error occurred"
+            ? "Google 登录失败，请稍后重试"
+            : "Google login failed. Please try again."
       );
       setIsLoading(false);
     }
@@ -130,7 +142,8 @@ export function AuthPage({ mode }: { mode: Mode }) {
           }
           router.push("/auth/login");
         } else {
-          const { error } = await supabase.auth.signUp({
+          console.info("[AuthPage] INTL signup start", { email: form.email, next });
+          const { data, error } = await supabase.auth.signUp({
             email: form.email,
             password: form.password,
             options: {
@@ -138,7 +151,18 @@ export function AuthPage({ mode }: { mode: Mode }) {
               emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
             },
           });
-          if (error) throw error;
+          if (error) {
+            console.error("[AuthPage] INTL signup error:", error.message);
+            // 处理常见错误
+            if (error.message.includes("already registered")) {
+              throw new Error(isZhText ? "该邮箱已被注册，请直接登录" : "This email is already registered. Please sign in instead.");
+            }
+            if (error.message.includes("Password")) {
+              throw new Error(isZhText ? "密码不符合要求，至少需要6个字符" : "Password must be at least 6 characters.");
+            }
+            throw error;
+          }
+          console.info("[AuthPage] INTL signup success, user:", data.user?.email, "confirmed:", data.user?.email_confirmed_at ? "yes" : "no");
           router.push("/auth/sign-up-success");
         }
       } else {
@@ -153,15 +177,28 @@ export function AuthPage({ mode }: { mode: Mode }) {
             throw new Error(data.error || (isZhText ? "登录失败" : "Login failed"));
           }
         } else {
-          const { error } = await supabase.auth.signInWithPassword({
+          console.info("[AuthPage] INTL login start", { email: form.email });
+          const { data, error } = await supabase.auth.signInWithPassword({
             email: form.email,
             password: form.password,
           });
-          if (error) throw error;
+          if (error) {
+            console.error("[AuthPage] INTL login error:", error.message);
+            // 处理常见错误
+            if (error.message.includes("Invalid login credentials")) {
+              throw new Error(isZhText ? "邮箱或密码错误" : "Invalid email or password.");
+            }
+            if (error.message.includes("Email not confirmed")) {
+              throw new Error(isZhText ? "请先验证您的邮箱" : "Please verify your email first.");
+            }
+            throw error;
+          }
+          console.info("[AuthPage] INTL login success, user:", data.user?.email);
         }
         router.push(next);
       }
     } catch (err) {
+      console.error("[AuthPage] auth exception", err);
       setError(
         err instanceof Error
           ? err.message

@@ -83,6 +83,7 @@ export function SignUpForm({
         }
         window.location.href = "/";
       } else {
+        console.info("[SignUpForm] EN signup start", { email });
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -90,10 +91,15 @@ export function SignUpForm({
             emailRedirectTo: `${window.location.origin}/auth/callback?next=/`,
           },
         });
-        if (error) throw error;
+        if (error) {
+          console.error("[SignUpForm] EN signup error", error);
+          throw error;
+        }
+        console.info("[SignUpForm] EN signup success, redirecting to success page");
         router.push("/auth/sign-up-success");
       }
     } catch (err: unknown) {
+      console.error("[SignUpForm] signup exception", err);
       setError(
         err instanceof Error
           ? err.message

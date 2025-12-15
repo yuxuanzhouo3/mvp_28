@@ -2533,7 +2533,32 @@ const loadMessagesForConversation = useCallback(
             email: authForm.email,
             password: authForm.password,
           });
-          if (error) throw error;
+          if (error) {
+            const msg = (error.message || "").toLowerCase();
+            if (msg.includes("email not confirmed")) {
+              // 未验证邮箱：自动重发验证邮件并提示
+              try {
+                await supabase.auth.resend({
+                  type: "signup",
+                  email: authForm.email,
+                  options: {
+                    emailRedirectTo: `${window.location.origin}/auth/callback`,
+                  },
+                });
+              } catch (resendErr) {
+                console.error("Resend verify email failed", resendErr);
+              }
+              alert(
+                isZh
+                  ? "邮箱尚未验证，已重新发送验证邮件，请验证后再登录。"
+                  : "Email not confirmed. We just sent another verification email. Please verify before signing in.",
+              );
+              return;
+            }
+            console.error("[ChatProvider] EN login error", error);
+            throw error;
+          }
+          console.info("[ChatProvider] EN login success", { userId: data.user?.id, email: data.user?.email });
           if (data.user) {
             const user = data.user;
             const mappedUser: AppUser = {

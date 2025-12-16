@@ -22,7 +22,7 @@ export const externalAPIs: ExternalApi[] = [
     name: "Mistral",
     description: "Mistral / Codestral 系列",
     icon: "???",
-    models: 4,
+    models: 3,
   },
 ];
 
@@ -44,6 +44,5 @@ export const externalModels: ExternalModel[] = [
   // International (en) models
   { id: "codestral-latest", name: "Codestral-latest", provider: "Mistral", description: "Latest Codestral coding model", category: "international", modality: "text", type: "paid", price: "N/A" },
   { id: "codestral-2412", name: "Codestral-2412", provider: "Mistral", description: "Codestral 2412 release", category: "international", modality: "text", type: "paid", price: "N/A" },
-  { id: "mistral-small-latest", name: "Mistral-small-latest", provider: "Mistral", description: "Small latest Mistral model", category: "international", modality: "text", type: "paid", price: "N/A" },
   { id: "mistral-medium-latest", name: "Mistral-medium-latest", provider: "Mistral", description: "Medium latest Mistral model", category: "international", modality: "text", type: "paid", price: "N/A" },
 ];

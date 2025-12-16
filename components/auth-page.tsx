@@ -11,6 +11,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, LogIn, UserPlus, Loader2 } from "lucide-react";
+import {
+  checkEmailCooldown,
+  setEmailCooldown,
+  getCooldownMessage,
+} from "@/lib/utils/email-rate-limit";
 
 type Mode = "login" | "signup";
 
@@ -143,6 +148,12 @@ export function AuthPage({ mode }: { mode: Mode }) {
           }
           router.push("/auth/login");
         } else {
+          // 检查邮件发送冷却时间
+          const { canSend, remainingSeconds } = checkEmailCooldown(form.email);
+          if (!canSend) {
+            throw new Error(getCooldownMessage(remainingSeconds, isZhText));
+          }
+
           console.info("[AuthPage] INTL signup start", { email: form.email, next });
           const { data, error } = await supabase.auth.signUp({
             email: form.email,
@@ -164,7 +175,17 @@ export function AuthPage({ mode }: { mode: Mode }) {
             }
             throw error;
           }
+
+          // 检测是否是已存在的用户
+          // Supabase 对于已注册的邮箱不会返回错误，而是返回空的 identities 数组
+          if (data.user && (!data.user.identities || data.user.identities.length === 0)) {
+            throw new Error(isZhText ? "该邮箱已被注册，请直接登录" : "This email is already registered. Please sign in instead.");
+          }
+
           console.info("[AuthPage] INTL signup success, user:", data.user?.email, "confirmed:", data.user?.email_confirmed_at ? "yes" : "no");
+
+          // 记录邮件发送时间，设置冷却期
+          setEmailCooldown(form.email);
 
           // 重要：注册成功后立即登出，防止用户在未验证邮箱的情况下访问应用
           // Supabase 默认会在注册后创建 session，但我们要求用户必须先验证邮箱

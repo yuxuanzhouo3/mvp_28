@@ -35,7 +35,6 @@ export const MODEL_CONFIG = {
     availableModels: [
       'codestral-latest',
       'codestral-2412',
-      'mistral-small-latest',
       'mistral-medium-latest',
     ],
     apiBaseUrl: process.env.INTERNATIONAL_API_BASE_URL || '/api/international',

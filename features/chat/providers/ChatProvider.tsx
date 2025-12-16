@@ -43,6 +43,11 @@ import { useLanguage } from "@/context/LanguageContext";
 import { createLocalizedTextGetter } from "@/lib/localization";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { fetchQuotaShared } from "@/utils/quota-fetcher";
+import {
+  checkEmailCooldown,
+  setEmailCooldown,
+  getCooldownMessage,
+} from "@/lib/utils/email-rate-limit";
 
 const FREE_DAILY_LIMIT = (() => {
   const raw = process.env.NEXT_PUBLIC_FREE_DAILY_LIMIT || "10";
@@ -544,10 +549,6 @@ export default function ChatProvider({
     const handleQuotaExceeded = (e: CustomEvent<{ type: string; message: string }>) => {
       toast.error(e.detail.message, {
         duration: 6000,
-        action: {
-          label: isZh ? "查看套餐" : "View Plans",
-          onClick: () => setShowUpgradeDialog(true),
-        },
       });
     };
 
@@ -982,7 +983,7 @@ const loadMessagesForConversation = useCallback(
 
     const authSub = isDomestic
       ? null
-      : supabase.auth.onAuthStateChange(async (event, session) => {
+      : supabase.auth.onAuthStateChange(async (event: string, session: { user?: any } | null) => {
           if (!mounted) return;
           if (event === "SIGNED_IN" && session?.user) {
             const user = session.user;
@@ -2494,37 +2495,46 @@ const loadMessagesForConversation = useCallback(
           void loadConversations(mappedUser);
           alert(isZh ? "注册成功" : "Sign up successful");
         } else {
+          // 检查邮件发送冷却时间
+          const { canSend, remainingSeconds } = checkEmailCooldown(authForm.email);
+          if (!canSend) {
+            alert(getCooldownMessage(remainingSeconds, isZh));
+            return;
+          }
+
           const { data, error } = await supabase.auth.signUp({
             email: authForm.email,
             password: authForm.password,
             options: {
               data: { full_name: authForm.name },
-              emailRedirectTo: `${window.location.origin}/auth/callback`,
+              emailRedirectTo: `${window.location.origin}/auth/confirm`,
             },
           });
           if (error) throw error;
-          if (data.user) {
-            const user = data.user;
-            const mappedUser: AppUser = {
-              id: user.id,
-              email: user.email || "",
-              name:
-                (user.user_metadata as any)?.full_name ||
-                user.email?.split("@")[0] ||
-                "User",
-              isPro: false,
-            isPaid: false,
-          };
-          setAppUser(mappedUser);
-          setIsLoggedIn(true);
-          setShowAuthDialog(false);
-          appUserRef.current = mappedUser;
-          void loadConversations(mappedUser);
-        }
-        alert(
-          isZh
-            ? "注册成功，请查收邮箱并完成验证。"
-            : "Sign up successful. Please check your email to confirm.",
+
+          // 检测是否是已存在的用户
+          // Supabase 对于已注册的邮箱不会返回错误，而是返回空的 identities 数组
+          if (data.user && (!data.user.identities || data.user.identities.length === 0)) {
+            throw new Error(
+              isZh
+                ? "该邮箱已被注册，请直接登录"
+                : "This email is already registered. Please sign in instead."
+            );
+          }
+
+          // 记录邮件发送时间，设置冷却期
+          setEmailCooldown(authForm.email);
+
+          // 重要：注册成功后立即登出，防止用户在未验证邮箱的情况下访问应用
+          // Supabase 默认会在注册后创建 session，但我们要求用户必须先验证邮箱
+          await supabase.auth.signOut();
+
+          // 不要设置用户状态，只显示提示信息
+          // 用户必须先验证邮箱才能登录
+          alert(
+            isZh
+              ? "注册成功，请查收邮箱并完成验证后再登录。"
+              : "Sign up successful. Please check your email to verify before logging in.",
           );
         }
       } else {
@@ -2570,23 +2580,38 @@ const loadMessagesForConversation = useCallback(
           if (error) {
             const msg = (error.message || "").toLowerCase();
             if (msg.includes("email not confirmed")) {
-              // 未验证邮箱：自动重发验证邮件并提示
-              try {
-                await supabase.auth.resend({
-                  type: "signup",
-                  email: authForm.email,
-                  options: {
-                    emailRedirectTo: `${window.location.origin}/auth/callback`,
-                  },
-                });
-              } catch (resendErr) {
-                console.error("Resend verify email failed", resendErr);
+              // 未验证邮箱：检查冷却时间后重发验证邮件
+              const { canSend, remainingSeconds } = checkEmailCooldown(authForm.email);
+              if (canSend) {
+                try {
+                  await supabase.auth.resend({
+                    type: "signup",
+                    email: authForm.email,
+                    options: {
+                      emailRedirectTo: `${window.location.origin}/auth/confirm`,
+                    },
+                  });
+                  setEmailCooldown(authForm.email);
+                  alert(
+                    isZh
+                      ? "邮箱尚未验证，已重新发送验证邮件，请验证后再登录。"
+                      : "Email not confirmed. We just sent another verification email. Please verify before signing in.",
+                  );
+                } catch (resendErr) {
+                  console.error("Resend verify email failed", resendErr);
+                  alert(
+                    isZh
+                      ? "邮箱尚未验证，请查看您的收件箱或稍后再试。"
+                      : "Email not confirmed. Please check your inbox or try again later.",
+                  );
+                }
+              } else {
+                alert(
+                  isZh
+                    ? `邮箱尚未验证。${getCooldownMessage(remainingSeconds, isZh)}`
+                    : `Email not confirmed. ${getCooldownMessage(remainingSeconds, isZh)}`,
+                );
               }
-              alert(
-                isZh
-                  ? "邮箱尚未验证，已重新发送验证邮件，请验证后再登录。"
-                  : "Email not confirmed. We just sent another verification email. Please verify before signing in.",
-              );
               return;
             }
             console.error("[ChatProvider] EN login error", error);
@@ -2594,6 +2619,45 @@ const loadMessagesForConversation = useCallback(
           }
           console.info("[ChatProvider] EN login success", { userId: data.user?.id, email: data.user?.email });
           if (data.user) {
+            // 检查邮箱是否已验证
+            if (!data.user.email_confirmed_at) {
+              console.warn("[ChatProvider] EN login: email not confirmed, signing out");
+              await supabase.auth.signOut();
+              // 检查冷却时间后重新发送验证邮件
+              const { canSend, remainingSeconds } = checkEmailCooldown(authForm.email);
+              if (canSend) {
+                try {
+                  await supabase.auth.resend({
+                    type: "signup",
+                    email: authForm.email,
+                    options: {
+                      emailRedirectTo: `${window.location.origin}/auth/confirm`,
+                    },
+                  });
+                  setEmailCooldown(authForm.email);
+                  alert(
+                    isZh
+                      ? "请先验证您的邮箱，我们已重新发送验证邮件。"
+                      : "Please verify your email first. We've sent another verification email.",
+                  );
+                } catch (resendErr) {
+                  console.error("Resend verify email failed", resendErr);
+                  alert(
+                    isZh
+                      ? "请先验证您的邮箱。"
+                      : "Please verify your email first.",
+                  );
+                }
+              } else {
+                alert(
+                  isZh
+                    ? `请先验证您的邮箱。${getCooldownMessage(remainingSeconds, isZh)}`
+                    : `Please verify your email first. ${getCooldownMessage(remainingSeconds, isZh)}`,
+                );
+              }
+              return;
+            }
+
             const user = data.user;
             const mappedUser: AppUser = {
               id: user.id,
@@ -4078,7 +4142,6 @@ const loadMessagesForConversation = useCallback(
     guestChatSessions,
     currentChatId,
     setShowUpgradeDialog,
-    isDomestic,
     freeQuotaRemaining,
     freeQuotaLimit,
     basicQuotaRemaining,

@@ -11,7 +11,11 @@ export const metadata: Metadata = {
   description: "MornGPT intelligent AI assistant",
   generator: "MornGPT",
   icons: {
-    icon: "/logo108.png",
+    icon: [
+      { url: "/logo108.png", type: "image/png", sizes: "108x108" },
+      { url: "/logo28.png", type: "image/png", sizes: "28x28" },
+      { rel: "shortcut icon", url: "/logo108.png", type: "image/png" },
+    ],
   },
 }
 

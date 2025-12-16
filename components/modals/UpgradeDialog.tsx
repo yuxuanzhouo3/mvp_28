@@ -4,10 +4,11 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Crown, Check, Zap, CreditCard, Sparkles, Star, Shield, Rocket, Loader2 } from "lucide-react";
+import { Crown, Check, Zap, CreditCard, Sparkles, Star, Shield, Rocket, Loader2, X } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { pricingPlans as pricingPlansRaw } from "@/constants/pricing";
 import { AddonPackageTab } from "./AddonPackageTab";
@@ -243,7 +244,16 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-5xl bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-[#0f1015] dark:via-[#14151a] dark:to-[#0f1015] border-0 p-0 overflow-hidden shadow-2xl max-h-[92vh]">
+        <DialogContent className="sm:max-w-5xl bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-[#0f1015] dark:via-[#14151a] dark:to-[#0f1015] border-0 p-0 overflow-hidden shadow-2xl max-h-[92vh] [&>button.absolute.right-4:not([data-custom-close])]:hidden">
+          <DialogClose asChild>
+            <button
+              data-custom-close
+              aria-label={tr("Close", "关闭")}
+              className="absolute right-4 top-4 z-20 rounded-full bg-white/80 dark:bg-black/50 border border-white/40 dark:border-white/10 p-2 shadow hover:bg-white hover:dark:bg-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <X className="w-4 h-4 text-gray-700 dark:text-gray-200" />
+            </button>
+          </DialogClose>
           {/* 装饰性背景 */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute top-0 left-1/4 w-96 h-96 bg-gradient-to-br from-blue-400/8 to-purple-500/8 rounded-full blur-3xl" />

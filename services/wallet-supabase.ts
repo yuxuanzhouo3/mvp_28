@@ -809,3 +809,123 @@ export function calculateSupabaseUpgradePrice(
   });
   return Math.round(upgradePrice * 100) / 100;
 }
+
+// =============================================================================
+// 额外导出（配合支付/流式接口）
+// =============================================================================
+
+/**
+ * 检查是否有足够配额（总额度 = 月度 + 加油包）
+ */
+export async function checkSupabaseQuota(
+  userId: string,
+  requiredImages: number = 0,
+  requiredVideoAudio: number = 0
+): Promise<{
+  hasEnoughQuota: boolean;
+  totalImageBalance: number;
+  totalVideoBalance: number;
+  monthlyImageBalance: number;
+  monthlyVideoBalance: number;
+  addonImageBalance: number;
+  addonVideoBalance: number;
+}> {
+  const wallet = await getSupabaseUserWallet(userId);
+  if (!wallet) {
+    return {
+      hasEnoughQuota: false,
+      totalImageBalance: 0,
+      totalVideoBalance: 0,
+      monthlyImageBalance: 0,
+      monthlyVideoBalance: 0,
+      addonImageBalance: 0,
+      addonVideoBalance: 0,
+    };
+  }
+
+  const totalImageBalance = wallet.monthly_image_balance + wallet.addon_image_balance;
+  const totalVideoBalance = wallet.monthly_video_balance + wallet.addon_video_balance;
+
+  return {
+    hasEnoughQuota: totalImageBalance >= requiredImages && totalVideoBalance >= requiredVideoAudio,
+    totalImageBalance,
+    totalVideoBalance,
+    monthlyImageBalance: wallet.monthly_image_balance,
+    monthlyVideoBalance: wallet.monthly_video_balance,
+    addonImageBalance: wallet.addon_image_balance,
+    addonVideoBalance: wallet.addon_video_balance,
+  };
+}
+
+/**
+ * 增加加油包额度（国际版）
+ */
+export async function addSupabaseAddonCredits(
+  userId: string,
+  imageCredits: number,
+  videoAudioCredits: number
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabaseAdmin) return { success: false, error: "supabaseAdmin not available" };
+  try {
+    const { data: wallet } = await supabaseAdmin
+      .from("user_wallets")
+      .select("addon_image_balance, addon_video_balance")
+      .eq("user_id", userId)
+      .single();
+
+    const currentImg = wallet?.addon_image_balance ?? 0;
+    const currentVid = wallet?.addon_video_balance ?? 0;
+
+    const { error } = await supabaseAdmin
+      .from("user_wallets")
+      .update({
+        addon_image_balance: currentImg + imageCredits,
+        addon_video_balance: currentVid + videoAudioCredits,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to add addon credits",
+    };
+  }
+}
+
+/**
+ * 更新 Supabase 订阅信息（计划/到期/Pro 标记）
+ */
+export async function updateSupabaseSubscription(
+  userId: string,
+  plan: string,
+  planExpIso: string,
+  pro: boolean,
+  pendingDowngrade: string | null
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabaseAdmin) return { success: false, error: "supabaseAdmin not available" };
+  try {
+    await ensureSupabaseUserWallet(userId);
+    const { error } = await supabaseAdmin
+      .from("user_wallets")
+      .update({
+        plan,
+        subscription_tier: plan,
+        plan_exp: planExpIso,
+        pro,
+        pending_downgrade: pendingDowngrade,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to update subscription",
+    };
+  }
+}

@@ -9,13 +9,18 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2023-10-16",
-});
-
+const stripeKey = process.env.STRIPE_SECRET_KEY || "";
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
 
 export async function POST(req: Request) {
+  // 如果未配置 Stripe 密钥，则跳过处理，避免构建/运行时报错
+  if (!stripeKey || !webhookSecret) {
+    console.warn("[stripe webhook] missing STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET, skipping");
+    return new Response("stripe disabled", { status: 200 });
+  }
+
+  const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+
   const body = await req.text();
   const signature = headers().get("stripe-signature") as string;
 

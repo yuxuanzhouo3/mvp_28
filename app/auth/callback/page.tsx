@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, Suspense, useRef, useCallback } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useLanguage } from "@/context/LanguageContext";
@@ -10,21 +10,21 @@ export const dynamic = "force-dynamic";
 function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // 优先从 URL 查询参数获取 next（Supabase 会将 redirectTo 中的查询参数保留）
   const next = searchParams.get("next") || "/";
   const stateParam = searchParams.get("state");
   const supabase = createClient();
   const { isDomesticVersion, currentLanguage } = useLanguage();
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
-  
-  // 防止重复处理
-  const processed = useRef(false);
 
   const isZh = currentLanguage === "zh";
 
+  // 尝试从 state 参数中解析 next（作为备用方案）
   const nextFromState = useMemo(() => {
     if (!stateParam) return null;
     try {
+      // Supabase 的 state 参数是 base64 编码的 JSON
       const padded = stateParam.replace(/-/g, "+").replace(/_/g, "/");
       const decodedStr = atob(padded);
       const decoded = JSON.parse(decodedStr) as { next?: string };
@@ -34,144 +34,116 @@ function AuthCallbackContent() {
     }
   }, [stateParam]);
 
-  const nextTarget = useMemo(() => nextFromState || next, [nextFromState, next]);
-
-  const handleSuccess = useCallback(() => {
-    if (processed.current) return;
-    processed.current = true;
-    setStatus("success");
-    setTimeout(() => router.replace(nextTarget), 300);
-  }, [router, nextTarget]);
-
-  const handleError = useCallback((message: string) => {
-    if (processed.current) return;
-    processed.current = true;
-    console.error("[AuthCallback] Error:", message);
-    setError(message);
-    setStatus("error");
-  }, []);
+  // 优先使用 URL 查询参数中的 next，如果没有则使用 state 中的
+  const nextTarget = useMemo(() => {
+    if (next && next !== "/") return next;
+    return nextFromState || "/";
+  }, [next, nextFromState]);
 
   useEffect(() => {
-    // 国内版：处理微信回调
-    if (isDomesticVersion) {
-      const code = searchParams.get("code");
-      console.info("[AuthCallback] CN version, code=", code, "state=", stateParam);
-      if (code) {
-        fetch("/api/auth/wechat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, state: stateParam || null }),
-        })
-          .then(async (res) => {
+    const exchange = async () => {
+      // 国内版：处理微信回调
+      if (isDomesticVersion) {
+        const code = searchParams.get("code");
+        console.info("[AuthCallback] CN version, code=", code, "state=", stateParam);
+        if (code) {
+          try {
+            const res = await fetch("/api/auth/wechat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code, state: stateParam || null }),
+            });
             if (!res.ok) {
               const errText = await res.text();
               console.error("[AuthCallback] WeChat login failed", errText);
-              handleError(isZh ? "微信登录失败，请重试" : "WeChat login failed, please try again");
+              setError(isZh ? "微信登录失败，请重试" : "WeChat login failed, please try again");
+              setStatus("error");
               return;
             }
-            handleSuccess();
-          })
-          .catch((err) => {
+            setStatus("success");
+          } catch (err) {
             console.error("[AuthCallback] WeChat request error", err);
-            handleError(isZh ? "网络错误，请重试" : "Network error, please try again");
-          });
-      } else {
+            setError(isZh ? "网络错误，请重试" : "Network error, please try again");
+            setStatus("error");
+            return;
+          }
+        }
         router.replace(nextTarget);
-      }
-      return;
-    }
-
-    // 国际版：OAuth implicit 流程 / 邮箱验证回调
-    const handleAuth = async () => {
-      console.info("[AuthCallback] INTL version, url=", window.location.href);
-      
-      // 检查 OAuth 错误（URL query 参数）
-      const errorParam = searchParams.get("error");
-      const errorDescription = searchParams.get("error_description");
-      if (errorParam) {
-        handleError(errorDescription || errorParam);
         return;
       }
 
-      // 检查 hash 中的 error（implicit 流程）
-      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-      const hashError = hashParams.get("error");
-      const hashErrorDesc = hashParams.get("error_description");
-      if (hashError) {
-        handleError(hashErrorDesc || hashError);
-        return;
-      }
+      // 国际版：Supabase 邮箱验证 / OAuth 回调
+      try {
+        console.info("[AuthCallback] INTL version start, url=", window.location.href);
 
-      // 处理 OAuth implicit 流程 / magic link / 邮箱验证
-      // tokens 在 hash 中：#access_token=xxx&refresh_token=xxx&...
-      const access_token = hashParams.get("access_token");
-      const refresh_token = hashParams.get("refresh_token");
+        // 1) 优先处理邮箱验证 / magic link（hash 携带 access_token）
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+        const access_token = hashParams.get("access_token");
+        const refresh_token = hashParams.get("refresh_token");
+        const codeParam = searchParams.get("code");
+        const errorParam = searchParams.get("error");
+        const errorDescription = searchParams.get("error_description");
 
-      if (access_token && refresh_token) {
-        console.info("[AuthCallback] Found tokens in hash, setting session");
-        try {
+        // 处理 OAuth 错误
+        if (errorParam) {
+          console.error("[AuthCallback] OAuth error:", errorParam, errorDescription);
+          setError(errorDescription || errorParam);
+          setStatus("error");
+          return;
+        }
+
+        if (access_token && refresh_token) {
+          // Magic link / 邮箱验证回调（implicit flow，hash 中带 tokens）
+          console.info("[AuthCallback] magic link tokens found, setting session");
           const { error: sessionError } = await supabase.auth.setSession({
             access_token,
             refresh_token,
           });
           if (sessionError) {
             console.error("[AuthCallback] setSession error:", sessionError.message);
-            handleError(sessionError.message);
+            setError(sessionError.message);
+            setStatus("error");
             return;
           }
-          console.info("[AuthCallback] Session set successfully");
-          // 清除 URL hash
-          window.history.replaceState(null, "", window.location.pathname + window.location.search);
-          handleSuccess();
+          console.info("[AuthCallback] magic link setSession success");
+          setStatus("success");
+        } else if (codeParam) {
+          // PKCE 流程：收到 code 参数，需要重定向到服务端 /auth/confirm 处理
+          // 因为客户端可能没有 code_verifier（用户在不同浏览器/设备点击邮件链接）
+          console.info("[AuthCallback] PKCE code detected, redirecting to server-side /auth/confirm");
+          const confirmUrl = new URL("/auth/confirm", window.location.origin);
+          confirmUrl.searchParams.set("code", codeParam);
+          if (nextTarget && nextTarget !== "/") {
+            confirmUrl.searchParams.set("next", nextTarget);
+          }
+          window.location.href = confirmUrl.toString();
           return;
-        } catch (err) {
-          console.error("[AuthCallback] setSession exception:", err);
-          handleError(err instanceof Error ? err.message : (isZh ? "认证失败" : "Authentication failed"));
-          return;
-        }
-      }
-
-      // 如果没有 tokens，检查是否已有 session
-      // SDK 的 detectSessionInUrl 可能已经自动处理了
-      try {
-        // 给 SDK 一点时间自动处理
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          handleError(sessionError.message);
-          return;
-        }
-        
-        if (session) {
-          console.info("[AuthCallback] Found existing session:", session.user?.email);
-          handleSuccess();
-          return;
+        } else {
+          // 可能是直接访问 callback 页面，尝试获取现有 session
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session) {
+            console.info("[AuthCallback] Found existing session");
+            setStatus("success");
+          } else {
+            console.warn("[AuthCallback] No access_token/refresh_token or code found in URL");
+            setError(isZh ? "无效的认证回调" : "Invalid authentication callback");
+            setStatus("error");
+            return;
+          }
         }
 
-        // 再等待一下，SDK 可能还在处理
-        await new Promise(resolve => setTimeout(resolve, 700));
-        
-        if (processed.current) return;
-        
-        const { data: { session: retrySession } } = await supabase.auth.getSession();
-        if (retrySession) {
-          handleSuccess();
-          return;
-        }
-
-        // 没有找到有效的认证信息
-        console.warn("[AuthCallback] No valid auth info found");
-        handleError(isZh ? "无效的认证回调" : "Invalid authentication callback");
+        // 成功后跳转
+        setTimeout(() => {
+          router.replace(nextTarget);
+        }, 500);
       } catch (err) {
         console.error("[AuthCallback] Unexpected error:", err);
-        handleError(err instanceof Error ? err.message : (isZh ? "认证失败" : "Authentication failed"));
+        setError(err instanceof Error ? err.message : (isZh ? "认证失败" : "Authentication failed"));
+        setStatus("error");
       }
     };
-
-    handleAuth();
-  }, [supabase, router, nextTarget, isDomesticVersion, searchParams, stateParam, isZh, handleSuccess, handleError]);
+    void exchange();
+  }, [supabase, router, nextTarget, isDomesticVersion, searchParams, stateParam, nextFromState, isZh]);
 
   if (status === "error") {
     return (

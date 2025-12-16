@@ -22,6 +22,8 @@ export class GeoRouter {
   private readonly CACHE_TTL = 1000 * 60 * 60; // 1小时缓存
   private readonly REQUEST_TIMEOUT = 5000; // 5秒超时
   private readonly MAX_RETRIES = 2;
+  private readonly FAIL_CLOSED =
+    (process.env.GEO_FAIL_CLOSED || "true").toLowerCase() === "true";
 
   /**
    * 检测IP并返回完整的地理路由配置
@@ -58,6 +60,16 @@ export class GeoRouter {
         classifiedError
       );
       errorRecovery.recordError("geo-detection", classifiedError);
+
+      // fail-closed：抛错让上层阻断
+      if (this.FAIL_CLOSED) {
+        throw new ArchitectureError(
+          "Geo detection failed (fail-closed)",
+          ErrorType.API_ERROR,
+          "GEO_FAIL_CLOSED",
+          true
+        );
+      }
 
       // 返回默认配置作为最后的降级
       const defaultResult = this.getDefaultGeoResult();
@@ -312,7 +324,9 @@ export class GeoRouter {
    * 构建地理结果
    */
   private buildGeoResult(countryCode: string): GeoResult {
-    const region = this.mapToRegionType(getRegionFromCountryCode(countryCode));
+    const region = this.mapToRegionType(
+      getRegionFromCountryCode((countryCode || "").toUpperCase())
+    );
 
     return {
       region,

@@ -2633,6 +2633,8 @@ const loadMessagesForConversation = useCallback(
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
+          // Force implicit flow to avoid PKCE verifier issues on callback
+          flowType: "implicit",
           redirectTo: `${window.location.origin}/auth/callback`,
         },
       });

@@ -45,6 +45,8 @@ export function LoginForm({
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
+          // Force implicit flow to avoid missing PKCE code_verifier on callback
+          flowType: "implicit",
           redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
         },
       });

@@ -14,6 +14,8 @@ import { csrfProtection } from "@/lib/security/csrf";
  */
 export async function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
+  const FAIL_CLOSED =
+    (process.env.GEO_FAIL_CLOSED || "true").toLowerCase() === "true";
 
   // =====================
   // CORS 预检统一处理（仅 API 路由）
@@ -176,18 +178,28 @@ export async function middleware(request: NextRequest) {
       // console.log("[GeoDetect] clientIP:", clientIP || "null", "xff:", request.headers.get("x-forwarded-for") || "none");
 
       if (!clientIP) {
-        console.warn("无法获取客户端IP，使用默认处理");
-        return NextResponse.next();
+        console.warn("无法获取客户端IP，标记为未知风险");
+        if (FAIL_CLOSED) {
+          return new NextResponse(
+            JSON.stringify({
+              error: "Access Denied",
+              message: "IP detection failed. Access blocked by policy.",
+              code: "GEO_FAIL_CLOSED",
+            }),
+            {
+              status: 403,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
+        }
+        const res = NextResponse.next();
+        res.headers.set("X-Geo-Error", "true");
+        return res;
       }
 
       // 检测地理位置
       geoResult = await geoRouter.detect(clientIP);
     }
-
-    // console.log(
-    //   `IP检测结果 - 国家: ${geoResult.countryCode}, 地区: ${geoResult.region}${debugParam && isDevelopment ? " (调试模式)" : ""
-    //   }`
-    // );
 
     // 1. 禁止欧洲IP访问（开发环境调试模式除外）
     if (
@@ -251,6 +263,20 @@ export async function middleware(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("地理分流中间件错误:", error);
+
+    if ((process.env.GEO_FAIL_CLOSED || "").toLowerCase() === "true") {
+      return new NextResponse(
+        JSON.stringify({
+          error: "Access Denied",
+          message: "Geo detection failed. Access blocked by policy.",
+          code: "GEO_FAIL_CLOSED",
+        }),
+        {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
 
     // 出错时使用降级策略：允许访问但记录错误
     const response = NextResponse.next();
@@ -334,9 +360,22 @@ function isValidIP(ip: string): boolean {
     return parts.every((part) => part >= 0 && part <= 255);
   }
 
-  // IPv6 验证（简化版）
-  const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
-  return ipv6Regex.test(ip);
+  // IPv6 宽松验证：允许压缩格式，限定字符集，并过滤保留/私网/回环
+  if (ip.includes(":")) {
+    const ipv6Loose = /^[0-9a-fA-F:]+$/;
+    if (!ipv6Loose.test(ip)) return false;
+    const lower = ip.toLowerCase();
+    // 回环
+    if (lower === "::1") return false;
+    // 链路本地 fe80::/10，unique local fc00::/7，文档前缀 2001:db8::/32
+    if (lower.startsWith("fe8") || lower.startsWith("fe9") || lower.startsWith("fea") || lower.startsWith("feb"))
+      return false;
+    if (lower.startsWith("fc") || lower.startsWith("fd")) return false;
+    if (lower.startsWith("2001:db8")) return false;
+    return true;
+  }
+
+  return false;
 }
 
 export const config = {

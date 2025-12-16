@@ -10,6 +10,9 @@ export const metadata: Metadata = {
   title: "MornGPT",
   description: "MornGPT intelligent AI assistant",
   generator: "MornGPT",
+  icons: {
+    icon: "/logo108.png",
+  },
 }
 
 export default function RootLayout({

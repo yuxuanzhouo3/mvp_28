@@ -1,243 +1,255 @@
-import { NextRequest, NextResponse } from "next/server";
-import { addDays, isAfter } from "date-fns";
-import { verifyStripeWebhook } from "@/lib/stripe";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { IS_DOMESTIC_VERSION } from "@/config";
-import { CloudBaseConnector } from "@/lib/cloudbase/connector";
-import { addAddonCredits } from "@/services/wallet";
-import { type ProductType } from "@/constants/addon-packages";
+import { headers } from "next/headers";
 import Stripe from "stripe";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  renewSupabaseMonthlyQuota,
+  addSupabaseAddonCredits,
+} from "@/services/wallet-supabase";
 
-// Stripe Webhook 必须使用 Node.js Runtime
 export const runtime = "nodejs";
-
-// 禁用默认 body parser，因为我们需要原始 body 来验证签名
 export const dynamic = "force-dynamic";
 
-const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+  apiVersion: "2023-10-16",
+});
 
-// 统一套餐名称，兼容中文/英文，返回英文 canonical key
-const normalizePlanName = (p?: string) => {
-  const lower = (p || "").toLowerCase();
-  if (lower === "basic" || lower === "基础版") return "Basic";
-  if (lower === "pro" || lower === "专业版") return "Pro";
-  if (lower === "enterprise" || lower === "企业版") return "Enterprise";
-  return p || "";
-};
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
 
-function parseMetadata(metadata: Record<string, string>) {
-  const plan = normalizePlanName(metadata.planName || "Pro");
-  const periodStr = (metadata.billingCycle || "monthly").toLowerCase();
-  const period: "monthly" | "annual" =
-    periodStr === "annual" || periodStr === "yearly" ? "annual" : "monthly";
-  const userId = metadata.userId || null;
-  const days = parseInt(metadata.days || "30", 10);
+export async function POST(req: Request) {
+  const body = await req.text();
+  const signature = headers().get("stripe-signature") as string;
 
-  return { plan, period, userId, days };
-}
+  let event: Stripe.Event;
 
-async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
-  const metadata = session.metadata || {};
-  const { plan, period, userId, days } = parseMetadata(metadata as Record<string, string>);
-
-  if (!userId) {
-    console.error("Stripe webhook: Missing userId in metadata");
-    return false;
+  try {
+    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+  } catch (err: any) {
+    console.error(`❌ Stripe Webhook Error: ${err.message}`);
+    return new Response(`Webhook Error: ${err.message}`, { status: 400 });
   }
 
-  const amount = (session.amount_total || 0) / 100;
-  const currency = session.currency?.toUpperCase() || "USD";
-  const sessionId = session.id;
-  const productType = (metadata.productType as ProductType) || "SUBSCRIPTION";
+  // 订阅续费（Stripe 账期为权威）
+  if (event.type === "invoice.payment_succeeded") {
+    const invoice = event.data.object as Stripe.Invoice;
 
-  let effectivePlan = plan;
-  let effectivePeriod: "monthly" | "annual" = period;
-  let expiresAt = addDays(new Date(), days);
-  let isProFlag = effectivePlan.toLowerCase() !== "basic";
+    // 1) 获取 userId，Invoice 优先，缺失则查 Subscription
+    let userId = invoice.metadata?.userId as string | undefined;
+    if (!userId && invoice.subscription) {
+      if (typeof invoice.subscription === "string") {
+        const sub = await stripe.subscriptions.retrieve(invoice.subscription);
+        userId = sub.metadata?.userId as string | undefined;
+      } else {
+        userId = (invoice.subscription as Stripe.Subscription).metadata?.userId as
+          | string
+          | undefined;
+      }
+    }
 
-  // 国内版：支付状态由前端 /confirm 接口处理，这里仅处理加油包追加
-  if (IS_DOMESTIC_VERSION) {
-    if (productType === "ADDON" && userId) {
+    if (!userId) {
+      console.error("❌ Webhook Error: No userId found in invoice or subscription metadata");
+      return new Response("No userId found", { status: 200 });
+    }
+
+    // 读取 plan 信息（metadata 优先，其次 subscription.items 的价格昵称）
+    const metaPlan =
+      invoice.metadata?.planName ||
+      (typeof invoice.subscription !== "string"
+        ? (invoice.subscription as Stripe.Subscription).metadata?.planName
+        : undefined) ||
+      (invoice.lines?.data?.[0]?.price?.nickname as string | undefined) ||
+      "Pro";
+    const plan = (() => {
+      const lower = (metaPlan || "").toLowerCase();
+      if (lower.includes("basic")) return "Basic";
+      if (lower.includes("enterprise")) return "Enterprise";
+      return "Pro";
+    })();
+    const isProFlag = plan.toLowerCase() !== "basic";
+
+    // 2) 权威周期：直接使用 Stripe 的 period
+    const lineItem = invoice.lines?.data?.[0];
+    const periodEnd = lineItem?.period?.end || invoice.period_end;
+    const periodStart = lineItem?.period?.start || invoice.period_start;
+
+    if (!periodEnd) {
+      console.error("❌ Webhook Error: Missing period end");
+      return new Response("Missing period end", { status: 200 });
+    }
+
+    const planExpIso = new Date(periodEnd * 1000).toISOString();
+
+    // 3) 补录锚点：使用 Stripe 周期开始日的日号
+    let anchorDay: number | undefined;
+    if (periodStart) {
+      anchorDay = new Date(periodStart * 1000).getUTCDate();
+    }
+
+    // 4) 更新 wallet & 刷新额度
+    try {
+      // 更新订阅表
+      if (supabaseAdmin) {
+        await supabaseAdmin
+          .from("subscriptions")
+          .upsert(
+            {
+              user_id: userId,
+              plan,
+              period: "monthly",
+              status: "active",
+              provider: "stripe",
+              provider_order_id: invoice.id,
+              started_at: periodStart ? new Date(periodStart * 1000).toISOString() : null,
+              expires_at: planExpIso,
+            },
+            { onConflict: "user_id" }
+          );
+      }
+
+      await supabaseAdmin
+        ?.from("user_wallets")
+        .update({
+          plan,
+          subscription_tier: plan,
+          pro: isProFlag,
+          plan_exp: planExpIso,
+          billing_cycle_anchor: anchorDay ?? undefined,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId);
+
+      await renewSupabaseMonthlyQuota(userId);
+
+      console.log(`✅ [Stripe Webhook] Renewed for user ${userId}, exp: ${planExpIso}`);
+    } catch (error) {
+      console.error("❌ DB Update Error:", error);
+      return new Response("DB Error", { status: 500 });
+    }
+  }
+
+  // 新购/升级/加油包等：checkout.session.completed
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    if (session.payment_status !== "paid") {
+      return new Response(null, { status: 200 });
+    }
+
+    const metadata = session.metadata || {};
+    const productType = (metadata.productType as string) || "SUBSCRIPTION";
+    const userId =
+      metadata.userId ||
+      (session.subscription as any)?.metadata?.userId ||
+      (typeof session.subscription === "string"
+        ? (await stripe.subscriptions.retrieve(session.subscription)).metadata?.userId
+        : undefined);
+
+    if (!userId) {
+      console.error("❌ Webhook Error: No userId in checkout.session.completed");
+      return new Response(null, { status: 200 });
+    }
+
+    const amount = (session.amount_total || 0) / 100;
+    const currency = session.currency?.toUpperCase() || "USD";
+
+    // 加油包
+    if (productType === "ADDON") {
+      const imageCredits = parseInt(metadata.imageCredits || "0", 10);
+      const videoAudioCredits = parseInt(metadata.videoAudioCredits || "0", 10);
       try {
-        const connector = new CloudBaseConnector();
-        await connector.initialize();
-        const db = connector.getClient();
-        const imageCredits = parseInt(metadata.imageCredits || "0", 10);
-        const videoAudioCredits = parseInt(metadata.videoAudioCredits || "0", 10);
-
-        await db.collection("payments").add({
-          userId,
+        await supabaseAdmin?.from("payments").insert({
+          user_id: userId,
           provider: "stripe",
-          providerOrderId: sessionId,
+          provider_order_id: session.id,
           amount,
           currency,
           status: "COMPLETED",
           type: "ADDON",
-          addonPackageId: metadata.addonPackageId || "",
-          imageCredits,
-          videoAudioCredits,
-          createdAt: new Date().toISOString(),
+          addon_package_id: metadata.addonPackageId || "",
+          image_credits: imageCredits,
+          video_audio_credits: videoAudioCredits,
+        });
+        await addSupabaseAddonCredits(userId, imageCredits, videoAudioCredits);
+        console.log(`[Stripe][ADDON] credited for user ${userId}`);
+      } catch (err) {
+        console.error("[Stripe][ADDON] error", err);
+        return new Response("DB Error", { status: 500 });
+      }
+      return new Response(null, { status: 200 });
+    }
+
+    // 订阅新购/升级：直接用 subscription 的 current_period_end 作为权威
+    if (session.subscription) {
+      const sub =
+        typeof session.subscription === "string"
+          ? await stripe.subscriptions.retrieve(session.subscription)
+          : (session.subscription as Stripe.Subscription);
+
+      const plan = (() => {
+        const lower =
+          (metadata.planName ||
+            sub.metadata?.planName ||
+            sub.items?.data?.[0]?.price?.nickname ||
+            "Pro")?.toLowerCase() || "pro";
+        if (lower.includes("basic")) return "Basic";
+        if (lower.includes("enterprise")) return "Enterprise";
+        return "Pro";
+      })();
+      const isProFlag = plan.toLowerCase() !== "basic";
+      const periodEnd = sub.current_period_end;
+      const periodStart = sub.current_period_start;
+      const planExpIso = new Date(periodEnd * 1000).toISOString();
+      const anchorDay = periodStart
+        ? new Date(periodStart * 1000).getUTCDate()
+        : undefined;
+
+      try {
+        await supabaseAdmin
+          ?.from("subscriptions")
+          .upsert(
+            {
+              user_id: userId,
+              plan,
+              period: sub.items?.data?.[0]?.plan?.interval === "year" ? "annual" : "monthly",
+              status: "active",
+              provider: "stripe",
+              provider_order_id: session.id,
+              started_at: periodStart ? new Date(periodStart * 1000).toISOString() : null,
+              expires_at: planExpIso,
+            },
+            { onConflict: "user_id" }
+          );
+
+        await supabaseAdmin
+          ?.from("user_wallets")
+          .update({
+            plan,
+            subscription_tier: plan,
+            pro: isProFlag,
+            plan_exp: planExpIso,
+            billing_cycle_anchor: anchorDay ?? undefined,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", userId);
+
+        await supabaseAdmin?.from("payments").insert({
+          user_id: userId,
+          provider: "stripe",
+          provider_order_id: session.id,
+          amount,
+          currency,
+          status: "COMPLETED",
+          type: "SUBSCRIPTION",
+          plan,
+          period: sub.items?.data?.[0]?.plan?.interval === "year" ? "annual" : "monthly",
         });
 
-        await addAddonCredits(userId, imageCredits, videoAudioCredits);
+        await renewSupabaseMonthlyQuota(userId);
+        console.log(`[Stripe][SUBSCRIPTION] processed for user ${userId}`);
       } catch (err) {
-        console.error("[stripe webhook][addon] error", err);
+        console.error("[Stripe][SUBSCRIPTION] error", err);
+        return new Response("DB Error", { status: 500 });
       }
     }
-    return true;
   }
 
-  // 国际版：使用 Supabase
-  if (!IS_DOMESTIC_VERSION && supabaseAdmin) {
-    const now = new Date();
-
-    // 获取现有订阅
-    const { data: existingSubs } = await supabaseAdmin
-      .from("subscriptions")
-      .select("plan, period, expires_at")
-      .eq("user_id", userId)
-      .eq("provider", "stripe");
-
-    // 延长现有订阅
-    const samePlan = existingSubs?.find((s) => s.plan === plan);
-    const baseDate =
-      samePlan?.expires_at && isAfter(new Date(samePlan.expires_at), now)
-        ? new Date(samePlan.expires_at)
-        : now;
-    expiresAt = addDays(baseDate, days);
-
-    // 更新或插入订阅
-    await supabaseAdmin
-      .from("subscriptions")
-      .upsert(
-        {
-          user_id: userId,
-          plan,
-          period,
-          status: "active",
-          provider: "stripe",
-          provider_order_id: sessionId,
-          started_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
-        },
-        { onConflict: "user_id,provider,plan" }
-      )
-      .select();
-
-    // 记录支付
-    await supabaseAdmin.from("payments").insert({
-      user_id: userId,
-      provider: "stripe",
-      provider_order_id: sessionId,
-      amount,
-      currency,
-      status: "COMPLETED",
-      plan,
-      period,
-    });
-
-    // 计算最高级别的有效订阅
-    const nowIso = new Date();
-    const candidates = [
-      ...(existingSubs || []),
-      { plan, period, expires_at: expiresAt.toISOString() },
-    ].filter((s) => !s.expires_at || isAfter(new Date(s.expires_at), nowIso));
-
-    if (candidates.length > 0) {
-      candidates.sort(
-        (a, b) => (PLAN_RANK[b.plan] || 0) - (PLAN_RANK[a.plan] || 0)
-      );
-      const top = candidates[0];
-      effectivePlan = top.plan;
-      effectivePeriod = (top.period as "monthly" | "annual") || period;
-      expiresAt = top.expires_at ? new Date(top.expires_at) : expiresAt;
-    }
-
-    // 更新用户元数据
-    isProFlag = effectivePlan.toLowerCase() !== "basic";
-    await supabaseAdmin.auth.admin.updateUserById(userId, {
-      user_metadata: {
-        pro: isProFlag,
-        plan: effectivePlan,
-        plan_exp: expiresAt.toISOString(),
-      },
-    });
-
-    console.log("Stripe webhook: Subscription updated for user", userId, {
-      plan: effectivePlan,
-      expiresAt: expiresAt.toISOString(),
-    });
-  }
-  return true;
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.text();
-    const signature = request.headers.get("stripe-signature");
-
-    if (!signature) {
-      return NextResponse.json(
-        { error: "Missing stripe-signature header" },
-        { status: 400 }
-      );
-    }
-
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    if (!webhookSecret) {
-      console.error("Missing STRIPE_WEBHOOK_SECRET environment variable");
-      return NextResponse.json(
-        { error: "Webhook secret not configured" },
-        { status: 500 }
-      );
-    }
-
-    // 验证 webhook 签名
-    const event = verifyStripeWebhook(body, signature, webhookSecret);
-    if (!event) {
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-    }
-
-    console.log("Stripe webhook received:", event.type, event.id);
-
-    // 处理事件
-    switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        
-        // 只处理支付成功的会话
-        if (session.payment_status === "paid") {
-          const success = await handleCheckoutSessionCompleted(session);
-          if (!success) {
-            return NextResponse.json(
-              { error: "Failed to process checkout session" },
-              { status: 500 }
-            );
-          }
-        }
-        break;
-      }
-
-      case "payment_intent.succeeded": {
-        console.log("Payment intent succeeded:", event.data.object);
-        break;
-      }
-
-      case "payment_intent.payment_failed": {
-        console.log("Payment failed:", event.data.object);
-        break;
-      }
-
-      default:
-        console.log("Unhandled event type:", event.type);
-    }
-
-    return NextResponse.json({ received: true });
-  } catch (err) {
-    console.error("Stripe webhook error:", err);
-    return NextResponse.json(
-      { error: "Webhook handler failed" },
-      { status: 500 }
-    );
-  }
+  return new Response(null, { status: 200 });
 }

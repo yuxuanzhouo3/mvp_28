@@ -20,24 +20,14 @@ export function createClient() {
     );
   }
 
-  // 创建客户端
-  // 使用 implicit 流程避免 PKCE code_verifier 存储问题
-  // implicit 流程直接在 URL hash 中返回 tokens，不需要 code_verifier
+  // 创建客户端时配置 OAuth 相关选项
   supabaseInstance = createBrowserClient(supabaseUrl, supabaseKey, {
     auth: {
       autoRefreshToken: true,
       persistSession: true,
-      detectSessionInUrl: true,
-      flowType: "implicit", // 使用隐式流程，直接获取 tokens
+      detectSessionInUrl: false, // 禁用自动检测，避免干扰手动PKCE流程
     },
   });
 
   return supabaseInstance;
-}
-
-/**
- * 重置客户端实例（用于调试/清理）
- */
-export function resetClient() {
-  supabaseInstance = null;
 }

@@ -44,6 +44,8 @@ export const EUROPEAN_COUNTRIES = [
   "NO",
   // 英国（脱欧后仍需遵守部分GDPR）
   "GB",
+  // 欧盟未知时返回 EU 代码的兼容
+  "EU",
   // 瑞士（虽非EU但数据保护法类似）
   "CH",
 ];
@@ -92,7 +94,8 @@ export function getDefaultLanguage(region: Region): Language {
  * 检查是否为欧洲国家
  */
 export function isEuropeanCountry(countryCode: string): boolean {
-  return EUROPEAN_COUNTRIES.includes(countryCode);
+  const code = (countryCode || "").toUpperCase();
+  return EUROPEAN_COUNTRIES.includes(code);
 }
 
 /**

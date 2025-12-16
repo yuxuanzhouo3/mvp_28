@@ -59,7 +59,8 @@ export async function POST(request: NextRequest) {
     // 解析 metadata
     const metadata = session.metadata || {};
     const productType = (metadata.productType as ProductType) || "SUBSCRIPTION";
-    const userId = metadata.userId || null;
+    // 用户ID：优先 invoice/metadata，其次 subscription/metadata 回落
+    const userId = metadata.userId || (session.subscription as any)?.metadata?.userId || null;
     const amount = (session.amount_total || 0) / 100;
     const currency = session.currency?.toUpperCase() || "USD";
 

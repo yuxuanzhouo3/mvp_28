@@ -127,9 +127,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // 国内版使用人民币价格，国际版使用美元价格
-      // 注意：Stripe 使用美元，所以这里统一用美元价格
-      amount = addonPkg.price;
+      // 金额：国内用人民币价，国际用美元价
+      amount = IS_DOMESTIC_VERSION ? addonPkg.priceZh : addonPkg.price;
       
       // customId 格式: userId|ADDON|packageId|imageCredits|videoCredits
       customId = [

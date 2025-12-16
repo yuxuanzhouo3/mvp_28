@@ -17,10 +17,19 @@ export async function GET(req: Request) {
     if (!IS_DOMESTIC_VERSION) {
       const supabase = await createClient();
       const { data: { user }, error } = await supabase.auth.getUser();
-      
+
       if (error || !user) {
         console.log("[auth/me] Supabase: no user found");
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      // 检查邮箱是否已验证
+      if (!user.email_confirmed_at) {
+        console.log("[auth/me] Supabase: email not confirmed for user:", user.email);
+        return NextResponse.json(
+          { error: "Email not confirmed", message: "Please verify your email before accessing the application." },
+          { status: 403 }
+        );
       }
 
       // 获取用户 profile 和 wallet 信息
@@ -37,7 +46,7 @@ export async function GET(req: Request) {
         .single();
 
       console.log("[auth/me] Supabase user:", user.email);
-      
+
       return NextResponse.json({
         user: {
           id: user.id,
@@ -46,6 +55,7 @@ export async function GET(req: Request) {
           avatar: profile?.avatar || user.user_metadata?.avatar_url,
           region: profile?.region || "US",
           created_at: profile?.created_at || user.created_at,
+          email_confirmed: !!user.email_confirmed_at,
         },
         wallet: wallet || null,
       });

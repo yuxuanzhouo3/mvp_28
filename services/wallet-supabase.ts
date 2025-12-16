@@ -1,25 +1,6 @@
 /**
- * Wallet Supabase 钱包服务 - 国际版
- * 统一管理用户的订阅配额和加油包配额
- * 
- * 数据库 Schema (user_wallets 表):
- * {
- *   user_id: uuid,
- *   plan: text,                    // 订阅套餐 (Free/Basic/Pro/Enterprise)
- *   subscription_tier: text,       // 订阅层级
- *   plan_exp: timestamptz,         // 订阅到期时间
- *   pro: boolean,                  // 是否为Pro用户
- *   pending_downgrade: text,       // 待降级信息
- *   monthly_image_balance: integer,// 月度图片余额
- *   monthly_video_balance: integer,// 月度视频/音频余额
- *   monthly_reset_at: timestamptz, // 月度配额重置时间
- *   addon_image_balance: integer,  // 加油包图片余额
- *   addon_video_balance: integer,  // 加油包视频/音频余额
- *   daily_external_day: date,      // 每日配额日期
- *   daily_external_plan: text,     // 每日配额对应套餐
- *   daily_external_used: integer,  // 每日外部模型使用量
- *   updated_at: timestamptz,
- * }
+ * Wallet Supabase 服务 - 国际版
+ * 统一管理订阅配额、加油包配额，支持账单日粘性与原子扣费
  */
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -44,9 +25,6 @@ import {
 // 类型定义
 // =============================================================================
 
-/**
- * Supabase 钱包数据结构
- */
 export interface SupabaseUserWallet {
   user_id: string;
   plan: string;
@@ -57,6 +35,7 @@ export interface SupabaseUserWallet {
   monthly_image_balance: number;
   monthly_video_balance: number;
   monthly_reset_at: string | null;
+  billing_cycle_anchor: number | null;
   addon_image_balance: number;
   addon_video_balance: number;
   daily_external_day: string | null;
@@ -65,18 +44,12 @@ export interface SupabaseUserWallet {
   updated_at: string;
 }
 
-/**
- * 配额扣减请求
- */
 export interface SupabaseQuotaDeductionRequest {
   userId: string;
   imageCount?: number;
   videoAudioCount?: number;
 }
 
-/**
- * 配额扣减结果
- */
 export interface SupabaseQuotaDeductionResult {
   success: boolean;
   error?: string;
@@ -94,53 +67,136 @@ export interface SupabaseQuotaDeductionResult {
   };
 }
 
+// =============================================================================
+// 时间 & 账单工具（北京时间）
+// =============================================================================
+
+const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function toBeijingDate(date: Date): Date {
+  const utcMs = date.getTime() + date.getTimezoneOffset() * 60000;
+  return new Date(utcMs + BEIJING_OFFSET_MS);
+}
+
+function getBeijingYMD(date: Date): { year: number; month: number; day: number } {
+  const bj = toBeijingDate(date);
+  return { year: bj.getFullYear(), month: bj.getMonth() + 1, day: bj.getDate() };
+}
+
+function beijingMidnightUtcMs(ymd: { year: number; month: number; day: number }): number {
+  return Date.UTC(ymd.year, ymd.month - 1, ymd.day, -8, 0, 0);
+}
+
+function daysInMonth(year: number, month1Based: number): number {
+  return new Date(year, month1Based, 0).getDate();
+}
+
+function clampAnchorDay(year: number, month1Based: number, anchorDay: number): number {
+  return Math.min(anchorDay, daysInMonth(year, month1Based));
+}
+
 /**
- * 配额检查结果
+ * 日历月累加，保持账单锚点（含月末粘性）
  */
-export interface SupabaseQuotaCheckResult {
-  hasEnoughQuota: boolean;
-  totalImageBalance: number;
-  totalVideoBalance: number;
-  monthlyImageBalance: number;
-  monthlyVideoBalance: number;
-  addonImageBalance: number;
-  addonVideoBalance: number;
+function addCalendarMonths(baseDate: Date, months: number, anchorDay: number): Date {
+  let current = baseDate;
+  for (let i = 0; i < months; i++) {
+    current = getNextBillingDateSticky(current, anchorDay);
+  }
+  return current;
+}
+
+/**
+ * 计算“下一个账单日”对应的北京日期（支持月末粘性：31 -> 28/29 -> 回弹 31）
+ */
+export function getNextBillingDateSticky(currentDate: Date, anchorDay: number): Date {
+  const { year, month } = getBeijingYMD(currentDate);
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const day = clampAnchorDay(nextYear, nextMonth, anchorDay);
+  const utcMs = beijingMidnightUtcMs({ year: nextYear, month: nextMonth, day });
+  return new Date(utcMs);
+}
+
+/**
+ * 基于 billing_cycle_anchor 和 last_reset_at 计算当前账期是否应重置
+ */
+export function computePaidResetState(
+  lastResetIso?: string,
+  anchorDay?: number,
+  now: Date = new Date()
+): { due: boolean; anchorIso: string; anchorDay: number } {
+  const nowYmd = getBeijingYMD(now);
+  const nowMidnight = beijingMidnightUtcMs(nowYmd);
+
+  let resolvedAnchorDay = anchorDay && anchorDay >= 1 && anchorDay <= 31 ? anchorDay : nowYmd.day;
+  let baseDate = now;
+  let invalidBase = true;
+
+  if (lastResetIso) {
+    const last = new Date(lastResetIso);
+    if (!Number.isNaN(last.getTime())) {
+      baseDate = last;
+      invalidBase = false;
+      if (!anchorDay) {
+        resolvedAnchorDay = getBeijingYMD(last).day;
+      }
+    }
+  }
+
+  const baseYmd = getBeijingYMD(baseDate);
+  const anchorYmd = {
+    year: baseYmd.year,
+    month: baseYmd.month,
+    day: clampAnchorDay(baseYmd.year, baseYmd.month, resolvedAnchorDay),
+  };
+
+  let anchorMidnight = beijingMidnightUtcMs(anchorYmd);
+  let nextDate = getNextBillingDateSticky(new Date(anchorMidnight), resolvedAnchorDay);
+  let nextMidnight = nextDate.getTime();
+  let due = invalidBase;
+
+  while (nowMidnight >= nextMidnight) {
+    due = true;
+    anchorMidnight = nextMidnight;
+    nextDate = getNextBillingDateSticky(new Date(anchorMidnight), resolvedAnchorDay);
+    nextMidnight = nextDate.getTime();
+  }
+
+  return { due, anchorIso: new Date(anchorMidnight).toISOString(), anchorDay: resolvedAnchorDay };
 }
 
 // =============================================================================
-// 默认钱包结构
+// 默认钱包
 // =============================================================================
 
-/**
- * 创建默认钱包数据
- */
 export function createDefaultSupabaseWallet(userId: string): Partial<SupabaseUserWallet> {
+  const today = new Date();
+  const anchorDay = getBeijingYMD(today).day;
   return {
     user_id: userId,
-    plan: 'Free',
-    subscription_tier: 'Free',
+    plan: "Free",
+    subscription_tier: "Free",
     plan_exp: null,
     pro: false,
     pending_downgrade: null,
     monthly_image_balance: getFreeMonthlyPhotoLimit(),
     monthly_video_balance: getFreeMonthlyVideoAudioLimit(),
-    monthly_reset_at: new Date().toISOString(),
+    monthly_reset_at: new Date(beijingMidnightUtcMs(getBeijingYMD(today))).toISOString(),
+    billing_cycle_anchor: anchorDay,
     addon_image_balance: 0,
     addon_video_balance: 0,
     daily_external_day: getTodayString(),
-    daily_external_plan: 'free',
+    daily_external_plan: "free",
     daily_external_used: 0,
     updated_at: new Date().toISOString(),
   };
 }
 
 // =============================================================================
-// 钱包操作服务
+// 钱包操作
 // =============================================================================
 
-/**
- * 按套餐获取基础配额
- */
 export function getSupabasePlanMediaLimits(planLower: string): {
   imageLimit: number;
   videoLimit: number;
@@ -148,31 +204,19 @@ export function getSupabasePlanMediaLimits(planLower: string): {
   const plan = (planLower || "").toLowerCase();
   switch (plan) {
     case "basic":
-      return {
-        imageLimit: getBasicMonthlyPhotoLimit(),
-        videoLimit: getBasicMonthlyVideoAudioLimit(),
-      };
+      return { imageLimit: getBasicMonthlyPhotoLimit(), videoLimit: getBasicMonthlyVideoAudioLimit() };
     case "pro":
-      return {
-        imageLimit: getProMonthlyPhotoLimit(),
-        videoLimit: getProMonthlyVideoAudioLimit(),
-      };
+      return { imageLimit: getProMonthlyPhotoLimit(), videoLimit: getProMonthlyVideoAudioLimit() };
     case "enterprise":
       return {
         imageLimit: getEnterpriseMonthlyPhotoLimit(),
         videoLimit: getEnterpriseMonthlyVideoAudioLimit(),
       };
     default:
-      return {
-        imageLimit: getFreeMonthlyPhotoLimit(),
-        videoLimit: getFreeMonthlyVideoAudioLimit(),
-      };
+      return { imageLimit: getFreeMonthlyPhotoLimit(), videoLimit: getFreeMonthlyVideoAudioLimit() };
   }
 }
 
-/**
- * 按套餐获取每日外部模型调用上限
- */
 export function getSupabasePlanDailyLimit(planLower: string): number {
   const plan = (planLower || "").toLowerCase();
   switch (plan) {
@@ -187,31 +231,22 @@ export function getSupabasePlanDailyLimit(planLower: string): number {
   }
 }
 
-/**
- * 获取用户钱包信息
- */
 export async function getSupabaseUserWallet(userId: string): Promise<SupabaseUserWallet | null> {
   if (!supabaseAdmin) {
     console.warn("[wallet-supabase] supabaseAdmin not available");
     return null;
   }
-
   try {
     const { data, error } = await supabaseAdmin
       .from("user_wallets")
       .select("*")
       .eq("user_id", userId)
       .single();
-
     if (error) {
-      if (error.code === "PGRST116") {
-        // 记录不存在
-        return null;
-      }
+      if (error.code === "PGRST116") return null;
       console.error("[wallet-supabase] Error fetching wallet:", error);
       return null;
     }
-
     return data as SupabaseUserWallet;
   } catch (error) {
     console.error("[wallet-supabase] Error fetching wallet:", error);
@@ -219,9 +254,6 @@ export async function getSupabaseUserWallet(userId: string): Promise<SupabaseUse
   }
 }
 
-/**
- * 确保用户钱包存在，如果不存在则创建
- */
 export async function ensureSupabaseUserWallet(userId: string): Promise<SupabaseUserWallet | null> {
   if (!supabaseAdmin) {
     console.warn("[wallet-supabase] supabaseAdmin not available");
@@ -229,21 +261,17 @@ export async function ensureSupabaseUserWallet(userId: string): Promise<Supabase
   }
 
   let wallet = await getSupabaseUserWallet(userId);
-
   if (!wallet) {
-    // 创建默认钱包
     const defaultWallet = createDefaultSupabaseWallet(userId);
     const { data, error } = await supabaseAdmin
       .from("user_wallets")
       .insert(defaultWallet)
       .select()
       .single();
-
     if (error) {
       console.error("[wallet-supabase] Error creating wallet:", error);
       return null;
     }
-
     wallet = data as SupabaseUserWallet;
   }
 
@@ -251,11 +279,11 @@ export async function ensureSupabaseUserWallet(userId: string): Promise<Supabase
 }
 
 /**
- * 确保钱包存在，并按套餐初始化/重置月度配额
+ * 确保钱包存在，并按套餐初始化/懒刷新月度配额（含账单锚点）
  */
 export async function seedSupabaseWalletForPlan(
   userId: string,
-  planLower: string,
+  planLowerInput: string,
   options?: { forceReset?: boolean; expired?: boolean }
 ): Promise<SupabaseUserWallet | null> {
   if (!supabaseAdmin) {
@@ -263,29 +291,70 @@ export async function seedSupabaseWalletForPlan(
     return null;
   }
 
-  let wallet = await getSupabaseUserWallet(userId);
-  const baseLimits = getSupabasePlanMediaLimits(planLower);
   const now = new Date();
   const nowIso = now.toISOString();
-  const currentMonthKey = getCurrentYearMonth();
-  const isFreePlan = (planLower || "free").toLowerCase() === "free";
 
+  // 1) 并行获取钱包与活跃订阅（最高优先级/最新）
+  const [walletRes, subRes] = await Promise.all([
+    getSupabaseUserWallet(userId),
+    supabaseAdmin
+      .from("subscriptions")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  let wallet = walletRes;
+  const activeSub = subRes.error ? null : subRes.data;
+
+  // 2) 判定真实 Plan（自愈）
+  let effectivePlan = (planLowerInput || "free").toLowerCase();
+  let effectivePlanExp: string | null = null;
+  if (activeSub) {
+    const subExpiresAt = activeSub.expires_at ? new Date(activeSub.expires_at) : null;
+    if (!subExpiresAt || subExpiresAt > now) {
+      effectivePlan = (activeSub.plan || "free").toLowerCase();
+      effectivePlanExp = activeSub.expires_at || null;
+    } else {
+      console.warn(`[wallet-supabase] active subscription expired for user ${userId}`);
+    }
+  }
+  if (options?.expired) {
+    effectivePlan = "free";
+  }
+
+  const isFreePlan = effectivePlan === "free";
+  const isPaidPlan = !isFreePlan;
+  const baseLimits = getSupabasePlanMediaLimits(effectivePlan);
+
+  // 3) 新钱包初始化
   if (!wallet) {
-    // 创建新钱包
+    const anchorDay = getBeijingYMD(now).day;
+    const monthlyResetAt = new Date(
+      beijingMidnightUtcMs({
+        ...getBeijingYMD(now),
+        day: clampAnchorDay(now.getFullYear(), now.getMonth() + 1, anchorDay),
+      })
+    ).toISOString();
+
     const newWallet: Partial<SupabaseUserWallet> = {
       user_id: userId,
-      plan: planLower === 'free' ? 'Free' : planLower.charAt(0).toUpperCase() + planLower.slice(1),
-      subscription_tier: planLower === 'free' ? 'Free' : planLower.charAt(0).toUpperCase() + planLower.slice(1),
-      plan_exp: null,
-      pro: planLower !== 'free' && planLower !== 'basic',
+      plan: isFreePlan ? "Free" : effectivePlan.charAt(0).toUpperCase() + effectivePlan.slice(1),
+      subscription_tier: isFreePlan ? "Free" : effectivePlan.charAt(0).toUpperCase() + effectivePlan.slice(1),
+      plan_exp: effectivePlanExp,
+      pro: effectivePlan !== "free" && effectivePlan !== "basic",
       pending_downgrade: null,
       monthly_image_balance: baseLimits.imageLimit,
       monthly_video_balance: baseLimits.videoLimit,
-      monthly_reset_at: nowIso,
+      monthly_reset_at: monthlyResetAt,
+      billing_cycle_anchor: anchorDay,
       addon_image_balance: 0,
       addon_video_balance: 0,
       daily_external_day: getTodayString(),
-      daily_external_plan: planLower,
+      daily_external_plan: effectivePlan,
       daily_external_used: 0,
       updated_at: nowIso,
     };
@@ -304,33 +373,77 @@ export async function seedSupabaseWalletForPlan(
     return data as SupabaseUserWallet;
   }
 
-  // 检查是否需要更新
+  // 4) 懒刷新/状态同步
+  let needUpdate = false;
+  const updatePayload: Partial<SupabaseUserWallet> = { updated_at: nowIso };
+
   const walletMonthKey = wallet.monthly_reset_at
     ? new Date(wallet.monthly_reset_at).toISOString().slice(0, 7)
     : null;
+  const currentMonthKey = getCurrentYearMonth();
 
-  let needUpdate = false;
-  const updatePayload: Partial<SupabaseUserWallet> = {
-    updated_at: nowIso,
-  };
+  // 4.1 校正 plan
+  const walletPlanLower = (wallet.plan || "free").toLowerCase();
+  if (walletPlanLower !== effectivePlan) {
+    updatePayload.plan = isFreePlan ? "Free" : effectivePlan.charAt(0).toUpperCase() + effectivePlan.slice(1);
+    updatePayload.subscription_tier = updatePayload.plan;
+    updatePayload.pro = effectivePlan !== "free" && effectivePlan !== "basic";
+    updatePayload.plan_exp = effectivePlanExp;
 
-  if (options?.expired) {
-    // 订阅过期，清空月度配额
-    updatePayload.monthly_image_balance = 0;
-    updatePayload.monthly_video_balance = 0;
-    updatePayload.monthly_reset_at = nowIso;
+    // 降级 -> 立即按 Free 重置
+    if (isFreePlan) {
+      updatePayload.monthly_image_balance = baseLimits.imageLimit;
+      updatePayload.monthly_video_balance = baseLimits.videoLimit;
+      updatePayload.monthly_reset_at = nowIso;
+      updatePayload.billing_cycle_anchor = wallet.billing_cycle_anchor ?? getBeijingYMD(now).day;
+    } else {
+      // 升级/变更 -> 重置为新套餐额度，锚点仅在 forceReset 时改为今天
+      updatePayload.monthly_image_balance = baseLimits.imageLimit;
+      updatePayload.monthly_video_balance = baseLimits.videoLimit;
+      if (options?.forceReset) {
+        updatePayload.billing_cycle_anchor = getBeijingYMD(now).day;
+        updatePayload.monthly_reset_at = nowIso;
+      }
+    }
     needUpdate = true;
-  } else {
-    const shouldResetFreeMonthly =
-      isFreePlan && (options?.forceReset || walletMonthKey !== currentMonthKey);
-    const shouldInitPaidMonthly = !isFreePlan && (!wallet.monthly_reset_at || options?.forceReset);
+  }
 
-    if (shouldResetFreeMonthly || shouldInitPaidMonthly) {
+  // 4.2 付费用户周期刷新（当 plan 已一致且未因 plan 变更触发重置时）
+  if (isPaidPlan && !needUpdate) {
+    let anchorDay = wallet.billing_cycle_anchor ?? null;
+    if (!anchorDay && wallet.monthly_reset_at) {
+      anchorDay = getBeijingYMD(new Date(wallet.monthly_reset_at)).day;
+      updatePayload.billing_cycle_anchor = anchorDay;
+      needUpdate = true;
+    }
+
+    const paidResetState =
+      anchorDay != null
+        ? computePaidResetState(wallet.monthly_reset_at || undefined, anchorDay, now)
+        : null;
+
+    if (options?.forceReset || (paidResetState && paidResetState.due)) {
+      updatePayload.monthly_image_balance = baseLimits.imageLimit;
+      updatePayload.monthly_video_balance = baseLimits.videoLimit;
+      updatePayload.monthly_reset_at = paidResetState ? paidResetState.anchorIso : nowIso;
+      needUpdate = true;
+    }
+  }
+
+  // 4.3 Free 自然月刷新（当未被 plan 校正覆盖时）
+  if (isFreePlan && !needUpdate) {
+    if (walletMonthKey !== currentMonthKey) {
       updatePayload.monthly_image_balance = baseLimits.imageLimit;
       updatePayload.monthly_video_balance = baseLimits.videoLimit;
       updatePayload.monthly_reset_at = nowIso;
       needUpdate = true;
     }
+  }
+
+  // 4.4 锚点补录（无重置但缺锚点）
+  if (!needUpdate && wallet.billing_cycle_anchor == null && wallet.monthly_reset_at) {
+    updatePayload.billing_cycle_anchor = getBeijingYMD(new Date(wallet.monthly_reset_at)).day;
+    needUpdate = true;
   }
 
   if (needUpdate) {
@@ -353,88 +466,32 @@ export async function seedSupabaseWalletForPlan(
 }
 
 /**
- * 增加加油包额度
- */
-export async function addSupabaseAddonCredits(
-  userId: string,
-  imageCredits: number,
-  videoAudioCredits: number
-): Promise<{ success: boolean; error?: string }> {
-  if (!supabaseAdmin) {
-    return { success: false, error: "supabaseAdmin not available" };
-  }
-
-  try {
-    // 确保钱包存在
-    await ensureSupabaseUserWallet(userId);
-
-    // 使用 RPC 调用原子增加
-    const { error } = await supabaseAdmin.rpc('increment_addon_credits', {
-      p_user_id: userId,
-      p_image_credits: imageCredits,
-      p_video_credits: videoAudioCredits,
-    });
-
-    if (error) {
-      // 如果 RPC 不存在，降级使用普通更新
-      const wallet = await getSupabaseUserWallet(userId);
-      if (!wallet) {
-        return { success: false, error: "Wallet not found" };
-      }
-
-      const { error: updateError } = await supabaseAdmin
-        .from("user_wallets")
-        .update({
-          addon_image_balance: wallet.addon_image_balance + imageCredits,
-          addon_video_balance: wallet.addon_video_balance + videoAudioCredits,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("user_id", userId);
-
-      if (updateError) {
-        console.error("[wallet-supabase] Error adding addon credits:", updateError);
-        return { success: false, error: updateError.message };
-      }
-    }
-
-    console.log("[wallet-supabase][addon-added]", {
-      userId,
-      imageCredits,
-      videoAudioCredits,
-      timestamp: new Date().toISOString(),
-    });
-
-    return { success: true };
-  } catch (error) {
-    console.error("[wallet-supabase][addon-add-error]", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to add addon credits",
-    };
-  }
-}
-
-/**
- * 重置月度配额 (订阅续费或升级时调用)
+ * 重置月度配额（升级/新购）
  */
 export async function resetSupabaseMonthlyQuota(
   userId: string,
   imageLimit: number,
   videoLimit: number
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabaseAdmin) {
-    return { success: false, error: "supabaseAdmin not available" };
-  }
-
+  if (!supabaseAdmin) return { success: false, error: "supabaseAdmin not available" };
   try {
-    await ensureSupabaseUserWallet(userId);
+    const wallet = await getSupabaseUserWallet(userId);
+    if (!wallet) await ensureSupabaseUserWallet(userId);
+
+    const anchorDay =
+      wallet?.billing_cycle_anchor ||
+      (wallet?.monthly_reset_at
+        ? getBeijingYMD(new Date(wallet.monthly_reset_at)).day
+        : getBeijingYMD(new Date()).day);
+    const paidState = computePaidResetState(wallet?.monthly_reset_at || undefined, anchorDay, new Date());
 
     const { error } = await supabaseAdmin
       .from("user_wallets")
       .update({
         monthly_image_balance: imageLimit,
         monthly_video_balance: videoLimit,
-        monthly_reset_at: new Date().toISOString(),
+        monthly_reset_at: paidState.anchorIso,
+        billing_cycle_anchor: anchorDay,
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", userId);
@@ -462,42 +519,181 @@ export async function resetSupabaseMonthlyQuota(
 }
 
 /**
- * 检查用户配额是否充足
+ * FEFO 扣费 - 使用数据库 RPC 原子扣减
  */
-export async function checkSupabaseQuota(
-  userId: string,
-  requiredImages: number = 0,
-  requiredVideoAudio: number = 0
-): Promise<SupabaseQuotaCheckResult> {
-  const wallet = await getSupabaseUserWallet(userId);
+export async function consumeSupabaseQuota(
+  request: SupabaseQuotaDeductionRequest
+): Promise<SupabaseQuotaDeductionResult> {
+  const { userId, imageCount = 0, videoAudioCount = 0 } = request;
+  if (imageCount <= 0 && videoAudioCount <= 0) return { success: true };
+  if (!supabaseAdmin) return { success: false, error: "supabaseAdmin not available" };
 
-  if (!wallet) {
+  try {
+    const { data, error } = await supabaseAdmin.rpc("deduct_quota", {
+      p_user_id: userId,
+      p_image_count: imageCount,
+      p_video_count: videoAudioCount,
+    });
+
+    if (error) {
+      console.error("[wallet-supabase][consume-quota-rpc-error]", error);
+      return { success: false, error: error.message };
+    }
+
+    const result = data as any;
+    if (!result?.success) {
+      return { success: false, error: result?.error || "Failed to consume quota" };
+    }
+
     return {
-      hasEnoughQuota: false,
-      totalImageBalance: 0,
-      totalVideoBalance: 0,
-      monthlyImageBalance: 0,
-      monthlyVideoBalance: 0,
-      addonImageBalance: 0,
-      addonVideoBalance: 0,
+      success: true,
+      deducted: result.deducted,
+      remaining: result.remaining,
+    };
+  } catch (err) {
+    console.error("[wallet-supabase][consume-quota-error]", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to consume quota",
     };
   }
+}
 
-  const totalImageBalance = wallet.monthly_image_balance + wallet.addon_image_balance;
-  const totalVideoBalance = wallet.monthly_video_balance + wallet.addon_video_balance;
-
-  const hasEnoughQuota =
-    totalImageBalance >= requiredImages && totalVideoBalance >= requiredVideoAudio;
+/**
+ * 获取钱包统计信息
+ */
+export async function getSupabaseWalletStats(userId: string): Promise<{
+  monthly: { image: number; video: number; resetAt?: string };
+  addon: { image: number; video: number };
+  total: { image: number; video: number };
+  dailyExternal?: { used: number; day?: string };
+} | null> {
+  const wallet = await getSupabaseUserWallet(userId);
+  if (!wallet) return null;
 
   return {
-    hasEnoughQuota,
-    totalImageBalance,
-    totalVideoBalance,
-    monthlyImageBalance: wallet.monthly_image_balance,
-    monthlyVideoBalance: wallet.monthly_video_balance,
-    addonImageBalance: wallet.addon_image_balance,
-    addonVideoBalance: wallet.addon_video_balance,
+    monthly: {
+      image: wallet.monthly_image_balance,
+      video: wallet.monthly_video_balance,
+      resetAt: wallet.monthly_reset_at || undefined,
+    },
+    addon: {
+      image: wallet.addon_image_balance,
+      video: wallet.addon_video_balance,
+    },
+    total: {
+      image: wallet.monthly_image_balance + wallet.addon_image_balance,
+      video: wallet.monthly_video_balance + wallet.addon_video_balance,
+    },
+    dailyExternal: {
+      used: wallet.daily_external_used || 0,
+      day: wallet.daily_external_day || undefined,
+    },
   };
+}
+
+/**
+ * 订阅升级时重置月度配额
+ */
+export async function upgradeSupabaseMonthlyQuota(
+  userId: string,
+  imageLimit: number,
+  videoLimit: number
+): Promise<{ success: boolean; error?: string }> {
+  return resetSupabaseMonthlyQuota(userId, imageLimit, videoLimit);
+}
+
+/**
+ * 订阅续费时延长配额周期（不重置余额，更新账单锚点时间戳）
+ */
+export async function renewSupabaseMonthlyQuota(
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabaseAdmin) return { success: false, error: "supabaseAdmin not available" };
+
+  try {
+    const wallet = await getSupabaseUserWallet(userId);
+    if (!wallet) await ensureSupabaseUserWallet(userId);
+
+    const anchorDay =
+      wallet?.billing_cycle_anchor ||
+      (wallet?.monthly_reset_at
+        ? getBeijingYMD(new Date(wallet.monthly_reset_at)).day
+        : getBeijingYMD(new Date()).day);
+
+    // 基准时间：连续订阅用现有 monthly_reset_at，断更后用现在
+    const baseDate = wallet?.monthly_reset_at
+      ? new Date(wallet.monthly_reset_at)
+      : new Date();
+    const nextBillingDate = addCalendarMonths(baseDate, 1, anchorDay);
+
+    const { error } = await supabaseAdmin
+      .from("user_wallets")
+      .update({
+        monthly_reset_at: nextBillingDate.toISOString(),
+        billing_cycle_anchor: anchorDay,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("[wallet-supabase] Error renewing monthly quota:", error);
+      return { success: false, error: error.message };
+    }
+
+    console.log("[wallet-supabase][renew-monthly-quota]", {
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("[wallet-supabase][renew-monthly-quota-error]", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to renew monthly quota",
+    };
+  }
+}
+
+/**
+ * 订阅到期时清空月度配额
+ */
+export async function expireSupabaseMonthlyQuota(
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabaseAdmin) return { success: false, error: "supabaseAdmin not available" };
+
+  try {
+    await ensureSupabaseUserWallet(userId);
+
+    const { error } = await supabaseAdmin
+      .from("user_wallets")
+      .update({
+        monthly_image_balance: 0,
+        monthly_video_balance: 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("[wallet-supabase] Error expiring monthly quota:", error);
+      return { success: false, error: error.message };
+    }
+
+    console.log("[wallet-supabase][expire-monthly-quota]", {
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("[wallet-supabase][expire-monthly-quota-error]", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to expire monthly quota",
+    };
+  }
 }
 
 /**
@@ -508,23 +704,18 @@ export async function checkSupabaseDailyExternalQuota(
   planLower: string,
   count: number = 1
 ): Promise<{ allowed: boolean; remaining: number; limit: number }> {
-  if (!supabaseAdmin) {
-    return { allowed: false, remaining: 0, limit: 0 };
-  }
+  if (!supabaseAdmin) return { allowed: false, remaining: 0, limit: 0 };
 
   const today = getTodayString();
   const limit = getSupabasePlanDailyLimit(planLower);
 
   const wallet = await getSupabaseUserWallet(userId);
-  if (!wallet) {
-    return { allowed: false, remaining: 0, limit };
-  }
+  if (!wallet) return { allowed: false, remaining: 0, limit };
 
   const isNewDay = wallet.daily_external_day !== today;
   const isPlanChanged = !!wallet.daily_external_plan && wallet.daily_external_plan !== planLower;
   const used = isNewDay || isPlanChanged ? 0 : wallet.daily_external_used || 0;
 
-  // 新的一天或套餐变更需要重置计数
   if (isNewDay || isPlanChanged) {
     await supabaseAdmin
       .from("user_wallets")
@@ -544,35 +735,26 @@ export async function checkSupabaseDailyExternalQuota(
   };
 }
 
-/**
- * 扣减外部模型每日配额
- */
 export async function consumeSupabaseDailyExternalQuota(
   userId: string,
   planLower: string,
   count: number = 1
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabaseAdmin) {
-    return { success: false, error: "supabaseAdmin not available" };
-  }
+  if (!supabaseAdmin) return { success: false, error: "supabaseAdmin not available" };
 
   try {
     const today = getTodayString();
     const limit = getSupabasePlanDailyLimit(planLower);
 
     const wallet = await getSupabaseUserWallet(userId);
-    if (!wallet) {
-      return { success: false, error: "User wallet not found" };
-    }
+    if (!wallet) return { success: false, error: "User wallet not found" };
 
     const isNewDay = wallet.daily_external_day !== today;
     const isPlanChanged = !!wallet.daily_external_plan && wallet.daily_external_plan !== planLower;
     const used = isNewDay || isPlanChanged ? 0 : wallet.daily_external_used || 0;
     const nextUsed = used + count;
 
-    if (nextUsed > limit) {
-      return { success: false, error: "Insufficient daily quota" };
-    }
+    if (nextUsed > limit) return { success: false, error: "Insufficient daily quota" };
 
     const { error } = await supabaseAdmin
       .from("user_wallets")
@@ -609,304 +791,6 @@ export async function consumeSupabaseDailyExternalQuota(
 }
 
 /**
- * 智能扣费机制 - FEFO (最短有效期优先)
- * 先扣月度配额，不足时再扣加油包配额
- */
-export async function consumeSupabaseQuota(
-  request: SupabaseQuotaDeductionRequest
-): Promise<SupabaseQuotaDeductionResult> {
-  const { userId, imageCount = 0, videoAudioCount = 0 } = request;
-
-  if (imageCount <= 0 && videoAudioCount <= 0) {
-    return { success: true };
-  }
-
-  if (!supabaseAdmin) {
-    return { success: false, error: "supabaseAdmin not available" };
-  }
-
-  try {
-    const wallet = await getSupabaseUserWallet(userId);
-    if (!wallet) {
-      return { success: false, error: "User wallet not found" };
-    }
-
-    // 计算扣减分配 - FEFO 原则
-    const deducted = {
-      monthly_image: 0,
-      monthly_video: 0,
-      addon_image: 0,
-      addon_video: 0,
-    };
-
-    // === 图片扣减逻辑 ===
-    let remainingImageToDeduct = imageCount;
-
-    // 1. 先扣月度图片配额
-    if (remainingImageToDeduct > 0 && wallet.monthly_image_balance > 0) {
-      const monthlyDeduct = Math.min(remainingImageToDeduct, wallet.monthly_image_balance);
-      deducted.monthly_image = monthlyDeduct;
-      remainingImageToDeduct -= monthlyDeduct;
-    }
-
-    // 2. 月度不足，扣加油包图片配额
-    if (remainingImageToDeduct > 0 && wallet.addon_image_balance > 0) {
-      const addonDeduct = Math.min(remainingImageToDeduct, wallet.addon_image_balance);
-      deducted.addon_image = addonDeduct;
-      remainingImageToDeduct -= addonDeduct;
-    }
-
-    if (remainingImageToDeduct > 0) {
-      return { success: false, error: "Insufficient image quota" };
-    }
-
-    // === 视频/音频扣减逻辑 ===
-    let remainingVideoToDeduct = videoAudioCount;
-
-    // 1. 先扣月度视频配额
-    if (remainingVideoToDeduct > 0 && wallet.monthly_video_balance > 0) {
-      const monthlyDeduct = Math.min(remainingVideoToDeduct, wallet.monthly_video_balance);
-      deducted.monthly_video = monthlyDeduct;
-      remainingVideoToDeduct -= monthlyDeduct;
-    }
-
-    // 2. 月度不足，扣加油包视频配额
-    if (remainingVideoToDeduct > 0 && wallet.addon_video_balance > 0) {
-      const addonDeduct = Math.min(remainingVideoToDeduct, wallet.addon_video_balance);
-      deducted.addon_video = addonDeduct;
-      remainingVideoToDeduct -= addonDeduct;
-    }
-
-    if (remainingVideoToDeduct > 0) {
-      return { success: false, error: "Insufficient video/audio quota" };
-    }
-
-    // === 执行扣减 ===
-    const { error } = await supabaseAdmin
-      .from("user_wallets")
-      .update({
-        monthly_image_balance: wallet.monthly_image_balance - deducted.monthly_image,
-        monthly_video_balance: wallet.monthly_video_balance - deducted.monthly_video,
-        addon_image_balance: wallet.addon_image_balance - deducted.addon_image,
-        addon_video_balance: wallet.addon_video_balance - deducted.addon_video,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId);
-
-    if (error) {
-      console.error("[wallet-supabase] Error consuming quota:", error);
-      return { success: false, error: error.message };
-    }
-
-    const remaining = {
-      monthly_image_balance: wallet.monthly_image_balance - deducted.monthly_image,
-      monthly_video_balance: wallet.monthly_video_balance - deducted.monthly_video,
-      addon_image_balance: wallet.addon_image_balance - deducted.addon_image,
-      addon_video_balance: wallet.addon_video_balance - deducted.addon_video,
-    };
-
-    console.log("[wallet-supabase][consume-quota]", {
-      userId,
-      requested: { imageCount, videoAudioCount },
-      deducted,
-      remaining,
-      timestamp: new Date().toISOString(),
-    });
-
-    return { success: true, deducted, remaining };
-  } catch (error) {
-    console.error("[wallet-supabase][consume-quota-error]", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to consume quota",
-    };
-  }
-}
-
-/**
- * 获取钱包统计信息 (用于前端展示)
- */
-export async function getSupabaseWalletStats(userId: string): Promise<{
-  monthly: { image: number; video: number; resetAt?: string };
-  addon: { image: number; video: number };
-  total: { image: number; video: number };
-  dailyExternal?: { used: number; day?: string };
-} | null> {
-  const wallet = await getSupabaseUserWallet(userId);
-
-  if (!wallet) {
-    return null;
-  }
-
-  return {
-    monthly: {
-      image: wallet.monthly_image_balance,
-      video: wallet.monthly_video_balance,
-      resetAt: wallet.monthly_reset_at || undefined,
-    },
-    addon: {
-      image: wallet.addon_image_balance,
-      video: wallet.addon_video_balance,
-    },
-    total: {
-      image: wallet.monthly_image_balance + wallet.addon_image_balance,
-      video: wallet.monthly_video_balance + wallet.addon_video_balance,
-    },
-    dailyExternal: {
-      used: wallet.daily_external_used || 0,
-      day: wallet.daily_external_day || undefined,
-    },
-  };
-}
-
-/**
- * 订阅升级时重置月度配额
- */
-export async function upgradeSupabaseMonthlyQuota(
-  userId: string,
-  imageLimit: number,
-  videoLimit: number
-): Promise<{ success: boolean; error?: string }> {
-  return resetSupabaseMonthlyQuota(userId, imageLimit, videoLimit);
-}
-
-/**
- * 订阅续费时延长配额周期 (不重置余额)
- */
-export async function renewSupabaseMonthlyQuota(
-  userId: string
-): Promise<{ success: boolean; error?: string }> {
-  if (!supabaseAdmin) {
-    return { success: false, error: "supabaseAdmin not available" };
-  }
-
-  try {
-    await ensureSupabaseUserWallet(userId);
-
-    const { error } = await supabaseAdmin
-      .from("user_wallets")
-      .update({
-        monthly_reset_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId);
-
-    if (error) {
-      console.error("[wallet-supabase] Error renewing monthly quota:", error);
-      return { success: false, error: error.message };
-    }
-
-    console.log("[wallet-supabase][renew-monthly-quota]", {
-      userId,
-      timestamp: new Date().toISOString(),
-    });
-
-    return { success: true };
-  } catch (error) {
-    console.error("[wallet-supabase][renew-monthly-quota-error]", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to renew monthly quota",
-    };
-  }
-}
-
-/**
- * 订阅到期时清空月度配额
- */
-export async function expireSupabaseMonthlyQuota(
-  userId: string
-): Promise<{ success: boolean; error?: string }> {
-  if (!supabaseAdmin) {
-    return { success: false, error: "supabaseAdmin not available" };
-  }
-
-  try {
-    await ensureSupabaseUserWallet(userId);
-
-    const { error } = await supabaseAdmin
-      .from("user_wallets")
-      .update({
-        monthly_image_balance: 0,
-        monthly_video_balance: 0,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId);
-
-    if (error) {
-      console.error("[wallet-supabase] Error expiring monthly quota:", error);
-      return { success: false, error: error.message };
-    }
-
-    console.log("[wallet-supabase][expire-monthly-quota]", {
-      userId,
-      timestamp: new Date().toISOString(),
-    });
-
-    return { success: true };
-  } catch (error) {
-    console.error("[wallet-supabase][expire-monthly-quota-error]", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to expire monthly quota",
-    };
-  }
-}
-
-/**
- * 更新用户订阅信息
- */
-export async function updateSupabaseSubscription(
-  userId: string,
-  plan: string,
-  planExp: string | null,
-  isPro: boolean,
-  pendingDowngrade?: string | null
-): Promise<{ success: boolean; error?: string }> {
-  if (!supabaseAdmin) {
-    return { success: false, error: "supabaseAdmin not available" };
-  }
-
-  try {
-    await ensureSupabaseUserWallet(userId);
-
-    const { error } = await supabaseAdmin
-      .from("user_wallets")
-      .update({
-        plan,
-        subscription_tier: plan,
-        plan_exp: planExp,
-        pro: isPro,
-        pending_downgrade: pendingDowngrade || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId);
-
-    if (error) {
-      console.error("[wallet-supabase] Error updating subscription:", error);
-      return { success: false, error: error.message };
-    }
-
-    console.log("[wallet-supabase][update-subscription]", {
-      userId,
-      plan,
-      planExp,
-      isPro,
-      pendingDowngrade,
-      timestamp: new Date().toISOString(),
-    });
-
-    return { success: true };
-  } catch (error) {
-    console.error("[wallet-supabase][update-subscription-error]", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to update subscription",
-    };
-  }
-}
-
-/**
  * 计算升级补差价
  */
 export function calculateSupabaseUpgradePrice(
@@ -916,7 +800,6 @@ export function calculateSupabaseUpgradePrice(
 ): number {
   const remainingValue = currentPlanDailyPrice * remainingDays;
   const upgradePrice = Math.max(0, targetPlanPrice - remainingValue);
-
   console.log("[wallet-supabase][calculate-upgrade-price]", {
     currentPlanDailyPrice,
     remainingDays,
@@ -924,10 +807,5 @@ export function calculateSupabaseUpgradePrice(
     targetPlanPrice,
     upgradePrice,
   });
-
   return Math.round(upgradePrice * 100) / 100;
 }
-
-
-
-

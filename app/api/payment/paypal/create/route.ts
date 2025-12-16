@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // PayPal 不支持 CNY，统一使用美元价格
+      // PayPal 默认用美元（CNY 可能不被支持）
       amount = addonPkg.price;
       currency = "USD";
       
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
       // === 订阅购买 (原有逻辑) ===
       const resolvedPlan = resolvePlan(planName);
       const effectiveBillingPeriod = billingPeriod || "monthly";
-      const useDomesticPrice = false; // PayPal 始终用美元字段
+      const useDomesticPrice = false; // PayPal 始终按美元价格
 
       // Annual UI 显示“每月折后价”，实际一次性收取 12 个月
       const baseAmount = extractPlanAmount(

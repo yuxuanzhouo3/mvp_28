@@ -93,12 +93,12 @@ function verifyAlipaySignature(
   publicKey?: string
 ): boolean {
   try {
-    // 在开发环境或沙箱环境下跳过签名验证
+    // 仅在非生产环境或沙箱模式下跳过签名验证
     if (
-      process.env.NODE_ENV === "development" ||
+      process.env.NODE_ENV !== "production" ||
       process.env.ALIPAY_SANDBOX === "true"
     ) {
-      console.log("⏭️  [Alipay Webhook] 跳过签名验证 (开发/沙箱环境)");
+      console.log("⚠️ [Alipay Webhook] 跳过签名验证 (非生产/沙箱环境)");
       return true;
     }
 

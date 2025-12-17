@@ -37,13 +37,19 @@ export async function POST(request: NextRequest) {
     });
 
     // 4. 验证签名（生产环境启用）
-    // if (!wechatProvider.verifyWebhookSignature(body, signature, timestamp, nonce)) {
-    //   console.error("❌ [WeChat Webhook] Signature verification failed");
-    //   return NextResponse.json(
-    //     { code: "FAIL", message: "Invalid signature" },
-    //     { status: 401 }
-    //   );
-    // }
+    if (process.env.NODE_ENV === "production") {
+      const isValidSignature = wechatProvider.verifyWebhookSignature(body, signature, timestamp, nonce);
+      if (!isValidSignature) {
+        console.error("❌ [WeChat Webhook] Signature verification failed");
+        return NextResponse.json(
+          { code: "FAIL", message: "Invalid signature" },
+          { status: 401 }
+        );
+      }
+      console.log("✅ [WeChat Webhook] Signature verified");
+    } else {
+      console.log("⚠️ [WeChat Webhook] Skipping signature verification (non-production)");
+    }
 
     // 5. 解析 Webhook 数据
     const webhookData = JSON.parse(body);
@@ -94,9 +100,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 9. 幂等性检查：防止重复处理
+    // 9. 幂等性检查：防止重复处理（只跳过已处理的事件）
     const webhookEventId = `wechat_${paymentData.transaction_id}`;
-    let eventExists = false;
+    let eventProcessed = false;
 
     if (IS_DOMESTIC_VERSION) {
       try {
@@ -105,9 +111,9 @@ export async function POST(request: NextRequest) {
         const db = connector.getClient();
         const result = await db
           .collection("webhook_events")
-          .where({ id: webhookEventId })
+          .where({ id: webhookEventId, processed: true })
           .get();
-        eventExists = (result.data?.length || 0) > 0;
+        eventProcessed = (result.data?.length || 0) > 0;
       } catch (error) {
         console.error(
           "❌ [WeChat Webhook] Error checking CloudBase event:",
@@ -120,8 +126,9 @@ export async function POST(request: NextRequest) {
           .from("webhook_events")
           .select("id")
           .eq("id", webhookEventId)
+          .eq("processed", true)
           .maybeSingle();
-        eventExists = !!data;
+        eventProcessed = !!data;
       } catch (error) {
         console.error(
           "❌ [WeChat Webhook] Error checking Supabase event:",
@@ -130,7 +137,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (eventExists) {
+    if (eventProcessed) {
       console.log(
         "⏭️ [WeChat Webhook] Event already processed:",
         webhookEventId
@@ -248,17 +255,22 @@ export async function POST(request: NextRequest) {
     } else {
       // 订阅购买 - 更新订阅状态
       const days = paymentRecord?.metadata?.days || 30;
+      const planName = paymentRecord?.metadata?.planName || "Pro";
 
       console.log("📦 [WeChat Webhook] Processing subscription:", {
         userId: effectiveUserId,
         days,
+        planName,
+        paymentRecordFound: !!paymentRecord,
+        metadata: paymentRecord?.metadata,
       });
 
       await updateSubscription(
         effectiveUserId,
         paymentData.out_trade_no,
         paymentData.transaction_id,
-        days
+        days,
+        planName
       );
     }
 
@@ -471,10 +483,12 @@ async function updateSubscription(
   userId: string,
   outTradeNo: string,
   transactionId: string,
-  days: number
+  days: number,
+  planName: string = "Pro"
 ): Promise<void> {
   const now = new Date();
   let newExpiresAt: Date;
+  const planId = planName.toLowerCase(); // basic, pro, enterprise
 
   if (IS_DOMESTIC_VERSION) {
     try {
@@ -482,12 +496,12 @@ async function updateSubscription(
       await connector.initialize();
       const db = connector.getClient();
 
-      // 获取现有订阅
+      // 获取现有订阅（查询该用户的任何活跃订阅）
       const existingSubscription = await db
         .collection("subscriptions")
         .where({
           user_id: userId,
-          plan_id: "pro",
+          status: "active",
         })
         .get();
 
@@ -498,20 +512,39 @@ async function updateSubscription(
         const subscription = existingSubscription.data[0];
         const currentExpiresAt = new Date(subscription.current_period_end);
 
+        console.log("📊 [WeChat Webhook] Existing subscription found:", {
+          subscriptionId: subscription._id,
+          currentExpiresAt: currentExpiresAt.toISOString(),
+          now: now.toISOString(),
+          isExpired: currentExpiresAt <= now,
+          daysToAdd: days,
+        });
+
         if (currentExpiresAt > now) {
           // 延长现有订阅
           newExpiresAt = new Date(currentExpiresAt);
           newExpiresAt.setDate(newExpiresAt.getDate() + days);
+          console.log("📈 [WeChat Webhook] Extending subscription:", {
+            from: currentExpiresAt.toISOString(),
+            to: newExpiresAt.toISOString(),
+            daysAdded: days,
+          });
         } else {
           // 从现在开始
           newExpiresAt = new Date();
           newExpiresAt.setDate(newExpiresAt.getDate() + days);
+          console.log("🆕 [WeChat Webhook] Starting fresh subscription:", {
+            from: now.toISOString(),
+            to: newExpiresAt.toISOString(),
+            daysAdded: days,
+          });
         }
 
         await db
           .collection("subscriptions")
           .doc(subscription._id)
           .update({
+            plan_id: planId,
             current_period_end: newExpiresAt.toISOString(),
             transaction_id: transactionId,
             updated_at: now.toISOString(),
@@ -519,7 +552,9 @@ async function updateSubscription(
 
         console.log(
           "✅ [WeChat Webhook] Updated CloudBase subscription:",
-          userId
+          userId,
+          "new expires at:",
+          newExpiresAt.toISOString()
         );
       } else {
         // 创建新订阅
@@ -528,7 +563,7 @@ async function updateSubscription(
 
         await db.collection("subscriptions").add({
           user_id: userId,
-          plan_id: "pro",
+          plan_id: planId,
           status: "active",
           current_period_start: now.toISOString(),
           current_period_end: newExpiresAt.toISOString(),
@@ -553,9 +588,12 @@ async function updateSubscription(
           .get();
 
         if (userQuery.data && userQuery.data.length > 0) {
+          // 根据套餐设置会员等级
+          const membershipLevel = planId; // basic, pro, enterprise
           await db.collection("web_users").doc(userId).update({
             membership_expires_at: newExpiresAt.toISOString(),
-            pro: true,
+            membership_level: membershipLevel,
+            pro: planId === "pro" || planId === "enterprise",
             updated_at: now.toISOString(),
           });
         }
@@ -597,6 +635,7 @@ async function updateSubscription(
         await supabaseAdmin
           .from("subscriptions")
           .update({
+            plan_id: planId,
             current_period_end: newExpiresAt.toISOString(),
             provider_subscription_id: outTradeNo,
             updated_at: now.toISOString(),
@@ -613,7 +652,7 @@ async function updateSubscription(
 
         await supabaseAdmin.from("subscriptions").insert({
           user_id: userId,
-          plan_id: "pro",
+          plan_id: planId,
           status: "active",
           provider_subscription_id: outTradeNo,
           current_period_start: now.toISOString(),

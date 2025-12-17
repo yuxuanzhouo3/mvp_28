@@ -439,6 +439,7 @@ export class WebhookHandler {
         return success;
       } else {
         // 订阅购买 - 更新订阅状态
+        const planName = paymentData?.metadata?.planName || "Pro";
         const success = await this.updateSubscriptionStatus(
           userId,
           subscriptionId,
@@ -446,7 +447,8 @@ export class WebhookHandler {
           provider,
           amount,
           currency,
-          days
+          days,
+          planName
         );
 
         if (success) {
@@ -456,6 +458,7 @@ export class WebhookHandler {
             userId,
             amount,
             days,
+            planName,
           });
         }
 
@@ -625,7 +628,8 @@ export class WebhookHandler {
     provider: string,
     amount?: number,
     currency?: string,
-    days?: number
+    days?: number,
+    planName?: string
   ): Promise<boolean> {
     console.log("💎 [WebhookHandler] updateSubscriptionStatus", {
       userId,
@@ -635,10 +639,28 @@ export class WebhookHandler {
       amount,
       currency,
       days,
+      planName,
     });
 
     const now = new Date();
+    const daysNum = days || 30;
+    const planId = (planName || "pro").toLowerCase();
 
+    // 国内版使用 CloudBase
+    if (IS_DOMESTIC_VERSION) {
+      return this.updateSubscriptionStatusCloudBase(
+        userId,
+        subscriptionId,
+        status,
+        provider,
+        daysNum,
+        planId,
+        amount,
+        currency
+      );
+    }
+
+    // 国际版使用 Supabase
     try {
       // 检查是否已有活跃订阅
       const { data: existingSubscriptionData, error: checkError } =
@@ -656,7 +678,6 @@ export class WebhookHandler {
 
       let existingSubscription = existingSubscriptionData;
       let subscription;
-      const daysNum = days || 30;
 
       if (existingSubscription) {
         // 更新现有订阅 - 累加订阅时长
@@ -787,6 +808,127 @@ export class WebhookHandler {
       return true;
     } catch (error) {
       console.error("Error updating subscription status:", error);
+      return false;
+    }
+  }
+
+  /**
+   * CloudBase 版本的订阅状态更新
+   */
+  private async updateSubscriptionStatusCloudBase(
+    userId: string,
+    subscriptionId: string,
+    status: string,
+    provider: string,
+    days: number,
+    planId: string,
+    amount?: number,
+    currency?: string
+  ): Promise<boolean> {
+    const now = new Date();
+
+    try {
+      const connector = new CloudBaseConnector();
+      await connector.initialize();
+      const db = connector.getClient();
+
+      // 查询现有活跃订阅
+      const existingResult = await db
+        .collection("subscriptions")
+        .where({ user_id: userId, status: "active" })
+        .get();
+
+      let newExpiresAt: Date;
+
+      if (existingResult.data && existingResult.data.length > 0) {
+        const existingSub = existingResult.data[0];
+        const existingEnd = new Date(existingSub.current_period_end);
+
+        if (existingEnd > now) {
+          // 延长现有订阅
+          newExpiresAt = new Date(existingEnd);
+          newExpiresAt.setDate(newExpiresAt.getDate() + days);
+        } else {
+          // 从现在开始
+          newExpiresAt = new Date();
+          newExpiresAt.setDate(newExpiresAt.getDate() + days);
+        }
+
+        // 更新订阅
+        await db
+          .collection("subscriptions")
+          .doc(existingSub._id)
+          .update({
+            plan_id: planId,
+            current_period_end: newExpiresAt.toISOString(),
+            provider_subscription_id: subscriptionId,
+            updated_at: now.toISOString(),
+          });
+
+        console.log("✅ [WebhookHandler] Updated CloudBase subscription:", userId);
+      } else if (status === "active") {
+        // 创建新订阅
+        newExpiresAt = new Date();
+        newExpiresAt.setDate(newExpiresAt.getDate() + days);
+
+        await db.collection("subscriptions").add({
+          user_id: userId,
+          plan_id: planId,
+          status: "active",
+          provider_subscription_id: subscriptionId,
+          payment_method: provider,
+          current_period_start: now.toISOString(),
+          current_period_end: newExpiresAt.toISOString(),
+          created_at: now.toISOString(),
+          updated_at: now.toISOString(),
+        });
+
+        console.log("✅ [WebhookHandler] Created CloudBase subscription:", userId);
+      } else {
+        console.log("⏭️ [WebhookHandler] No subscription to update");
+        return true;
+      }
+
+      // 同步到 web_users
+      try {
+        const userQuery = await db
+          .collection("web_users")
+          .where({ _id: userId })
+          .get();
+
+        if (userQuery.data && userQuery.data.length > 0) {
+          await db.collection("web_users").doc(userId).update({
+            membership_expires_at: newExpiresAt!.toISOString(),
+            membership_level: planId,
+            pro: planId === "pro" || planId === "enterprise",
+            updated_at: now.toISOString(),
+          });
+        }
+      } catch (syncError) {
+        console.error("❌ [WebhookHandler] Error syncing to web_users:", syncError);
+      }
+
+      // 更新支付记录状态
+      try {
+        const paymentsResult = await db
+          .collection("payments")
+          .where({ transaction_id: subscriptionId, status: "pending" })
+          .get();
+
+        if (paymentsResult.data && paymentsResult.data.length > 0) {
+          await db.collection("payments").doc(paymentsResult.data[0]._id).update({
+            status: "completed",
+            updated_at: now.toISOString(),
+          });
+          console.log("✅ [WebhookHandler] CloudBase payment record updated to completed");
+        }
+      } catch (paymentError) {
+        console.error("❌ [WebhookHandler] Error updating CloudBase payment:", paymentError);
+      }
+
+      return true;
+    } catch (error) {
+      console.error("❌ [WebhookHandler] Error updating CloudBase subscription:", error);
       return false;
     }
   }

@@ -483,19 +483,16 @@ export default function AdsManagementPage() {
                       <input
                         type="hidden"
                         name="isActive"
-                        value="false"
+                        id="create-isActive-hidden"
+                        defaultValue="true"
                       />
                       <Switch
-                        name="isActive"
                         defaultChecked={true}
                         onCheckedChange={(checked) => {
-                          const form = document.querySelector("form");
-                          if (form) {
-                            const hidden = form.querySelector(
-                              'input[name="isActive"][type="hidden"]'
-                            ) as HTMLInputElement;
-                            if (hidden) hidden.value = String(checked);
-                          }
+                          const hidden = document.getElementById(
+                            "create-isActive-hidden"
+                          ) as HTMLInputElement;
+                          if (hidden) hidden.value = String(checked);
                         }}
                       />
                     </div>
@@ -646,13 +643,14 @@ export default function AdsManagementPage() {
                   <TableRow>
                     <TableHead className="w-16">预览</TableHead>
                     <TableHead className="min-w-[120px]">标题</TableHead>
-                    <TableHead className="w-24">数据源</TableHead>
-                    <TableHead className="w-20">位置/类型</TableHead>
-                    <TableHead className="w-20">大小</TableHead>
-                    <TableHead className="w-28">上传时间</TableHead>
-                    <TableHead className="w-12 text-center">优先级</TableHead>
-                    <TableHead className="w-20">状态</TableHead>
-                    <TableHead className="w-20">操作</TableHead>
+                    <TableHead className="w-32">数据源</TableHead>
+                    <TableHead className="w-28">位置</TableHead>
+                    <TableHead className="w-24">类型</TableHead>
+                    <TableHead className="w-24">大小</TableHead>
+                    <TableHead className="w-40">上传时间</TableHead>
+                    <TableHead className="w-20 text-center">优先级</TableHead>
+                    <TableHead className="w-24">状态</TableHead>
+                    <TableHead className="w-24">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -681,59 +679,80 @@ export default function AdsManagementPage() {
                       <TableCell className="font-medium text-sm">{ad.title}</TableCell>
                       <TableCell>
                         {ad.source === "supabase" ? (
-                          <Badge variant="secondary" className="gap-0.5 text-xs px-1.5">
+                          <Badge variant="secondary" className="gap-1 text-xs px-2 py-0.5 whitespace-nowrap">
                             <Database className="h-3 w-3" />
+                            <span>Supabase</span>
                           </Badge>
                         ) : ad.source === "cloudbase" ? (
-                          <Badge variant="secondary" className="gap-0.5 text-xs px-1.5">
+                          <Badge variant="secondary" className="gap-1 text-xs px-2 py-0.5 whitespace-nowrap">
                             <Cloud className="h-3 w-3" />
+                            <span>CloudBase</span>
                           </Badge>
                         ) : (
-                          <Badge variant="default" className="gap-0.5 text-xs px-1.5">
+                          <Badge variant="default" className="gap-1 text-xs px-2 py-0.5 whitespace-nowrap">
                             <Database className="h-3 w-3" />
                             <Cloud className="h-3 w-3" />
+                            <span>双源</span>
                           </Badge>
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col gap-0.5">
-                          <Badge variant="outline" className="text-xs px-1.5 w-fit">
-                            {ad.position === "top" ? "顶部" :
-                             ad.position === "bottom" ? "底部" :
-                             ad.position === "left" ? "左侧" :
-                             ad.position === "right" ? "右侧" :
-                             ad.position === "bottom-left" ? "底部左" :
-                             ad.position === "bottom-right" ? "底部右" :
-                             ad.position === "sidebar" ? "侧栏" : ad.position}
-                          </Badge>
-                          <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                            {ad.media_type === "image" ? (
-                              <><ImageIcon className="h-3 w-3" />图片</>
-                            ) : (
-                              <><Video className="h-3 w-3" />视频</>
-                            )}
-                          </span>
-                        </div>
+                        <Badge variant="outline" className="text-xs px-2 py-0.5 w-fit whitespace-nowrap">
+                          {ad.position === "top" ? "顶部" :
+                           ad.position === "bottom" ? "底部" :
+                           ad.position === "left" ? "左侧" :
+                           ad.position === "right" ? "右侧" :
+                           ad.position === "bottom-left" ? "底部左" :
+                           ad.position === "bottom-right" ? "底部右" :
+                           ad.position === "sidebar" ? "侧栏" : ad.position}
+                        </Badge>
                       </TableCell>
                       <TableCell>
-                        <span className="text-xs text-muted-foreground">
+                        <Badge variant="secondary" className="gap-1 text-xs px-2 py-0.5 whitespace-nowrap">
+                          {ad.media_type === "image" ? (
+                            <>
+                              <ImageIcon className="h-3 w-3" />
+                              图片
+                            </>
+                          ) : (
+                            <>
+                              <Video className="h-3 w-3" />
+                              视频
+                            </>
+                          )}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-mono text-xs tabular-nums text-muted-foreground">
                           {formatFileSize(ad.file_size)}
                         </span>
                       </TableCell>
                       <TableCell>
-                        <span className="text-xs text-muted-foreground">
-                          {ad.created_at
-                            ? new Date(ad.created_at).toLocaleDateString("zh-CN", {
+                        {ad.created_at ? (
+                          <div className="flex flex-col leading-tight">
+                            <span className="text-xs tabular-nums text-foreground/90 whitespace-nowrap">
+                              {new Date(ad.created_at).toLocaleDateString("zh-CN", {
+                                year: "numeric",
                                 month: "2-digit",
                                 day: "2-digit",
-                              }) + " " + new Date(ad.created_at).toLocaleTimeString("zh-CN", {
+                              })}
+                            </span>
+                            <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap">
+                              {new Date(ad.created_at).toLocaleTimeString("zh-CN", {
                                 hour: "2-digit",
                                 minute: "2-digit",
-                              })
-                            : "-"}
-                        </span>
+                              })}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
                       </TableCell>
-                      <TableCell className="text-center text-sm">{ad.priority}</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className="justify-center min-w-12 text-xs tabular-nums">
+                          {ad.priority}
+                        </Badge>
+                      </TableCell>
                       <TableCell>
                         <Button
                           variant="ghost"

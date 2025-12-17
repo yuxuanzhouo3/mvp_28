@@ -312,7 +312,11 @@ export default function Sidebar({
                             </div>
                             {link.target_url && (
                               <button
-                                onClick={() => handleSocialLinkClick(link)}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSocialLinkClick(link);
+                                }}
                                 className="w-full text-left text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 cursor-pointer"
                               >
                                 Click to visit:{" "}

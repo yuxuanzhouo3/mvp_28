@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { AppUser, ChatSession, UserSettings } from "../../types";
-import { DEFAULT_LANGUAGE } from "../../config";
+import { DEFAULT_LANGUAGE, IS_DOMESTIC_VERSION } from "../../config";
 
 export const useUserState = () => {
   const [appUser, setAppUser] = useState<AppUser | null>(null);
@@ -47,7 +47,7 @@ export const useUserState = () => {
     conflictingAction: string;
   } | null>(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] =
-    useState<string>("credit-card");
+    useState<string>(IS_DOMESTIC_VERSION ? "alipay" : "stripe");
   const [currentPlan, setCurrentPlan] =
     useState<"Basic" | "Pro" | "Enterprise" | null>(null);
   const [guestChatSessions, setGuestChatSessions] = useState<ChatSession[]>([]);

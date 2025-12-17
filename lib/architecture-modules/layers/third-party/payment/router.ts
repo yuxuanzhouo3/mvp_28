@@ -13,7 +13,7 @@ export interface PaymentOrder {
   description: string;
   userId: string;
   planType: string;
-  billingCycle: "monthly" | "yearly";
+  billingCycle: "monthly" | "yearly" | "annual";
   metadata?: Record<string, any>; // 添加可选的 metadata 字段
 }
 

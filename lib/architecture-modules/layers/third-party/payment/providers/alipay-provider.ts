@@ -2,10 +2,11 @@ import {
   AbstractAlipayProvider,
   AlipayConfig,
 } from "./abstract/alipay-provider";
-// import { AlipaySdk } from "alipay-sdk";
-const { AlipaySdk } = require("alipay-sdk");
 import * as fs from "fs";
 import * as crypto from "crypto";
+
+// alipay-sdk v4 导出的是 AlipaySdk 类
+const { AlipaySdk } = require("alipay-sdk");
 
 export class AlipayProvider extends AbstractAlipayProvider {
   private alipaySdk: any;

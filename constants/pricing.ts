@@ -20,7 +20,7 @@ export const pricingPlans: PricingPlan[] = [
     name: "Basic",
     nameZh: "基础版",
     price: "$9.98",
-    priceZh: "￥29.90",
+    priceZh: "￥0.01", // 测试价格
     annualPrice: "$6.99", // billed annually, ~30% off
     annualPriceZh: "￥20.90",
     period: "month",

@@ -37,7 +37,9 @@ export function AddonPackageTab({
   const { currentLanguage, isDomesticVersion } = useLanguage();
   const isZh = currentLanguage === "zh";
   const [selectedPackage, setSelectedPackage] = useState<AddonPackage | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "paypal">("stripe");
+  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "paypal" | "alipay" | "wechat">(
+    isDomesticVersion ? "alipay" : "stripe"
+  );
   const [isProcessing, setIsProcessing] = useState(false);
   const [agreeRules, setAgreeRules] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -76,7 +78,15 @@ export function AddonPackageTab({
 
     setIsProcessing(true);
     try {
-      const endpoint = paymentMethod === "stripe" ? "/api/payment/stripe/create" : "/api/payment/paypal/create";
+      // 根据支付方式选择不同的端点
+      let endpoint = "/api/payment/stripe/create";
+      if (paymentMethod === "paypal") {
+        endpoint = "/api/payment/paypal/create";
+      } else if (paymentMethod === "alipay") {
+        endpoint = "/api/payment/alipay/create";
+      } else if (paymentMethod === "wechat") {
+        endpoint = "/api/payment/wechat/create";
+      }
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -91,9 +101,25 @@ export function AddonPackageTab({
       const data = await res.json();
 
       if (data.success) {
-        const redirectUrl = paymentMethod === "stripe" ? data.url : data.approvalUrl;
-        if (redirectUrl) {
-          window.location.href = redirectUrl;
+        // 支付宝返回 HTML 表单，需要特殊处理
+        if (paymentMethod === "alipay" && data.formHtml) {
+          const div = document.createElement("div");
+          div.innerHTML = data.formHtml;
+          document.body.appendChild(div);
+          const form = div.querySelector("form");
+          if (form) {
+            form.submit();
+          }
+        } else if (paymentMethod === "wechat" && data.code_url) {
+          // 微信支付返回二维码链接
+          const paymentUrl = `/payment/wechat?code_url=${encodeURIComponent(data.code_url)}&out_trade_no=${data.out_trade_no}&amount=${data.amount}`;
+          window.location.href = paymentUrl;
+        } else {
+          // Stripe/PayPal 返回重定向 URL
+          const redirectUrl = paymentMethod === "stripe" ? data.url : data.approvalUrl;
+          if (redirectUrl) {
+            window.location.href = redirectUrl;
+          }
         }
       } else {
         alert(data.error || (isZh ? "支付创建失败" : "Failed to create payment"));
@@ -243,28 +269,59 @@ export function AddonPackageTab({
                 {isZh ? "支付：" : "Pay:"}
               </span>
               <div className="flex gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("stripe")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    paymentMethod === "stripe"
-                      ? "bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 ring-1 ring-violet-400"
-                      : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
-                  }`}
-                >
-                  💳 Stripe
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("paypal")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    paymentMethod === "paypal"
-                      ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 ring-1 ring-blue-400"
-                      : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
-                  }`}
-                >
-                  🅿️ PayPal
-                </button>
+                {isDomesticVersion ? (
+                  <>
+                    {/* 国内版：支付宝和微信支付 */}
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("alipay")}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        paymentMethod === "alipay"
+                          ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 ring-1 ring-blue-400"
+                          : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
+                      }`}
+                    >
+                      💳 支付宝
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("wechat")}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        paymentMethod === "wechat"
+                          ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 ring-1 ring-green-400"
+                          : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
+                      }`}
+                    >
+                      💬 微信支付
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {/* 国际版：Stripe 和 PayPal */}
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("stripe")}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        paymentMethod === "stripe"
+                          ? "bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 ring-1 ring-violet-400"
+                          : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
+                      }`}
+                    >
+                      💳 Stripe
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("paypal")}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        paymentMethod === "paypal"
+                          ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 ring-1 ring-blue-400"
+                          : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
+                      }`}
+                    >
+                      🅿️ PayPal
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 

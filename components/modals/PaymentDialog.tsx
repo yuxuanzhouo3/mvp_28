@@ -253,72 +253,71 @@ export function PaymentDialog({
                   {isZh ? "支付方式" : "Payment Method"}
                 </Label>
                 <div className="grid grid-cols-3 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPaymentMethod("credit-card")}
-                    className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
-                      selectedPaymentMethod === "credit-card"
-                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                        : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
-                    }`}
-                  >
-                    Card
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPaymentMethod("paypal")}
-                    className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
-                      selectedPaymentMethod === "paypal"
-                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                        : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
-                    }`}
-                  >
-                    PayPal
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPaymentMethod("stripe")}
-                    className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
-                      selectedPaymentMethod === "stripe"
-                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                        : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
-                    }`}
-                  >
-                    Stripe
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPaymentMethod("wechat")}
-                    className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
-                      selectedPaymentMethod === "wechat"
-                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                        : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
-                    }`}
-                  >
-                    WeChat
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPaymentMethod("alipay")}
-                    className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
-                      selectedPaymentMethod === "alipay"
-                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                        : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
-                    }`}
-                  >
-                    Alipay
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPaymentMethod("usdt")}
-                    className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
-                      selectedPaymentMethod === "usdt"
-                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                        : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
-                    }`}
-                  >
-                    USDT
-                  </button>
+                  {/* 国内版：支付宝、微信 */}
+                  {isDomesticVersion && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPaymentMethod("alipay")}
+                        className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
+                          selectedPaymentMethod === "alipay"
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
+                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
+                        }`}
+                      >
+                        支付宝
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPaymentMethod("wechat")}
+                        className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
+                          selectedPaymentMethod === "wechat"
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
+                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
+                        }`}
+                      >
+                        微信支付
+                      </button>
+                    </>
+                  )}
+                  {/* 国际版：Stripe、PayPal、Card */}
+                  {!isDomesticVersion && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPaymentMethod("stripe")}
+                        className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
+                          selectedPaymentMethod === "stripe"
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
+                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
+                        }`}
+                      >
+                        Stripe
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPaymentMethod("paypal")}
+                        className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
+                          selectedPaymentMethod === "paypal"
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
+                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
+                        }`}
+                      >
+                        PayPal
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPaymentMethod("credit-card")}
+                        className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
+                          selectedPaymentMethod === "credit-card"
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
+                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
+                        }`}
+                      >
+                        Card
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -389,6 +388,52 @@ export function PaymentDialog({
                     return;
                   }
                   
+                  // 支付宝支付
+                  if (selectedPaymentMethod === "alipay" && selectedPlan) {
+                    const isBasicPlan = selectedPlan.name.toLowerCase() === "basic";
+                    if (isBasicPlan && basicAddOnDisabled) {
+                      alert(isZh ? "当前 Pro 套餐已达 Basic 加购上限" : "Basic add-on limit reached for your Pro plan");
+                      return;
+                    }
+                    setIsProcessing(true);
+                    try {
+                      const res = await fetch("/api/payment/alipay/create", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          planName: selectedPlan.name,
+                          billingPeriod: billingPeriod === "annual" ? "annual" : "monthly",
+                          userId: appUserId || undefined,
+                        }),
+                      });
+                      const data = await res.json();
+                      if (data.success && data.formHtml) {
+                        // 支付宝返回 HTML 表单，需要提交到支付宝
+                        const div = document.createElement("div");
+                        div.innerHTML = data.formHtml;
+                        document.body.appendChild(div);
+                        const form = div.querySelector("form");
+                        if (form) {
+                          form.submit();
+                        } else {
+                          // 如果是 URL，直接跳转
+                          if (data.formHtml.startsWith("http")) {
+                            window.location.href = data.formHtml;
+                          } else {
+                            alert(isZh ? "支付创建失败" : "Failed to create payment");
+                          }
+                        }
+                      } else {
+                        alert(data.error || (isZh ? "支付创建失败" : "Failed to create payment"));
+                      }
+                    } catch (err) {
+                      alert(isZh ? "网络错误，请重试" : "Network error, please try again");
+                    } finally {
+                      setIsProcessing(false);
+                    }
+                    return;
+                  }
+
                   // 其他支付方式使用原有处理
                   handlePayment(e);
                 }} className="space-y-2">

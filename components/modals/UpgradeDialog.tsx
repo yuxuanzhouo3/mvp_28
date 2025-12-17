@@ -110,7 +110,10 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
   const isZh = currentLanguage === "zh";
   const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
   const [activeTab, setActiveTab] = useState<UpgradeTabType>(defaultTab);
-  const [selectedPayment, setSelectedPayment] = useState<"stripe" | "paypal">("stripe");
+  // 国内版默认支付宝，国际版默认 Stripe
+  const [selectedPayment, setSelectedPayment] = useState<"stripe" | "paypal" | "alipay" | "wechat">(
+    isDomesticVersion ? "alipay" : "stripe"
+  );
   const [isProcessing, setIsProcessing] = useState(false);
   const [agreeRules, setAgreeRules] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -174,8 +177,17 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
   const handleSubscribe = async () => {
     if (!selectedPlanInDialog) return;
     setIsProcessing(true);
-    const isStripe = selectedPayment === "stripe";
-    const endpoint = isStripe ? "/api/payment/stripe/create" : "/api/payment/paypal/create";
+
+    // 根据支付方式选择不同的 API 端点
+    let endpoint = "/api/payment/stripe/create";
+    if (selectedPayment === "paypal") {
+      endpoint = "/api/payment/paypal/create";
+    } else if (selectedPayment === "alipay") {
+      endpoint = "/api/payment/alipay/create";
+    } else if (selectedPayment === "wechat") {
+      endpoint = "/api/payment/wechat/create";
+    }
+
     try {
       const res = await fetch(endpoint, {
         method: "POST",
@@ -188,11 +200,41 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
         }),
       });
       const data = await res.json();
-      const redirect = isStripe ? data?.url : data?.approvalUrl;
-      if (data?.success && redirect) {
-        window.location.href = redirect as string;
+
+      if (selectedPayment === "alipay") {
+        // 支付宝返回 HTML 表单
+        if (data?.success && data?.formHtml) {
+          const div = document.createElement("div");
+          div.innerHTML = data.formHtml;
+          document.body.appendChild(div);
+          const form = div.querySelector("form");
+          if (form) {
+            form.submit();
+          } else if (data.formHtml.startsWith("http")) {
+            window.location.href = data.formHtml;
+          } else {
+            alert(tr("Failed to create payment", "支付创建失败"));
+          }
+        } else {
+          alert(data?.error || tr("Failed to create payment", "支付创建失败"));
+        }
+      } else if (selectedPayment === "wechat") {
+        // 微信支付返回二维码链接
+        if (data?.success && data?.code_url) {
+          // 跳转到支付页面显示二维码
+          const paymentUrl = `/payment/wechat?code_url=${encodeURIComponent(data.code_url)}&out_trade_no=${data.out_trade_no}&amount=${data.amount}`;
+          window.location.href = paymentUrl;
+        } else {
+          alert(data?.error || tr("Failed to create payment", "支付创建失败"));
+        }
       } else {
-        alert(data?.error || tr("Failed to create payment", "支付创建失败"));
+        // Stripe 和 PayPal 使用 URL 跳转
+        const redirect = selectedPayment === "stripe" ? data?.url : data?.approvalUrl;
+        if (data?.success && redirect) {
+          window.location.href = redirect as string;
+        } else {
+          alert(data?.error || tr("Failed to create payment", "支付创建失败"));
+        }
       }
     } catch (err) {
       alert(tr("Network error, please try again", "网络错误，请重试"));
@@ -470,28 +512,60 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
                           {tr("Payment:", "支付方式：")}
                         </span>
                         <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedPayment("stripe")}
-                            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
-                              selectedPayment === "stripe"
-                                ? "bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg shadow-violet-500/25"
-                                : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/15"
-                            }`}
-                          >
-                            💳 Stripe
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedPayment("paypal")}
-                            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
-                              selectedPayment === "paypal"
-                                ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/25"
-                                : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/15"
-                            }`}
-                          >
-                            🅿️ PayPal
-                          </button>
+                          {/* 国内版：支付宝、微信 */}
+                          {isDomesticVersion && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPayment("alipay")}
+                                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
+                                  selectedPayment === "alipay"
+                                    ? "bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/25"
+                                    : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/15"
+                                }`}
+                              >
+                                💙 支付宝
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPayment("wechat")}
+                                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
+                                  selectedPayment === "wechat"
+                                    ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg shadow-green-500/25"
+                                    : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/15"
+                                }`}
+                              >
+                                💚 微信支付
+                              </button>
+                            </>
+                          )}
+                          {/* 国际版：Stripe、PayPal */}
+                          {!isDomesticVersion && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPayment("stripe")}
+                                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
+                                  selectedPayment === "stripe"
+                                    ? "bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg shadow-violet-500/25"
+                                    : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/15"
+                                }`}
+                              >
+                                💳 Stripe
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPayment("paypal")}
+                                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
+                                  selectedPayment === "paypal"
+                                    ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/25"
+                                    : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/15"
+                                }`}
+                              >
+                                🅿️ PayPal
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
 

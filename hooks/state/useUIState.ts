@@ -71,6 +71,21 @@ export const useUIState = () => {
   } | null>(null);
   const [isSidebarLoading, setIsSidebarLoading] = useState(false);
 
+  // 全局广告显示状态（默认显示广告，刷新后恢复）
+  const [showGlobalAds, setShowGlobalAds] = useState(true);
+
+  // 下载版本数据
+  const [releases, setReleases] = useState<Array<{
+    id: string;
+    version: string;
+    platform: string;
+    variant?: string;
+    file_url: string;
+    file_size?: number;
+    release_notes?: string;
+  }>>([]);
+  const [isLoadingReleases, setIsLoadingReleases] = useState(false);
+
   return {
     showSettings,
     setShowSettings,
@@ -178,5 +193,11 @@ export const useUIState = () => {
     setCurrentLocation,
     isSidebarLoading,
     setIsSidebarLoading,
+    showGlobalAds,
+    setShowGlobalAds,
+    releases,
+    setReleases,
+    isLoadingReleases,
+    setIsLoadingReleases,
   };
 };

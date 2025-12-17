@@ -542,6 +542,12 @@ export default function ChatProvider({
     setCurrentLocation,
     isSidebarLoading,
     setIsSidebarLoading,
+    showGlobalAds,
+    setShowGlobalAds,
+    releases,
+    setReleases,
+    isLoadingReleases,
+    setIsLoadingReleases,
   } = uiState;
 
   // Listen for quota exceeded/warning events and show toast notifications
@@ -3732,64 +3738,101 @@ const loadMessagesForConversation = useCallback(
     );
   };
 
+  // Download helper functions - 加载 releases
+  useEffect(() => {
+    if (!showDownloadSection) return;
+
+    const controller = new AbortController();
+    let isCanceled = false;
+
+    const loadReleases = async () => {
+      setIsLoadingReleases(true);
+      try {
+        const res = await fetch(`/api/releases/active?isDomestic=${isDomestic}`, {
+          signal: controller.signal,
+        });
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+        if (!isCanceled && data.success && Array.isArray(data.data)) {
+          setReleases(data.data);
+        }
+      } catch (err) {
+        if ((err as { name?: string })?.name === "AbortError") return;
+        console.error("Failed to load releases:", err);
+      } finally {
+        if (!isCanceled) {
+          setIsLoadingReleases(false);
+        }
+      }
+    };
+
+    loadReleases();
+
+    return () => {
+      isCanceled = true;
+      controller.abort();
+    };
+  }, [showDownloadSection, isDomestic, setIsLoadingReleases, setReleases]);
+
   // Download helper functions
   const handleDownload = () => {
     if (!selectedPlatform) return;
 
-    // Simulate download for different platforms and variants
-    const downloadUrls = {
-      ios: "https://apps.apple.com/app/morngpt",
-      android: "https://play.google.com/store/apps/details?id=com.morngpt.app",
-      chrome: "https://chrome.google.com/webstore/detail/morngpt",
-      firefox: "https://addons.mozilla.org/en-US/firefox/addon/morngpt",
-      edge: "https://microsoftedge.microsoft.com/addons/detail/morngpt",
-      opera: "https://addons.opera.com/en/extensions/details/morngpt",
-      safari: "https://apps.apple.com/app/morngpt-safari-extension",
-      macos: {
-        intel: "https://morngpt.com/downloads/morngpt-macos-intel.dmg",
-        m: "https://morngpt.com/downloads/morngpt-macos-m.dmg",
-      },
-      windows: {
-        x64: "https://morngpt.com/downloads/morngpt-windows-x64.exe",
-        arm64: "https://morngpt.com/downloads/morngpt-windows-arm64.exe",
-        x86: "https://morngpt.com/downloads/morngpt-windows-x86.exe",
-      },
-      linux: {
-        deb: "https://morngpt.com/downloads/morngpt-linux.deb",
-        appimage: "https://morngpt.com/downloads/morngpt-linux.AppImage",
-        snap: "https://snapcraft.io/morngpt",
-        flatpak: "https://flathub.org/apps/com.morngpt.app",
-        aur: "https://aur.archlinux.org/packages/morngpt",
-      },
-    };
+    // 首先尝试从动态 releases 中获取 URL
+    const matchedRelease = releases.find((r) => {
+      if (r.platform !== selectedPlatform.platform) return false;
+      // 如果有 variant，需要匹配
+      if (selectedPlatform.variant) {
+        return r.variant === selectedPlatform.variant;
+      }
+      // 没有 variant 的情况，匹配无 variant 的记录或默认记录
+      return !r.variant || r.variant === "default";
+    });
 
-    let url: string | undefined;
+    let url: string | undefined = matchedRelease?.file_url;
 
-    if (selectedPlatform.platform === "macos" && selectedPlatform.variant) {
-      url =
-        downloadUrls.macos[
-          selectedPlatform.variant as keyof typeof downloadUrls.macos
-        ];
-    } else if (
-      selectedPlatform.platform === "windows" &&
-      selectedPlatform.variant
-    ) {
-      url =
-        downloadUrls.windows[
-          selectedPlatform.variant as keyof typeof downloadUrls.windows
-        ];
-    } else if (
-      selectedPlatform.platform === "linux" &&
-      selectedPlatform.variant
-    ) {
-      url =
-        downloadUrls.linux[
-          selectedPlatform.variant as keyof typeof downloadUrls.linux
-        ];
-    } else {
-      url = downloadUrls[
-        selectedPlatform.platform as keyof typeof downloadUrls
-      ] as string;
+    // 如果没有找到动态 URL，使用硬编码的备用 URL（浏览器扩展和应用商店链接）
+    if (!url) {
+      const fallbackUrls: Record<string, string | Record<string, string>> = {
+        ios: "https://apps.apple.com/app/morngpt",
+        android: "https://play.google.com/store/apps/details?id=com.morngpt.app",
+        chrome: "https://chrome.google.com/webstore/detail/morngpt",
+        firefox: "https://addons.mozilla.org/en-US/firefox/addon/morngpt",
+        edge: "https://microsoftedge.microsoft.com/addons/detail/morngpt",
+        opera: "https://addons.opera.com/en/extensions/details/morngpt",
+        safari: "https://apps.apple.com/app/morngpt-safari-extension",
+        macos: {
+          intel: "https://morngpt.com/downloads/morngpt-macos-intel.dmg",
+          m: "https://morngpt.com/downloads/morngpt-macos-m.dmg",
+        },
+        windows: {
+          x64: "https://morngpt.com/downloads/morngpt-windows-x64.exe",
+          arm64: "https://morngpt.com/downloads/morngpt-windows-arm64.exe",
+          x86: "https://morngpt.com/downloads/morngpt-windows-x86.exe",
+        },
+        linux: {
+          deb: "https://morngpt.com/downloads/morngpt-linux.deb",
+          appimage: "https://morngpt.com/downloads/morngpt-linux.AppImage",
+          snap: "https://snapcraft.io/morngpt",
+          flatpak: "https://flathub.org/apps/com.morngpt.app",
+          aur: "https://aur.archlinux.org/packages/morngpt",
+        },
+      };
+
+      if (selectedPlatform.platform === "macos" && selectedPlatform.variant) {
+        const macosUrls = fallbackUrls.macos as Record<string, string>;
+        url = macosUrls[selectedPlatform.variant];
+      } else if (selectedPlatform.platform === "windows" && selectedPlatform.variant) {
+        const windowsUrls = fallbackUrls.windows as Record<string, string>;
+        url = windowsUrls[selectedPlatform.variant];
+      } else if (selectedPlatform.platform === "linux" && selectedPlatform.variant) {
+        const linuxUrls = fallbackUrls.linux as Record<string, string>;
+        url = linuxUrls[selectedPlatform.variant];
+      } else {
+        url = fallbackUrls[selectedPlatform.platform] as string;
+      }
     }
 
     if (url) {
@@ -4116,6 +4159,9 @@ const loadMessagesForConversation = useCallback(
     setIsResizing: setIsResizingSidebar,
     getLocalizedText,
     isSidebarLoading,
+    showGlobalAds,
+    setShowGlobalAds,
+    setShowUpgradeDialog,
   };
 
   const headerProps = {
@@ -4180,6 +4226,7 @@ const loadMessagesForConversation = useCallback(
     enterpriseVideoAudioRemaining,
     enterpriseVideoAudioLimit,
     enterpriseContextLimit,
+    showGlobalAds,
   };
 
   const planLowerForContext = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";

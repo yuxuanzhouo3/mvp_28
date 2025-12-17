@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,17 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import AdBanner from "@/components/AdBanner";
+
+// 社交链接类型定义
+interface SocialLinkData {
+  id: string;
+  title: string;
+  description: string | null;
+  icon_url: string;
+  target_url: string;
+  sort_order: number;
+}
 
 interface SidebarProps {
   sidebarCollapsed: boolean;
@@ -70,6 +81,12 @@ interface SidebarProps {
   setIsResizing: (isResizing: boolean) => void;
   getLocalizedText: (key: string) => string;
   isSidebarLoading: boolean;
+  isDomestic?: boolean;
+  // 全局广告显示状态（从父组件传入，用于控制全局广告）
+  showGlobalAds?: boolean;
+  setShowGlobalAds?: (show: boolean) => void;
+  // 升级弹窗控制（用于广告关闭时弹出）
+  setShowUpgradeDialog?: (show: boolean) => void;
 }
 
 export default function Sidebar({
@@ -103,8 +120,62 @@ export default function Sidebar({
   setIsResizing,
   getLocalizedText,
   isSidebarLoading,
+  isDomestic = false,
+  showGlobalAds = true,
+  setShowGlobalAds,
+  setShowUpgradeDialog,
 }: SidebarProps) {
   const { currentLanguage } = useLanguage();
+
+  // 社交链接数据状态
+  const [socialLinks, setSocialLinks] = useState<SocialLinkData[]>([]);
+  const [socialLinksLoading, setSocialLinksLoading] = useState(true);
+
+  // 使用全局状态或本地状态
+  const showAds = showGlobalAds;
+  const setShowAds = setShowGlobalAds || (() => {});
+
+  // 获取社交链接数据
+  useEffect(() => {
+    async function fetchSocialLinks() {
+      try {
+        const response = await fetch(`/api/social-links/active?isDomestic=${isDomestic}`);
+        const result = await response.json();
+        if (result.success && result.data) {
+          setSocialLinks(result.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch social links:", err);
+      } finally {
+        setSocialLinksLoading(false);
+      }
+    }
+
+    fetchSocialLinks();
+  }, [isDomestic]);
+
+  // 处理社交链接点击
+  const handleSocialLinkClick = (link: SocialLinkData) => {
+    if (link.target_url) {
+      window.open(link.target_url, "_blank", "noopener,noreferrer");
+    }
+  };
+
+  // 合并数据：优先使用 API 数据，如果没有则使用静态数据作为后备
+  const displayLinks = socialLinks.length > 0 ? socialLinks : specializedProducts.map(p => ({
+    id: p.id,
+    title: p.name,
+    description: p.description,
+    icon_url: p.icon, // 这是 emoji，需要特殊处理
+    target_url: p.url,
+    sort_order: 0,
+  }));
+
+  // 判断是否是 URL（用于区分 emoji 和图片 URL）
+  const isImageUrl = (url: string) => {
+    return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('cloud://');
+  };
+
   return (
     <>
       {/* Collapsed Sidebar Toggle - Fixed to absolute far left */}
@@ -136,89 +207,123 @@ export default function Sidebar({
             </Button>
           </div>
 
-          {/* Ads Toggle (for all users) */}
-          {appUser && (
-            <div className="flex justify-center px-1 pb-1 pt-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  updateUserSettings({
-                    adsEnabled: !(appUser?.settings?.adsEnabled ?? false),
-                  })
-                }
-                className={`w-6 h-6 rounded-sm ${
-                  appUser?.settings?.adsEnabled ?? false
-                    ? "text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
-                    : "text-gray-400 dark:text-gray-500"
-                }`}
-                title={
-                  appUser?.settings?.adsEnabled ?? false
-                    ? getLocalizedText("hideAds")
-                    : getLocalizedText("showAds")
-                }
-              >
-                {appUser?.settings?.adsEnabled ?? false ? (
-                  <Eye className="w-3 h-3" />
-                ) : (
-                  <EyeOff className="w-3 h-3" />
-                )}
-              </Button>
+          {/* Ads Toggle - 默认显示广告，点击切换到社交链接 */}
+          <div className="flex justify-center px-1 pb-1 pt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAds(!showAds)}
+              className={`w-6 h-6 rounded-sm ${
+                showAds
+                  ? "text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                  : "text-gray-400 dark:text-gray-500"
+              }`}
+              title={
+                showAds
+                  ? getLocalizedText("hideAds")
+                  : getLocalizedText("showAds")
+              }
+            >
+              {showAds ? (
+                <Eye className="w-3 h-3" />
+              ) : (
+                <EyeOff className="w-3 h-3" />
+              )}
+            </Button>
+          </div>
+
+          {/* 侧边栏竖向广告 (showAds为true时显示) */}
+          {showAds && (
+            <div className="flex flex-col items-center px-1 flex-1">
+              <ScrollArea className="w-full h-full">
+                <div className="flex flex-col items-center py-2">
+                  <AdBanner
+                    position="sidebar"
+                    isDomestic={isDomestic}
+                    showCloseButton={true}
+                    onClose={() => setShowUpgradeDialog?.(true)}
+                    className="h-[200px]"
+                  />
+                </div>
+              </ScrollArea>
             </div>
           )}
 
-          {/* Specialized Products (when ads are disabled) */}
-          {!(appUser?.settings?.adsEnabled ?? false) && (
+          {/* 社交链接小方块 (showAds为false时显示) */}
+          {!showAds && (
             <div className="flex flex-col items-center space-y-0.5 px-1">
               <ScrollArea className="w-full max-h-[calc(100vh-120px)]">
                 <div className="grid grid-cols-1 gap-0.5 w-full pb-4 justify-items-center pt-1">
-                  {specializedProducts.map((product) => (
-                    <Popover key={product.id}>
-                      <PopoverTrigger asChild>
-                        <button
-                          className="w-7 h-7 rounded-sm border border-gray-200 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869] transition-colors flex items-center justify-center group focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          onMouseEnter={(e) => e.currentTarget.focus()}
+                  {socialLinksLoading ? (
+                    // 加载占位符
+                    Array.from({ length: 6 }).map((_, idx) => (
+                      <div
+                        key={`skeleton-${idx}`}
+                        className="w-7 h-7 rounded-sm bg-gray-200 dark:bg-[#565869] animate-pulse"
+                      />
+                    ))
+                  ) : (
+                    displayLinks.map((link) => (
+                      <Popover key={link.id}>
+                        <PopoverTrigger asChild>
+                          <button
+                            className="w-7 h-7 rounded-sm border border-gray-200 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869] transition-colors flex items-center justify-center group focus:outline-none focus:ring-1 focus:ring-blue-500 overflow-hidden"
+                            onMouseEnter={(e) => e.currentTarget.focus()}
+                          >
+                            {isImageUrl(link.icon_url) ? (
+                              <img
+                                src={link.icon_url}
+                                alt={link.title}
+                                className="w-5 h-5 object-contain"
+                              />
+                            ) : (
+                              <span className="text-[10px]">{link.icon_url}</span>
+                            )}
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          side="right"
+                          align="center"
+                          className="w-56 p-3 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] shadow-lg cursor-pointer z-50"
+                          onClick={() => handleSocialLinkClick(link)}
+                          onOpenAutoFocus={(e) => e.preventDefault()}
                         >
-                          <span className="text-[10px]">{product.icon}</span>
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        side="right"
-                        align="center"
-                        className="w-56 p-3 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] shadow-lg cursor-pointer z-50"
-                        onClick={() => handleSpecializedProductSelect(product)}
-                        onOpenAutoFocus={(e) => e.preventDefault()}
-                      >
-                        <div className="space-y-2">
-                          <div className="flex items-center space-x-2">
-                            <span className="text-lg">{product.icon}</span>
-                            <div>
-                              <h4 className="font-medium text-gray-900 dark:text-[#ececf1] text-sm">
-                                {product.name}
-                              </h4>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {product.description}
-                              </p>
+                          <div className="space-y-2">
+                            <div className="flex items-center space-x-2">
+                              {isImageUrl(link.icon_url) ? (
+                                <img
+                                  src={link.icon_url}
+                                  alt={link.title}
+                                  className="w-8 h-8 object-contain"
+                                />
+                              ) : (
+                                <span className="text-lg">{link.icon_url}</span>
+                              )}
+                              <div>
+                                <h4 className="font-medium text-gray-900 dark:text-[#ececf1] text-sm">
+                                  {link.title}
+                                </h4>
+                                {link.description && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {link.description}
+                                  </p>
+                                )}
+                              </div>
                             </div>
+                            {link.target_url && (
+                              <button
+                                onClick={() => handleSocialLinkClick(link)}
+                                className="w-full text-left text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 cursor-pointer"
+                              >
+                                Click to visit:{" "}
+                                {link.target_url.replace("https://", "").replace("http://", "")}
+                              </button>
+                            )}
                           </div>
-                          <div className="text-xs text-gray-400 dark:text-gray-500">
-                            Powered by {product.model}
-                          </div>
-                          {product.url && (
-                            <button
-                              onClick={() =>
-                                handleSpecializedProductSelect(product)
-                              }
-                              className="w-full text-left text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 cursor-pointer"
-                            >
-                              Click to visit:{" "}
-                              {product.url.replace("https://", "")}
-                            </button>
-                          )}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  ))}
+                        </PopoverContent>
+                      </Popover>
+                    ))
+                  )}
                 </div>
               </ScrollArea>
             </div>

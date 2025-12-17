@@ -3,17 +3,63 @@ import { geoRouter } from "@/lib/architecture-modules/core/geo-router";
 import { RegionType } from "@/lib/architecture-modules/core/types";
 import { csrfProtection } from "@/lib/security/csrf";
 
+// Admin session cookie 配置
+const ADMIN_SESSION_COOKIE_NAME = "admin_session";
+const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || "admin-secret-key-change-in-production";
+
+/**
+ * 验证 Admin Session Token（Edge Runtime 兼容版本）
+ */
+function verifyAdminSessionToken(token: string): boolean {
+  try {
+    const [encoded, sig] = token.split(".");
+    if (!encoded || !sig) return false;
+
+    // 验证签名
+    const expectedSig = Buffer.from(
+      `${encoded}.${ADMIN_SESSION_SECRET}`
+    ).toString("base64").slice(0, 16);
+
+    if (sig !== expectedSig) return false;
+
+    // 解析 payload
+    const payload = Buffer.from(encoded, "base64").toString("utf-8");
+    const session = JSON.parse(payload);
+
+    // 检查是否过期
+    if (Date.now() > session.expiresAt) return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * IP检测和访问控制中间件
  * 实现以下功能：
  * 1. 检测用户IP地理位置
  * 2. 完全禁止欧洲IP访问（符合GDPR合规要求）
  * 3. 为响应添加地理信息头供前端使用
+ * 4. 保护 /admin 路由（需要登录）
  *
  * 注意：不进行任何重定向，用户访问哪个域名就使用哪个系统
  */
 export async function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
+
+  // =====================
+  // Admin 路由保护
+  // =====================
+  if (pathname.startsWith("/admin") && !pathname.startsWith("/admin/login")) {
+    const sessionToken = request.cookies.get(ADMIN_SESSION_COOKIE_NAME)?.value;
+
+    if (!sessionToken || !verifyAdminSessionToken(sessionToken)) {
+      // 未登录或会话无效，重定向到登录页
+      const loginUrl = new URL("/admin/login", request.url);
+      return NextResponse.redirect(loginUrl);
+    }
+  }
   const FAIL_CLOSED =
     (process.env.GEO_FAIL_CLOSED || "true").toLowerCase() === "true";
 

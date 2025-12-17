@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchQuotaShared } from "@/utils/quota-fetcher";
+import AdBanner from "@/components/AdBanner";
 
 interface HeaderProps {
   currentChat: any;
@@ -85,6 +86,8 @@ interface HeaderProps {
   enterpriseVideoAudioRemaining?: number | null;
   enterpriseVideoAudioLimit?: number | null;
   enterpriseContextLimit?: number | null;
+  // 全局广告显示状态
+  showGlobalAds?: boolean;
 }
 
 export default function Header({
@@ -139,6 +142,7 @@ export default function Header({
   enterpriseVideoAudioRemaining,
   enterpriseVideoAudioLimit,
   enterpriseContextLimit,
+  showGlobalAds = true,
 }: HeaderProps) {
   const planLower = (
     currentPlan ||
@@ -537,6 +541,21 @@ export default function Header({
               </span>
             )}
           </div>
+
+          {/* 顶部广告位 - 居中显示，移动端隐藏，受全局广告开关控制 */}
+          {showGlobalAds && (
+            <div className="flex-1 flex justify-center px-4">
+              <AdBanner
+                position="top"
+                isDomestic={isDomestic}
+                showCloseButton={true}
+                onClose={() => setShowUpgradeDialog(true)}
+                className="max-w-3xl"
+              />
+            </div>
+          )}
+          {!showGlobalAds && <div className="flex-1" />}
+
           <div className="flex items-center space-x-4">
             {/* Share Link Button */}
             <Button

@@ -411,7 +411,7 @@ const InputArea = React.memo(function InputArea({
   );
   
   return (
-    <div className="border-t border-gray-200 dark:border-[#565869] bg-white dark:bg-[#40414f] flex-shrink-0 p-6 sticky bottom-0">
+    <div className="flex-shrink-0">
       <div className="max-w-4xl mx-auto">
         {/* Input Container Box with Modern Styling */}
         <div className="border border-gray-200 dark:border-[#565869] rounded-2xl p-4 bg-white dark:bg-[#40414f] shadow-lg relative">

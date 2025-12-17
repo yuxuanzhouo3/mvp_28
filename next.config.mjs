@@ -14,6 +14,12 @@ const nextConfig = {
     MAX_VIDEO_UPLOAD_MB: process.env.MAX_VIDEO_UPLOAD_MB,
     MAX_AUDIO_UPLOAD_MB: process.env.MAX_AUDIO_UPLOAD_MB,
   },
+  // 配置 Server Actions 请求体大小限制
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "10mb", // 支持最大 10MB 的文件上传
+    },
+  },
 }
 
 export default nextConfig

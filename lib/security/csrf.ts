@@ -173,6 +173,11 @@ export async function csrfProtection(
     return response;
   }
 
+  // 跳过 Admin 后台路由（使用自定义 session 认证）
+  if (pathname.startsWith("/admin")) {
+    return response;
+  }
+
   // 获取CSRF token和secret
   const token = csrfManager.getTokenFromRequest(request);
   const secret = csrfManager.getSecretFromRequest(request);

@@ -36,7 +36,6 @@ export async function POST(req: Request) {
       maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
-    console.log("[auth/login] issued auth-token", result.session.access_token);
 
     return res;
   } catch (error) {

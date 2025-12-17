@@ -94,8 +94,6 @@ export async function GET(req: NextRequest) {
       records = (all?.data || []).filter((c: any) => c.userId === user.id);
     }
 
-    console.log("[cloudbase] conversations list size", records.length || 0, "for", user.id);
-
     const list =
       records
         .map((c: any) => ({

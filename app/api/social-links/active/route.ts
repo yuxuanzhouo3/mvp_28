@@ -32,8 +32,6 @@ export async function GET(request: NextRequest) {
         const db = connector.getClient();
         const app = connector.getApp();
 
-        console.log(`[CloudBase] Querying social links with is_active=true`);
-
         const { data } = await db
           .collection("social_links")
           .where({
@@ -42,8 +40,6 @@ export async function GET(request: NextRequest) {
           .orderBy("sort_order", "asc")
           .limit(50)
           .get();
-
-        console.log(`[CloudBase] Found ${data?.length || 0} active social links`);
 
         if (data && Array.isArray(data)) {
           // 收集需要获取临时 URL 的 fileID

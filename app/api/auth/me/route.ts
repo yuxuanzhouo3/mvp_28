@@ -19,13 +19,11 @@ export async function GET(req: Request) {
       const { data: { user }, error } = await supabase.auth.getUser();
 
       if (error || !user) {
-        console.log("[auth/me] Supabase: no user found");
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
       // 检查邮箱是否已验证
       if (!user.email_confirmed_at) {
-        console.log("[auth/me] Supabase: email not confirmed for user:", user.email);
         return NextResponse.json(
           { error: "Email not confirmed", message: "Please verify your email before accessing the application." },
           { status: 403 }
@@ -44,8 +42,6 @@ export async function GET(req: Request) {
         .select("*")
         .eq("user_id", user.id)
         .single();
-
-      console.log("[auth/me] Supabase user:", user.email);
 
       return NextResponse.json({
         user: {
@@ -69,7 +65,6 @@ export async function GET(req: Request) {
       req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
       null;
     const token = cookieToken || headerToken || null;
-    console.log("[auth/me] CloudBase token:", token ? "present" : "missing");
     
     if (!token) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

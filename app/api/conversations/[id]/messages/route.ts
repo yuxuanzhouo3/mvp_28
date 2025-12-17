@@ -169,15 +169,6 @@ export async function GET(
       records = (allByConv?.data || []).filter((m: any) => m.userId === user.id);
     }
 
-    console.log(
-      "[cloudbase] messages list size",
-      records.length || 0,
-      "for",
-      user.id,
-      "conv",
-      conversationId,
-    );
-
     const list = (records || [])
       .map((m: any) => ({
         id: m._id,

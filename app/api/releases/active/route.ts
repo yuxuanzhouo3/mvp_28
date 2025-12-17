@@ -55,16 +55,12 @@ export async function GET(request: NextRequest) {
           whereCondition.platform = platform;
         }
 
-        console.log(`[CloudBase] Querying releases with conditions:`, whereCondition);
-
         const { data } = await db
           .collection("app_releases")
           .where(whereCondition)
           .orderBy("created_at", "desc")
           .limit(50)
           .get();
-
-        console.log(`[CloudBase] Found ${data?.length || 0} releases`);
 
         if (data && Array.isArray(data)) {
           // 收集需要获取临时 URL 的 fileID

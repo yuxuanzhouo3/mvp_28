@@ -48,8 +48,6 @@ export async function GET(request: NextRequest) {
         const db = connector.getClient();
         const app = connector.getApp();
 
-        console.log(`[CloudBase] Querying ads with position="${position}", is_active=true`);
-
         const { data } = await db
           .collection("advertisements")
           .where({
@@ -59,11 +57,6 @@ export async function GET(request: NextRequest) {
           .orderBy("priority", "desc")
           .limit(10)
           .get();
-
-        console.log(`[CloudBase] Found ${data?.length || 0} ads for position="${position}"`);
-        if (data) {
-          console.log(`[CloudBase] Ads data:`, data.map((ad: any) => ({ id: ad._id, title: ad.title, position: ad.position })));
-        }
 
         if (data && Array.isArray(data)) {
           // 收集需要获取临时 URL 的 fileID
@@ -132,8 +125,6 @@ export async function GET(request: NextRequest) {
       }
 
       try {
-        console.log(`[Supabase] Querying ads with position="${position}", is_active=true`);
-
         const { data, error } = await supabaseAdmin
           .from("advertisements")
           .select("id, title, position, media_type, media_url, target_url, priority")
@@ -141,11 +132,6 @@ export async function GET(request: NextRequest) {
           .eq("is_active", true)
           .order("priority", { ascending: false })
           .limit(10);
-
-        console.log(`[Supabase] Query result - error: ${error ? JSON.stringify(error) : 'none'}, data count: ${data?.length || 0}`);
-        if (data && data.length > 0) {
-          console.log(`[Supabase] Found ads:`, data.map(ad => ({ id: ad.id, title: ad.title, position: ad.position })));
-        }
 
         if (error) {
           console.error("Supabase getActiveAds error:", error);
@@ -179,8 +165,6 @@ export async function GET(request: NextRequest) {
 
     // 按优先级排序
     ads.sort((a, b) => b.priority - a.priority);
-
-    console.log(`[API] Returning ${ads.length} ads for position="${position}", isDomestic=${isDomestic}`);
 
     return NextResponse.json({
       success: true,

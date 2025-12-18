@@ -134,6 +134,7 @@ export interface AppUser {
     sendHotkey?: "enter" | "shift+enter" | "ctrl+enter" | "cmd+enter";
     shortcutsEnabled?: boolean;
     adsEnabled?: boolean;
+    hideAds?: boolean; // 订阅用户是否开启去除广告功能
   };
 }
 
@@ -175,4 +176,5 @@ export interface UserSettings {
   sendHotkey?: "enter" | "shift+enter" | "ctrl+enter" | "cmd+enter";
   shortcutsEnabled?: boolean;
   adsEnabled?: boolean;
+  hideAds?: boolean; // 订阅用户是否开启去除广告功能
 }

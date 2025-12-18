@@ -12,7 +12,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "a1",
     name: "Growth Advisory",
-    icon: "??",
+    icon: "📈",
     description: "Business development and market analysis",
     model: "Claude 3.5 Sonnet",
     category: "business",
@@ -21,7 +21,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "b1",
     name: "Interview/Job",
-    icon: "??",
+    icon: "💼",
     description: "Career development and interview prep",
     model: "GPT-4o Mini",
     category: "career",
@@ -30,7 +30,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "l1",
     name: "AI Lawyer",
-    icon: "??",
+    icon: "⚖️",
     description: "Legal consultation and document review",
     model: "Claude 3.5 Sonnet",
     category: "legal",
@@ -39,7 +39,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "c1",
     name: "AI Coder",
-    icon: "??",
+    icon: "💻",
     description: "Advanced coding assistant",
     model: "CodeLlama",
     category: "development",
@@ -48,7 +48,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "h1",
     name: "Multi-GPT",
-    icon: "??",
+    icon: "🤖",
     description: "Orchestrates multiple AI models to solve complex tasks",
     model: "GPT-4o Mini",
     category: "productivity",
@@ -57,7 +57,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "w1",
     name: "Content Generation",
-    icon: "??",
+    icon: "🎨",
     description: "Creative content creation",
     model: "GPT-4o Mini",
     category: "creative",
@@ -66,7 +66,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "e1",
     name: "Medical Advice",
-    icon: "??",
+    icon: "🩺",
     description: "Health consultation AI",
     model: "Claude 3.5 Sonnet",
     category: "health",
@@ -75,7 +75,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "d1",
     name: "Content Detection",
-    icon: "???",
+    icon: "🛡️",
     description: "Fake content verification",
     model: "Claude 3.5 Sonnet",
     category: "security",
@@ -84,7 +84,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "z1",
     name: "AI Protection",
-    icon: "??",
+    icon: "🔒",
     description: "AI safety and security",
     model: "Claude 3.5 Sonnet",
     category: "security",
@@ -93,7 +93,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "q1",
     name: "AI Teacher",
-    icon: "??",
+    icon: "🎓",
     description: "Personalized learning system",
     model: "Claude 3.5 Sonnet",
     category: "education",
@@ -102,7 +102,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "n1",
     name: "AI Entertainment Advisor",
-    icon: "??",
+    icon: "🎬",
     description: "Movie, music, and entertainment recommendations",
     model: "GPT-4o Mini",
     category: "entertainment",
@@ -111,7 +111,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "o1",
     name: "Housing",
-    icon: "??",
+    icon: "🏠",
     description: "Real estate and accommodation",
     model: "Claude 3.5 Sonnet",
     category: "lifestyle",
@@ -120,7 +120,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "t1",
     name: "Fashion",
-    icon: "??",
+    icon: "👗",
     description: "Personalized styling advice",
     model: "GPT-4o Mini",
     category: "lifestyle",
@@ -129,7 +129,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "u1",
     name: "Food & Dining",
-    icon: "???",
+    icon: "🍽️",
     description: "Restaurant and food discovery",
     model: "Claude 3.5 Sonnet",
     category: "food",
@@ -138,7 +138,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "r1",
     name: "Travel Planning",
-    icon: "??",
+    icon: "✈️",
     description: "Intelligent travel assistance",
     model: "GPT-4o Mini",
     category: "travel",
@@ -147,7 +147,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "s1",
     name: "Product Search",
-    icon: "??",
+    icon: "🔍",
     description: "Smart product recommendations",
     model: "Claude 3.5 Sonnet",
     category: "shopping",
@@ -156,7 +156,7 @@ export const specializedProducts: SpecializedProduct[] = [
   {
     id: "p1",
     name: "Person Matching",
-    icon: "??",
+    icon: "👥",
     description: "Professional and personal matching",
     model: "GPT-4o Mini",
     category: "social",

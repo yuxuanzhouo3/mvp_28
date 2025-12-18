@@ -7,6 +7,8 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getExpertModelDefinition, isExpertModelId } from "@/constants/expert-models";
 import { getModelCategory, getFreeContextMsgLimit } from "@/utils/model-limits";
 import {
   seedSupabaseWalletForPlan,
@@ -20,6 +22,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
+const INTERNATIONAL_GENERAL_MODEL_ID = "mistral-small-latest";
 
 // 游客上下文限制
 const GUEST_CONTEXT_LIMIT = 5;
@@ -76,7 +79,22 @@ function getPlanInfo(userMeta: any, wallet: any) {
 
 export async function POST(req: Request) {
   try {
-    const { model, modelId, messages = [], message, language, images = [], videos = [], audios = [] } = await req.json();
+    const {
+      model,
+      modelId,
+      messages = [],
+      message,
+      language,
+      images = [],
+      videos = [],
+      audios = [],
+      expertModelId,
+    } = await req.json();
+
+    const expertDef =
+      typeof expertModelId === "string" && isExpertModelId(expertModelId)
+        ? getExpertModelDefinition(expertModelId)
+        : null;
     
     // 检查是否有媒体附件
     const hasMediaPayload =
@@ -98,7 +116,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const modelName = model || modelId || "mistral-small-latest";
+    // Expert models must always use the same underlying model as General Model.
+    const modelName = expertDef
+      ? INTERNATIONAL_GENERAL_MODEL_ID
+      : model || modelId || INTERNATIONAL_GENERAL_MODEL_ID;
     const category = getModelCategory(modelName);
     
     // 尝试获取用户信息（可能已登录但走了游客路由）
@@ -177,6 +198,17 @@ export async function POST(req: Request) {
         ? [...processedMessages, { role: "user", content: message || "" }]
         : [{ role: "user", content: message || "" }];
 
+    const upstreamController = new AbortController();
+    const abortUpstream = () => {
+      if (upstreamController.signal.aborted) return;
+      upstreamController.abort();
+    };
+    if (req.signal.aborted) {
+      abortUpstream();
+    } else {
+      req.signal.addEventListener("abort", abortUpstream, { once: true });
+    }
+
     const upstream = await fetch(provider.url, {
       method: "POST",
       headers: {
@@ -191,6 +223,7 @@ export async function POST(req: Request) {
         stream: true,
         temperature: 0.7,
       }),
+      signal: upstreamController.signal,
     });
 
     if (!upstream.ok || !upstream.body) {
@@ -206,23 +239,54 @@ export async function POST(req: Request) {
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
 
+    const userMessageAt = new Date().toISOString();
+    let assistantMessage = "";
+
     (async () => {
       const reader = upstream.body!.getReader();
       let buffer = "";
       let closed = false;
+      let doneSent = false;
+      let clientAborted = req.signal.aborted || upstreamController.signal.aborted;
       let streamFinished = false;
+      let hasContentOutput = false;
 
-      const safeWrite = async (data: Uint8Array) => {
-        if (closed) return;
+      const safeWrite = async (data: Uint8Array): Promise<boolean> => {
+        if (closed) return false;
         try {
           await writer.write(data);
+          return true;
         } catch {
           closed = true;
+          clientAborted = true;
+          abortUpstream();
+          return false;
         }
       };
+      const sendDone = async () => {
+        if (doneSent) return;
+        doneSent = true;
+        await safeWrite(encoder.encode("data: [DONE]\n\n"));
+      };
+      const closeWriter = async () => {
+        if (closed) return;
+        closed = true;
+        try {
+          await writer.close();
+        } catch {}
+      };
+      const onClientAbort = () => {
+        clientAborted = true;
+        abortUpstream();
+        closeWriter();
+      };
+      if (!req.signal.aborted) {
+        req.signal.addEventListener("abort", onClientAbort, { once: true });
+      }
 
       try {
         while (true) {
+          if (clientAborted) break;
           const { done, value } = await reader.read();
           if (done) break;
 
@@ -231,17 +295,15 @@ export async function POST(req: Request) {
           buffer = lines.pop() ?? "";
 
           for (const rawLine of lines) {
+            if (clientAborted) break;
             const line = rawLine.trim();
             if (!line.startsWith("data:")) continue;
 
             const data = line.slice(5).trim();
             if (data === "[DONE]") {
               streamFinished = true;
-              if (!closed) {
-                await writer.write(encoder.encode("data: [DONE]\n\n"));
-                await writer.close();
-                closed = true;
-              }
+              await sendDone();
+              await closeWriter();
               return;
             }
 
@@ -249,9 +311,12 @@ export async function POST(req: Request) {
               const parsed = JSON.parse(data);
               const delta = extractDelta(parsed);
               if (delta && delta.trim().length > 0) {
-                await safeWrite(
+                const wrote = await safeWrite(
                   encoder.encode(`data: ${JSON.stringify({ chunk: delta })}\n\n`)
                 );
+                if (!wrote) break;
+                hasContentOutput = true;
+                assistantMessage += delta;
               }
             } catch {
               // ignore malformed chunk
@@ -260,25 +325,21 @@ export async function POST(req: Request) {
         }
         streamFinished = true;
       } catch (err) {
-        await safeWrite(
-          encoder.encode(
-            `data: ${JSON.stringify({
-              chunk: language === "zh" ? "抱歉，流式响应中断。" : "Stream interrupted.",
-            })}\n\n`
-          )
-        );
-      } finally {
-        if (!closed) {
-          try {
-            await writer.write(encoder.encode("data: [DONE]\n\n"));
-            await writer.close();
-          } catch {
-            // stream already closed, ignore
-          }
+        if (!clientAborted) {
+          await safeWrite(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                chunk: language === "zh" ? "抱歉，流式响应中断。" : "Stream interrupted.",
+              })}\n\n`
+            )
+          );
         }
+      } finally {
+        await sendDone();
+        await closeWriter();
 
         // 扣减每日配额（仅登录用户）
-        if (shouldDeductDailyExternal && streamFinished && userId) {
+        if (shouldDeductDailyExternal && hasContentOutput && userId) {
           const consumeDailyResult = await consumeSupabaseDailyExternalQuota(
             userId,
             effectivePlanLower,
@@ -286,6 +347,26 @@ export async function POST(req: Request) {
           );
           if (!consumeDailyResult.success) {
             console.error("[quota][stream-guest][daily-consume-error]", consumeDailyResult.error);
+          }
+        }
+
+        // 专家模型对话落库（分表），不影响主流程
+        const shouldLog = hasContentOutput;
+        if (expertDef && userId && supabaseAdmin && shouldLog && assistantMessage.trim().length > 0) {
+          try {
+            const { error } = await supabaseAdmin.from(expertDef.supabaseTable).insert({
+              user_id: userId,
+              user_message: message || "",
+              user_message_at: userMessageAt,
+              assistant_message: assistantMessage,
+              assistant_message_at: new Date().toISOString(),
+              model_id: modelName,
+            });
+            if (error) {
+              console.error("[expert-log][supabase] insert failed", error);
+            }
+          } catch (err) {
+            console.error("[expert-log][supabase] insert failed", err);
           }
         }
       }

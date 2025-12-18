@@ -27,8 +27,10 @@ interface Platform {
 interface AppUser {
   settings?: {
     adsEnabled?: boolean;
+    hideAds?: boolean; // 订阅用户是否开启去除广告功能
   };
   isPro?: boolean;
+  planExp?: string; // 订阅到期时间
 }
 
 interface DownloadSectionDialogProps {
@@ -38,7 +40,7 @@ interface DownloadSectionDialogProps {
   appUser: AppUser | null;
   onPlatformSelect: (platform: string, variant?: string) => void;
   onDownload: () => void;
-  onUpdateUserSettings: (settings: { adsEnabled: boolean }) => void;
+  onUpdateUserSettings: (settings: { hideAds?: boolean; adsEnabled?: boolean }) => void;
   onUpgradeFromAds: () => void;
 }
 
@@ -564,28 +566,48 @@ export default function DownloadSectionDialog({
           {appUser && (
             <div className="space-y-3 pt-4 border-t border-gray-200 dark:border-[#565869]">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
-                  {tr("Advertisement", "广告设置")}
-                </h3>
+                <div>
+                  <h3 className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
+                    {tr("Hide Ads", "去除广告")}
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {appUser.isPro
+                      ? tr(
+                          "Turn on to remove all ads during your subscription",
+                          "开启后在订阅有效期内不显示广告"
+                        )
+                      : tr(
+                          "Upgrade to Pro to enable this feature",
+                          "升级到订阅计划以启用此功能"
+                        )}
+                  </p>
+                </div>
                 <Switch
-                  checked={appUser?.settings?.adsEnabled ?? false}
-                  onCheckedChange={(checked) =>
-                    onUpdateUserSettings({ adsEnabled: checked })
-                  }
+                  checked={appUser?.settings?.hideAds ?? false}
+                  onCheckedChange={(checked) => {
+                    // Free 用户点击开关时跳转到订阅页面
+                    if (!appUser.isPro) {
+                      onUpgradeFromAds();
+                      return;
+                    }
+                    // 订阅用户正常切换
+                    onUpdateUserSettings({ hideAds: checked });
+                  }}
                 />
               </div>
-              {(appUser?.settings?.adsEnabled ?? false) && !appUser.isPro && (
+              {/* 非订阅用户提示升级 */}
+              {!appUser.isPro && (
                 <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                   <div className="flex items-start space-x-2 mb-2">
                     <Crown className="w-4 h-4 text-yellow-600" />
                     <span className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
-                      {tr("Upgrade", "升级")}
+                      {tr("Upgrade to Remove Ads", "升级以去除广告")}
                     </span>
                   </div>
                   <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
                     {tr(
-                      "Remove ads and unlock premium features",
-                      "移除广告并解锁高级功能"
+                      "Subscribe to unlock ad-free experience and premium features",
+                      "订阅以解锁无广告体验和高级功能"
                     )}
                   </p>
                   <Button
@@ -595,6 +617,15 @@ export default function DownloadSectionDialog({
                   >
                     {tr("Upgrade Now", "立即升级")}
                   </Button>
+                </div>
+              )}
+              {/* 订阅用户开启了去除广告但快到期时提示 */}
+              {appUser.isPro && appUser.settings?.hideAds && appUser.planExp && (
+                <div className="p-2 bg-gray-50 dark:bg-[#565869] rounded-lg">
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    {tr("Subscription expires: ", "订阅到期时间：")}
+                    {new Date(appUser.planExp).toLocaleDateString()}
+                  </p>
                 </div>
               )}
             </div>

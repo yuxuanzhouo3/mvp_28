@@ -693,9 +693,10 @@ const loadMessagesForConversation = useCallback(
       const cached = chatSessionsRef.current.find((c) => c.id === conversationId);
       setMessages(cached?.messages || []);
       if (cached) {
+        const cachedModelType = (cached.modelType || "general").toLowerCase();
         setSelectedModelType(cached.modelType || "general");
         setSelectedModel(cached.model || GENERAL_MODEL_ID);
-        setSelectedCategory(cached.category || "general");
+        setSelectedCategory(cachedModelType === "morngpt" ? cached.category || "general" : "general");
       }
       setIsConversationLoading(false);
       return;
@@ -735,12 +736,28 @@ const loadMessagesForConversation = useCallback(
         return;
       }
 
+      const chatMeta = chatSessionsRef.current.find((c) => c.id === conversationId);
+      const chatModelTypeLower = (chatMeta?.modelType || "").toLowerCase();
+      const assistantModelLabel = (() => {
+        if (chatModelTypeLower === "morngpt") {
+          const expertId = chatMeta?.category || "";
+          const expert = mornGPTCategories.find((c) => c.id === expertId);
+          return expert?.name || "MornGPT";
+        }
+        if (chatModelTypeLower === "general") return "General Model";
+        return chatMeta?.model || "";
+      })();
+
       const fetchedMessages: Message[] =
         data?.map((m: any) => ({
           id: m.id,
           role: m.role as Message["role"],
           content: m.content,
           timestamp: new Date(m.created_at),
+          model:
+            m.role === "assistant" && assistantModelLabel
+              ? assistantModelLabel
+              : undefined,
           images: m.imageFileIds || m.images || [],
           videos: m.videoFileIds || m.videos || [],
           audios: (m.audioFileIds || (m as any).audios || []) as any,
@@ -824,18 +841,25 @@ const loadMessagesForConversation = useCallback(
             const rawModel = c.model || GENERAL_MODEL_ID;
             const isGeneralModel =
               (rawModel || "").toLowerCase() === GENERAL_MODEL_ID.toLowerCase();
-            const modelType = isGeneralModel
-              ? "general"
-              : c.model
-                ? c.modelType || "external"
-                : "general";
+            const serverModelType =
+              (typeof c.modelType === "string" && c.modelType) ||
+              (typeof c.model_type === "string" && c.model_type) ||
+              "";
+            const modelType = serverModelType || (isGeneralModel ? "general" : c.model ? "external" : "general");
+            const expertModelId =
+              (typeof c.expertModelId === "string" && c.expertModelId) ||
+              (typeof c.expert_model_id === "string" && c.expert_model_id) ||
+              "";
             return {
               id: c.id,
               title: c.title || "New Chat",
               messages: [],
               model: rawModel,
               modelType,
-              category: isGeneralModel ? "general" : c.category || "general",
+              category:
+                String(modelType).toLowerCase() === "morngpt"
+                  ? expertModelId || c.category || "general"
+                  : "general",
               lastUpdated: c.updated_at ? new Date(c.updated_at) : new Date(),
               isModelLocked: false, // allow model selection before messages load
             };
@@ -864,11 +888,15 @@ const loadMessagesForConversation = useCallback(
             setSelectedModelType(current.modelType || "external");
             setSelectedModel(
               current.model ||
-                (current.modelType === "general"
+                (current.modelType === "general" || current.modelType === "morngpt"
                   ? GENERAL_MODEL_ID
                   : defaultExternalModelId)
             );
-            setSelectedCategory(current.category || "general");
+            setSelectedCategory(
+              (current.modelType || "").toLowerCase() === "morngpt"
+                ? current.category || "general"
+                : "general"
+            );
           }
         }
       } catch (err) {
@@ -916,6 +944,14 @@ const loadMessagesForConversation = useCallback(
             isPaid: !!user.metadata?.pro,
             plan: user.metadata?.plan || undefined,
             planExp: planExp || undefined,
+            settings: {
+              theme: "light",
+              language: "zh",
+              notifications: true,
+              soundEnabled: true,
+              autoSave: true,
+              hideAds: user.metadata?.hide_ads ?? false, // 从数据库加载 hide_ads 设置
+            },
           };
           isDomesticSessionRef.current = true;
           setAppUser(mappedUser);
@@ -943,6 +979,17 @@ const loadMessagesForConversation = useCallback(
       }
       if (data.session?.user) {
         const user = data.session.user;
+        // 获取 hide_ads 设置
+        let hideAds = false;
+        try {
+          const settingsRes = await fetch("/api/account/settings", { credentials: "include" });
+          if (settingsRes.ok) {
+            const settingsData = await settingsRes.json();
+            hideAds = settingsData?.data?.hide_ads ?? false;
+          }
+        } catch (e) {
+          console.error("Failed to load hide_ads setting", e);
+        }
         const mappedUser: AppUser = {
           id: user.id,
           email: user.email || "",
@@ -954,6 +1001,14 @@ const loadMessagesForConversation = useCallback(
           isPaid: false,
           plan: (user.user_metadata as any)?.plan,
           planExp: (user.user_metadata as any)?.plan_exp,
+          settings: {
+            theme: "light",
+            language: "en",
+            notifications: true,
+            soundEnabled: true,
+            autoSave: true,
+            hideAds: hideAds, // 从数据库加载 hide_ads 设置
+          },
         };
         isDomesticSessionRef.current = false;
         setAppUser(mappedUser);
@@ -2870,7 +2925,7 @@ const loadMessagesForConversation = useCallback(
     }
   };
 
-  const updateUserSettings = (newSettings: Partial<AppUser["settings"]>) => {
+  const updateUserSettings = async (newSettings: Partial<AppUser["settings"]>) => {
     if (appUser) {
       const updatedUser = {
         ...appUser,
@@ -2883,12 +2938,47 @@ const loadMessagesForConversation = useCallback(
           sendHotkey: "enter" as const,
           shortcutsEnabled: true,
           adsEnabled: false,
+          hideAds: false, // 默认不隐藏广告，订阅用户需手动开启
           ...appUser.settings,
           ...newSettings,
         },
       };
       setAppUser(updatedUser);
       localStorage.setItem("morngpt_user", JSON.stringify(updatedUser));
+
+      // 如果更新了 hideAds 设置，同步到数据库
+      if (typeof newSettings.hideAds === "boolean") {
+        try {
+          const res = await fetch("/api/account/settings", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ hideAds: newSettings.hideAds }),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            console.error("[updateUserSettings] Failed to sync hideAds:", data.error);
+            // 如果是权限错误（Free用户尝试开启），回滚本地状态
+            if (res.status === 403) {
+              setAppUser((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      settings: { ...prev.settings, hideAds: false },
+                    }
+                  : prev
+              );
+              toast.error(
+                isZh
+                  ? "仅订阅用户可开启去除广告功能"
+                  : "Only subscribed users can enable hide ads"
+              );
+            }
+          }
+        } catch (err) {
+          console.error("[updateUserSettings] hideAds sync error:", err);
+        }
+      }
     }
   };
 
@@ -3362,8 +3452,11 @@ const loadMessagesForConversation = useCallback(
     category?: string,
     model?: string
   ) => {
-    const fallbackModel = modelType === "general" ? GENERAL_MODEL_ID : defaultExternalModelId;
-    const chosenModel = model || fallbackModel;
+    // MornGPT expert models should use the same underlying model as General Model
+    const isExpertModel = modelType === "morngpt";
+    const isGeneral = modelType === "general";
+    const fallbackModel = isGeneral ? GENERAL_MODEL_ID : defaultExternalModelId;
+    const chosenModel = isExpertModel || isGeneral ? GENERAL_MODEL_ID : model || fallbackModel;
     // If current chat already locked, start a new chat with the chosen model
     if (currentChat && currentChat.isModelLocked) {
       void createNewChat(category, modelType, chosenModel);
@@ -3372,7 +3465,12 @@ const loadMessagesForConversation = useCallback(
     }
 
     setSelectedModelType(modelType);
-    if (category) setSelectedCategory(category);
+    // Reset folder/category when leaving Expert(MornGPT)
+    if (modelType === "morngpt") {
+      if (category) setSelectedCategory(category);
+    } else {
+      setSelectedCategory("general");
+    }
     setSelectedModel(chosenModel);
     setIsModelSelectorOpen(false);
   };
@@ -3413,10 +3511,15 @@ const loadMessagesForConversation = useCallback(
 
     const chosenModelType = modelType || "general";
     const chosenModel =
-      model ||
-      (chosenModelType === "general"
+      chosenModelType === "general" || chosenModelType === "morngpt"
         ? GENERAL_MODEL_ID
-        : defaultExternalModelId);
+        : model || defaultExternalModelId;
+    const folderKey =
+      chosenModelType === "general"
+        ? "general"
+        : chosenModelType === "morngpt"
+          ? "morngpt"
+          : "external";
     // Use a temporary local ID; real ID will be created on first message send
     const newChatId = `local-${Date.now()}`;
 
@@ -3426,7 +3529,8 @@ const loadMessagesForConversation = useCallback(
       messages: [],
       model: chosenModel,
       modelType: chosenModelType,
-      category: category || "general",
+      // Category is used by Expert(MornGPT) chats to store expert id (a/b/c...).
+      category: chosenModelType === "morngpt" ? category || selectedCategory || "general" : "general",
       lastUpdated: new Date(),
       isModelLocked: false, // allow changing model before first message
     };
@@ -3436,10 +3540,12 @@ const loadMessagesForConversation = useCallback(
 
     setSelectedModelType(chosenModelType);
     setSelectedModel(chosenModel);
-    if (category) setSelectedCategory(category);
+    setSelectedCategory(
+      chosenModelType === "morngpt" ? category || selectedCategory || "general" : "general"
+    );
 
     // Expand the folder for the new chat's category
-    setExpandedFolders([category || "general"]);
+    setExpandedFolders([folderKey]);
   }
 
   const selectChat = (chatId: string) => {
@@ -3454,14 +3560,24 @@ const loadMessagesForConversation = useCallback(
           setSelectedModelType(chat.modelType || "general");
           setSelectedModel(
             chat.model ||
-              (chat.modelType === "general"
+              (chat.modelType === "general" || chat.modelType === "morngpt"
                 ? GENERAL_MODEL_ID
                 : defaultExternalModelId)
           );
-      setSelectedCategory(chat.category || "general");
+      setSelectedCategory(
+        (chat.modelType || "").toLowerCase() === "morngpt"
+          ? chat.category || "general"
+          : "general"
+      );
 
       // Auto-collapse all folders except the chat's category
-      setExpandedFolders([chat.category]);
+      const folderKey =
+        chat.modelType === "general"
+          ? "general"
+          : chat.modelType === "morngpt"
+            ? "morngpt"
+            : "external";
+      setExpandedFolders([folderKey]);
     }
   };
 
@@ -3483,7 +3599,10 @@ const loadMessagesForConversation = useCallback(
           method: "DELETE",
           credentials: "include",
         });
-        if (!res.ok) {
+        // 404: conversation may already be deleted or belong to another session/user; treat as idempotent success.
+        if (res.status === 404) {
+          // no-op
+        } else if (!res.ok) {
           const msg = await res.text();
           throw new Error(`Delete failed ${res.status}: ${msg || "unknown"}`);
         }
@@ -3508,20 +3627,30 @@ const loadMessagesForConversation = useCallback(
     const updatedChats = chatSessions.filter((chat) => chat.id !== chatId);
     setChatSessions(updatedChats);
 
-    if (currentChatId === chatId) {
-      if (updatedChats.length > 0) {
-        const nextChat = updatedChats[0];
-        setCurrentChatId(nextChat.id);
-        currentChatIdRef.current = nextChat.id;
-        setSelectedModelType(nextChat.modelType || "external");
-        setSelectedModel(
-          nextChat.model ||
-            (nextChat.modelType === "general"
-              ? GENERAL_MODEL_ID
-              : defaultExternalModelId)
+      if (currentChatId === chatId) {
+        if (updatedChats.length > 0) {
+          const nextChat = updatedChats[0];
+          setCurrentChatId(nextChat.id);
+          currentChatIdRef.current = nextChat.id;
+          setSelectedModelType(nextChat.modelType || "external");
+          setSelectedModel(
+            nextChat.model ||
+              (nextChat.modelType === "general" || nextChat.modelType === "morngpt"
+                ? GENERAL_MODEL_ID
+                : defaultExternalModelId)
+          );
+        setSelectedCategory(
+          (nextChat.modelType || "").toLowerCase() === "morngpt"
+            ? nextChat.category || "general"
+            : "general"
         );
-        setSelectedCategory(nextChat.category || "general");
-        setExpandedFolders([nextChat.category || "general"]);
+        const folderKey =
+          nextChat.modelType === "general"
+            ? "general"
+            : nextChat.modelType === "morngpt"
+              ? "morngpt"
+              : "external";
+        setExpandedFolders([folderKey]);
         setMessages(nextChat.messages || []);
         void loadMessagesForConversation(nextChat.id);
       } else {
@@ -3589,12 +3718,23 @@ const loadMessagesForConversation = useCallback(
     chat.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const groupedChats = filteredChats.reduce((acc, chat) => {
-    const category = chat.category || "general";
-    if (!acc[category]) {
-      acc[category] = [];
+  const getFolderKeyForChat = (chat: ChatSession): "general" | "morngpt" | "external" => {
+    const modelTypeLower = (chat.modelType || "").toLowerCase();
+    if (modelTypeLower === "morngpt") return "morngpt";
+    if (modelTypeLower === "general") return "general";
+    if (!modelTypeLower) {
+      const isGeneral = (chat.model || "").toLowerCase() === GENERAL_MODEL_ID.toLowerCase();
+      return isGeneral ? "general" : "external";
     }
-    acc[category].push(chat);
+    return "external";
+  };
+
+  const groupedChats = filteredChats.reduce((acc, chat) => {
+    const folderKey = getFolderKeyForChat(chat);
+    if (!acc[folderKey]) {
+      acc[folderKey] = [];
+    }
+    acc[folderKey].push(chat);
     return acc;
   }, {} as Record<string, ChatSession[]>);
 
@@ -3949,8 +4089,9 @@ const loadMessagesForConversation = useCallback(
   };
 
   const handleUpgradeFromAds = () => {
-    // Implementation for upgrade from ads
-    if(false) console.log("handleUpgradeFromAds called");
+    // 关闭下载弹窗，打开订阅弹窗
+    setShowDownloadSection(false);
+    setShowUpgradeDialog(true);
   };
 
   const handleSpecializedProductSelect = () => {

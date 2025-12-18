@@ -1,5 +1,6 @@
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
+import { getExpertModelDefinition, isExpertModelId } from "@/constants/expert-models";
 import {
   getModelCategory,
   getFreeContextMsgLimit,
@@ -20,6 +21,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PROVIDER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+const DOMESTIC_GENERAL_MODEL_ID = "qwen-turbo";
 
 /**
  * 获取用户计划信息
@@ -122,6 +124,7 @@ export async function POST(req: Request) {
       images = [],
       videos = [],
       audios = [],
+      expertModelId,
     } =
       (await req.json()) as {
         model?: string;
@@ -132,7 +135,13 @@ export async function POST(req: Request) {
         images?: string[];
         videos?: string[];
         audios?: string[];
+        expertModelId?: string;
       };
+
+    const expertDef =
+      typeof expertModelId === "string" && isExpertModelId(expertModelId)
+        ? getExpertModelDefinition(expertModelId)
+        : null;
 
     // ============================================================
     // Free 用户上下文截断 + 配额校验（要求登录，确保额度入库）
@@ -160,7 +169,7 @@ export async function POST(req: Request) {
     }
 
     let user: any = null;
-    let plan = { isFree: true, isBasic: false, isPro: false, planLower: "free" };
+    let plan = getPlanInfo({});
     try {
       const auth = new CloudBaseAuthService();
       user = await auth.validateToken(authToken);
@@ -198,8 +207,26 @@ export async function POST(req: Request) {
       (Array.isArray(messages) &&
         messages.some((m) => (m?.images || m?.videos || m?.audios || []).length > 0));
 
-    const modelName = hasMediaPayload ? "qwen3-omni-flash" : model || modelId || "qwen3-omni-flash";
-    const finalModelId = modelId || modelName;
+    // Expert models are text-only and must always use the same underlying model as General Model.
+    if (expertDef && hasMediaPayload) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error:
+            language === "zh"
+              ? "专家模型暂不支持图片/视频/音频，请切换到 Qwen3-Omni-Flash。"
+              : "Expert models do not support image/video/audio. Please switch to Qwen3-Omni-Flash.",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    const modelName = expertDef
+      ? DOMESTIC_GENERAL_MODEL_ID
+      : hasMediaPayload
+        ? "qwen3-omni-flash"
+        : model || modelId || "qwen3-omni-flash";
+    const finalModelId = expertDef ? modelName : modelId || modelName;
     const provider = getDashScopeProvider(modelName);
     if (!provider) {
       return new Response(JSON.stringify({ success: false, error: "Unsupported model or missing API key" }), {
@@ -350,6 +377,17 @@ export async function POST(req: Request) {
       });
     }
 
+    const upstreamController = new AbortController();
+    const abortUpstream = () => {
+      if (upstreamController.signal.aborted) return;
+      upstreamController.abort();
+    };
+    if (req.signal.aborted) {
+      abortUpstream();
+    } else {
+      req.signal.addEventListener("abort", abortUpstream, { once: true });
+    }
+
     const upstream = await fetch(provider.url, {
       method: "POST",
       headers: {
@@ -362,6 +400,7 @@ export async function POST(req: Request) {
         stream: true,
         temperature: 0.7,
       }),
+      signal: upstreamController.signal,
     });
 
     if (!upstream.ok || !upstream.body) {
@@ -376,6 +415,9 @@ export async function POST(req: Request) {
     const writer = stream.writable.getWriter();
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
+
+    const userMessageAt = new Date().toISOString();
+    let assistantMessage = "";
 
     const THINK_OPEN = "<think>";
     const THINK_CLOSE = "</think>";
@@ -427,14 +469,19 @@ export async function POST(req: Request) {
       let buffer = "";
       let doneSent = false;
       let closed = false;
+      let clientAborted = req.signal.aborted || upstreamController.signal.aborted;
       let streamFinished = false;
       let hasContentOutput = false; // 标记是否有内容输出（用于手动暂停时也扣费）
-      const safeWrite = async (data: Uint8Array) => {
-        if (closed) return;
+      const safeWrite = async (data: Uint8Array): Promise<boolean> => {
+        if (closed) return false;
         try {
           await writer.write(data);
+          return true;
         } catch {
           closed = true;
+          clientAborted = true;
+          abortUpstream();
+          return false;
         }
       };
       const sendDone = async () => {
@@ -450,8 +497,17 @@ export async function POST(req: Request) {
           await writer.close();
         } catch {}
       };
+      const onClientAbort = () => {
+        clientAborted = true;
+        abortUpstream();
+        closeWriter();
+      };
+      if (!req.signal.aborted) {
+        req.signal.addEventListener("abort", onClientAbort, { once: true });
+      }
       try {
         while (true) {
+          if (clientAborted) break;
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
@@ -459,6 +515,7 @@ export async function POST(req: Request) {
           buffer = lines.pop() ?? "";
 
           for (const rawLine of lines) {
+            if (clientAborted) break;
             const line = rawLine.trim();
             if (!line.startsWith("data:")) continue;
             const data = line.slice(5).trim();
@@ -472,8 +529,12 @@ export async function POST(req: Request) {
               const delta = extractDelta(parsed);
               const cleaned = filterThinkContent(delta);
               if (cleaned && cleaned.trim().length > 0) {
+                const wrote = await safeWrite(
+                  encoder.encode(`data: ${JSON.stringify({ chunk: cleaned })}\n\n`)
+                );
+                if (!wrote) break;
                 hasContentOutput = true; // AI已开始输出内容
-                await safeWrite(encoder.encode(`data: ${JSON.stringify({ chunk: cleaned })}\n\n`));
+                assistantMessage += cleaned;
               }
             } catch {
               // ignore malformed chunk
@@ -482,14 +543,19 @@ export async function POST(req: Request) {
         }
         streamFinished = true;
       } catch (err) {
-        await safeWrite(
-          encoder.encode(
-            `data: ${JSON.stringify({
-              chunk: language === "zh" ? "抱歉，流式响应中断。" : "Stream interrupted.",
-            })}\n\n`
-          )
-        );
-        console.warn("[quota][stream] upstream interrupted", err instanceof Error ? err.message : err);
+        if (!clientAborted) {
+          await safeWrite(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                chunk: language === "zh" ? "抱歉，流式响应中断。" : "Stream interrupted.",
+              })}\n\n`
+            )
+          );
+          console.warn(
+            "[quota][stream] upstream interrupted",
+            err instanceof Error ? err.message : err
+          );
+        }
       } finally {
         // 如果未显式标记完成，但已经发送了 [DONE]，兜底标记
         if (doneSent && !streamFinished) {
@@ -497,10 +563,10 @@ export async function POST(req: Request) {
         }
         await sendDone();
         await closeWriter();
-        
+         
         // AI成功输出内容后才扣费（手动暂停也算）
-        const shouldCharge = streamFinished || hasContentOutput;
-        
+        const shouldCharge = hasContentOutput;
+         
         if (shouldDeductMediaQuota && shouldCharge) {
           const consumeResult = await consumeQuota({
             userId: user.id,
@@ -524,6 +590,26 @@ export async function POST(req: Request) {
           }
         } else if (shouldDeductDailyExternal && !shouldCharge) {
           console.warn("[quota][stream] daily consume skipped because no content output");
+        }
+
+        // 专家模型对话落库（分集合），不影响主流程
+        if (expertDef && shouldCharge && assistantMessage.trim().length > 0) {
+          try {
+            const connector = new CloudBaseConnector();
+            await connector.initialize();
+            const db = connector.getClient();
+            await db.collection(expertDef.cloudbaseCollection).add({
+              userId: user.id,
+              userMessage: message || "",
+              userMessageAt,
+              assistantMessage,
+              assistantMessageAt: new Date().toISOString(),
+              modelId: finalModelId,
+              createdAt: new Date().toISOString(),
+            });
+          } catch (err) {
+            console.error("[expert-log][cloudbase] insert failed", err);
+          }
         }
       }
     })();

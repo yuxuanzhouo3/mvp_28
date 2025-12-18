@@ -18,3 +18,6 @@ pnpm-debug.log*
 # Vercel & misc
 .vercel
 .DS_Store
+
+# mcp
+.spec-workflow

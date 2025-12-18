@@ -19,6 +19,8 @@ import {
   Folder,
   FolderOpen,
   MessageSquare,
+  Sparkles,
+  Globe,
   Edit3,
   Upload,
   Trash2,
@@ -32,7 +34,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { ChatSession, BookmarkFolder } from "../types";
-import { mornGPTCategories, specializedProducts } from "../constants";
+import { specializedProducts } from "../constants";
 import {
   Popover,
   PopoverContent,
@@ -87,6 +89,8 @@ interface SidebarProps {
   setShowGlobalAds?: (show: boolean) => void;
   // 升级弹窗控制（用于广告关闭时弹出）
   setShowUpgradeDialog?: (show: boolean) => void;
+  // 是否应该显示广告（根据订阅状态计算，由父组件传入）
+  shouldShowAds?: boolean;
 }
 
 export default function Sidebar({
@@ -124,6 +128,7 @@ export default function Sidebar({
   showGlobalAds = true,
   setShowGlobalAds,
   setShowUpgradeDialog,
+  shouldShowAds = true,
 }: SidebarProps) {
   const { currentLanguage } = useLanguage();
 
@@ -131,9 +136,9 @@ export default function Sidebar({
   const [socialLinks, setSocialLinks] = useState<SocialLinkData[]>([]);
   const [socialLinksLoading, setSocialLinksLoading] = useState(true);
 
-  // 使用全局状态或本地状态
-  const showAds = showGlobalAds;
-  const setShowAds = setShowGlobalAds || (() => {});
+  // 侧边栏本地广告显示状态（仅控制侧边栏广告显示/社交链接切换）
+  // 默认显示广告，用户点击小眼睛后切换到社交链接
+  const [showSidebarAd, setShowSidebarAd] = useState(true);
 
   // 获取社交链接数据
   useEffect(() => {
@@ -207,24 +212,24 @@ export default function Sidebar({
             </Button>
           </div>
 
-          {/* Ads Toggle - 默认显示广告，点击切换到社交链接 */}
+          {/* Ads Toggle - 默认显示广告（Eye），点击后仅关闭侧边栏广告并显示社交链接 */}
           <div className="flex justify-center px-1 pb-1 pt-2">
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setShowAds(!showAds)}
+              onClick={() => setShowSidebarAd(!showSidebarAd)}
               className={`w-6 h-6 rounded-sm ${
-                showAds
+                showSidebarAd && shouldShowAds
                   ? "text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
                   : "text-gray-400 dark:text-gray-500"
               }`}
               title={
-                showAds
+                showSidebarAd && shouldShowAds
                   ? getLocalizedText("hideAds")
                   : getLocalizedText("showAds")
               }
             >
-              {showAds ? (
+              {showSidebarAd && shouldShowAds ? (
                 <Eye className="w-3 h-3" />
               ) : (
                 <EyeOff className="w-3 h-3" />
@@ -232,8 +237,8 @@ export default function Sidebar({
             </Button>
           </div>
 
-          {/* 侧边栏竖向广告 (showAds为true时显示) */}
-          {showAds && (
+          {/* 侧边栏竖向广告 (shouldShowAds且showSidebarAd为true时显示) */}
+          {shouldShowAds && showSidebarAd && (
             <div className="flex flex-col items-center px-1 flex-1">
               <ScrollArea className="w-full h-full">
                 <div className="flex flex-col items-center py-2">
@@ -249,8 +254,8 @@ export default function Sidebar({
             </div>
           )}
 
-          {/* 社交链接小方块 (showAds为false时显示) */}
-          {!showAds && (
+          {/* 社交链接小方块 (shouldShowAds为false或showSidebarAd为false时显示) */}
+          {(!shouldShowAds || !showSidebarAd) && (
             <div className="flex flex-col items-center space-y-0.5 px-1">
               <ScrollArea className="w-full max-h-[calc(100vh-120px)]">
                 <div className="grid grid-cols-1 gap-0.5 w-full pb-4 justify-items-center pt-1">
@@ -409,6 +414,7 @@ export default function Sidebar({
                         ) : (
                           <Folder className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
                         )}
+                        <MessageSquare className="w-3 h-3 text-gray-500 dark:text-gray-400" />
                         <span className="text-xs font-medium text-gray-900 dark:text-[#ececf1]">
                           General
                         </span>
@@ -606,199 +612,345 @@ export default function Sidebar({
                   )}
                 </div>
 
-                {/* Model Category Folders */}
-                {mornGPTCategories.map((category) => {
-                  const categoryChats = groupedChats[category.id] || [];
-                  if (categoryChats.length === 0) return null;
-
-                  return (
-                    <div key={category.id} className="mb-1">
-                      <ContextMenu>
-                        <ContextMenuTrigger>
-                          <div
-                            className="group flex items-center space-x-1.5 p-1.5 hover:bg-gray-100 dark:hover:bg-[#565869] rounded cursor-pointer relative"
-                            onClick={() => toggleFolder(category.id)}
-                          >
-                            {expandedFolders.includes(category.id) ? (
-                              <FolderOpen className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
-                            ) : (
-                              <Folder className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
-                            )}
-                            <category.icon className="w-2.5 h-2.5" />
-                            <span className="text-xs font-medium truncate text-gray-900 dark:text-[#ececf1]">
-                              {category.name}
-                            </span>
-                            <ChevronRight
-                              className={`w-2.5 h-2.5 text-gray-400 transition-transform ${
-                                expandedFolders.includes(category.id)
-                                  ? "rotate-90"
-                                  : ""
+                {/* MornGPT Folder */}
+                <div className="mb-1">
+                  <ContextMenu>
+                    <ContextMenuTrigger>
+                      <div
+                        className="flex items-center space-x-1.5 p-1.5 hover:bg-gray-100 dark:hover:bg-[#565869] rounded cursor-pointer"
+                        onClick={() => toggleFolder("morngpt")}
+                      >
+                        {expandedFolders.includes("morngpt") ? (
+                          <FolderOpen className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                        ) : (
+                          <Folder className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                        )}
+                        <Sparkles className="w-3 h-3 text-gray-500 dark:text-gray-400" />
+                        <span className="text-xs font-medium text-gray-900 dark:text-[#ececf1]">
+                          MornGPT
+                        </span>
+                        <ChevronRight
+                          className={`w-2.5 h-2.5 text-gray-400 transition-transform ${
+                            expandedFolders.includes("morngpt") ? "rotate-90" : ""
+                          }`}
+                        />
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
+                      <ContextMenuItem
+                        onClick={() => createNewChat(undefined, "morngpt")}
+                        className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        {currentLanguage === "zh" ? "新建 MornGPT 对话" : "New MornGPT Chat"}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                  {expandedFolders.includes("morngpt") && (
+                    <div className="ml-5 space-y-0.5">
+                      {(groupedChats.morngpt || []).map((chat) => (
+                        <ContextMenu key={chat.id}>
+                          <ContextMenuTrigger>
+                            <div
+                              className={`group p-1.5 rounded cursor-pointer text-xs hover:bg-gray-100 dark:hover:bg-[#565869] ${
+                                currentChatId === chat.id
+                                  ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                                  : "text-gray-700 dark:text-gray-300"
                               }`}
-                            />
-                          </div>
-                        </ContextMenuTrigger>
-                        <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
-                          <ContextMenuItem
-                            onClick={() =>
-                              createNewChat(
-                                category.id,
-                                "morngpt",
-                                category.name
-                              )
-                            }
-                            className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
-                          >
-                            <Plus className="w-4 h-4 mr-2" />
-                            {currentLanguage === "zh"
-                              ? `在 ${category.name} 新建对话`
-                              : `New Chat in ${category.name}`}
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                      {expandedFolders.includes(category.id) && (
-                        <div className="ml-5 space-y-0.5">
-                          {categoryChats.map((chat) => (
-                            <ContextMenu key={chat.id}>
-                              <ContextMenuTrigger>
-                                <div
-                                  className={`group p-1.5 rounded cursor-pointer text-xs hover:bg-gray-100 dark:hover:bg-[#565869] ${
-                                    currentChatId === chat.id
-                                      ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
-                                      : "text-gray-700 dark:text-gray-300"
-                                  }`}
-                                  onClick={() => selectChat(chat.id)}
-                                  onDoubleClick={() =>
-                                    setEditingChatId(chat.id)
-                                  }
-                                >
-                                  <div className="flex items-center space-x-1.5">
-                                    <MessageSquare className="w-2.5 h-2.5 shrink-0" />
-                                    {editingChatId === chat.id ? (
-                                      <div className="flex items-center space-x-1 flex-1">
-                                        <Input
-                                          value={editingTitle}
-                                          onChange={(e) =>
-                                            setEditingTitle(e.target.value)
-                                          }
-                                          className="h-5 text-xs bg-white dark:bg-[#565869] text-gray-900 dark:text-[#ececf1]"
-                                          onKeyDown={(e) => {
-                                            if (e.key === "Enter") saveTitle();
-                                            if (e.key === "Escape")
-                                              cancelEditing();
-                                          }}
-                                          autoFocus
-                                        />
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          className="h-5 w-5 p-0"
-                                          onClick={saveTitle}
-                                        >
-                                          <Check className="w-2.5 h-2.5" />
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          className="h-5 w-5 p-0"
-                                          onClick={cancelEditing}
-                                        >
-                                          <X className="w-2.5 h-2.5" />
-                                        </Button>
-                                      </div>
-                                    ) : (
-                                      <>
-                                        <span
-                                          className="truncate flex-1 text-gray-700 dark:text-gray-300"
-                                          title={chat.title}
-                                        >
-                                          {truncateText(
-                                            chat.title,
-                                            Math.floor((sidebarWidth - 120) / 6)
-                                          )}
-                                        </span>
-                                        <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-0.5">
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setEditingChatId(chat.id);
-                                            }}
-                                          >
-                                            <Edit3 className="w-2.5 h-2.5" />
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              selectChat(chat.id);
-                                              setShowShareDialog(true);
-                                            }}
-                                            disabled={
-                                              chat.messages.length === 0
-                                            }
-                                            title={
-                                              chat.messages.length === 0
-                                                ? "No conversation to share"
-                                                : "Share conversation"
-                                            }
-                                          >
-                                            <Upload className="w-2.5 h-2.5" />
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-5 w-5 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              deleteChat(chat.id);
-                                            }}
-                                          >
-                                            <Trash2 className="w-2.5 h-2.5" />
-                                          </Button>
-                                        </div>
-                                      </>
-                                    )}
+                              onClick={() => selectChat(chat.id)}
+                              onDoubleClick={() => setEditingChatId(chat.id)}
+                            >
+                              <div className="flex items-center space-x-1.5">
+                                <MessageSquare className="w-2.5 h-2.5 shrink-0" />
+                                {editingChatId === chat.id ? (
+                                  <div className="flex items-center space-x-1 flex-1">
+                                    <Input
+                                      value={editingTitle}
+                                      onChange={(e) => setEditingTitle(e.target.value)}
+                                      className="h-5 text-xs bg-white dark:bg-[#565869] text-gray-900 dark:text-[#ececf1]"
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") saveTitle();
+                                        if (e.key === "Escape") cancelEditing();
+                                      }}
+                                      autoFocus
+                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 w-5 p-0"
+                                      onClick={saveTitle}
+                                    >
+                                      <Check className="w-2.5 h-2.5" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 w-5 p-0"
+                                      onClick={cancelEditing}
+                                    >
+                                      <X className="w-2.5 h-2.5" />
+                                    </Button>
                                   </div>
-                                </div>
-                              </ContextMenuTrigger>
-                              <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
-                                <ContextMenuItem
-                                  onClick={() => setEditingChatId(chat.id)}
-                                  className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
-                                >
-                                  <Edit3 className="w-4 h-4 mr-2" />
-                                  Rename
-                                </ContextMenuItem>
-                                <ContextMenuItem
-                                  onClick={() => {
-                                    selectChat(chat.id);
-                                    setShowShareDialog(true);
-                                  }}
-                                  disabled={chat.messages.length === 0}
-                                  className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  <Upload className="w-4 h-4 mr-2" />
-                                  Share
-                                </ContextMenuItem>
-                                <ContextMenuItem
-                                  onClick={() => deleteChat(chat.id)}
-                                  className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                >
-                                  <Trash2 className="w-4 h-4 mr-2" />
-                                  Delete
-                                </ContextMenuItem>
-                              </ContextMenuContent>
-                            </ContextMenu>
-                          ))}
-                        </div>
-                      )}
+                                ) : (
+                                  <>
+                                    <span
+                                      className="truncate flex-1 text-gray-700 dark:text-gray-300"
+                                      title={chat.title}
+                                    >
+                                      {truncateText(
+                                        chat.title,
+                                        Math.floor((sidebarWidth - 120) / 6)
+                                      )}
+                                    </span>
+                                    <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-0.5">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingChatId(chat.id);
+                                        }}
+                                      >
+                                        <Edit3 className="w-2.5 h-2.5" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          selectChat(chat.id);
+                                          setShowShareDialog(true);
+                                        }}
+                                        disabled={chat.messages.length === 0}
+                                        title={
+                                          chat.messages.length === 0
+                                            ? "No conversation to share"
+                                            : "Share conversation"
+                                        }
+                                      >
+                                        <Upload className="w-2.5 h-2.5" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          deleteChat(chat.id);
+                                        }}
+                                      >
+                                        <Trash2 className="w-2.5 h-2.5" />
+                                      </Button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
+                            <ContextMenuItem
+                              onClick={() => setEditingChatId(chat.id)}
+                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                            >
+                              <Edit3 className="w-4 h-4 mr-2" />
+                              Rename
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onClick={() => {
+                                selectChat(chat.id);
+                                setShowShareDialog(true);
+                              }}
+                              disabled={chat.messages.length === 0}
+                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Upload className="w-4 h-4 mr-2" />
+                              Share
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onClick={() => deleteChat(chat.id)}
+                              className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      ))}
                     </div>
-                  );
-                })}
+                  )}
+                </div>
+
+                {/* External Folder */}
+                <div className="mb-1">
+                  <ContextMenu>
+                    <ContextMenuTrigger>
+                      <div
+                        className="flex items-center space-x-1.5 p-1.5 hover:bg-gray-100 dark:hover:bg-[#565869] rounded cursor-pointer"
+                        onClick={() => toggleFolder("external")}
+                      >
+                        {expandedFolders.includes("external") ? (
+                          <FolderOpen className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                        ) : (
+                          <Folder className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                        )}
+                        <Globe className="w-3 h-3 text-gray-500 dark:text-gray-400" />
+                        <span className="text-xs font-medium text-gray-900 dark:text-[#ececf1]">
+                          External
+                        </span>
+                        <ChevronRight
+                          className={`w-2.5 h-2.5 text-gray-400 transition-transform ${
+                            expandedFolders.includes("external") ? "rotate-90" : ""
+                          }`}
+                        />
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
+                      <ContextMenuItem
+                        onClick={() => createNewChat(undefined, "external")}
+                        className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        {currentLanguage === "zh" ? "新建 External 对话" : "New External Chat"}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                  {expandedFolders.includes("external") && (
+                    <div className="ml-5 space-y-0.5">
+                      {(groupedChats.external || []).map((chat) => (
+                        <ContextMenu key={chat.id}>
+                          <ContextMenuTrigger>
+                            <div
+                              className={`group p-1.5 rounded cursor-pointer text-xs hover:bg-gray-100 dark:hover:bg-[#565869] ${
+                                currentChatId === chat.id
+                                  ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                                  : "text-gray-700 dark:text-gray-300"
+                              }`}
+                              onClick={() => selectChat(chat.id)}
+                              onDoubleClick={() => setEditingChatId(chat.id)}
+                            >
+                              <div className="flex items-center space-x-1.5">
+                                <MessageSquare className="w-2.5 h-2.5 shrink-0" />
+                                {editingChatId === chat.id ? (
+                                  <div className="flex items-center space-x-1 flex-1">
+                                    <Input
+                                      value={editingTitle}
+                                      onChange={(e) => setEditingTitle(e.target.value)}
+                                      className="h-5 text-xs bg-white dark:bg-[#565869] text-gray-900 dark:text-[#ececf1]"
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") saveTitle();
+                                        if (e.key === "Escape") cancelEditing();
+                                      }}
+                                      autoFocus
+                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 w-5 p-0"
+                                      onClick={saveTitle}
+                                    >
+                                      <Check className="w-2.5 h-2.5" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 w-5 p-0"
+                                      onClick={cancelEditing}
+                                    >
+                                      <X className="w-2.5 h-2.5" />
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <span
+                                      className="truncate flex-1 text-gray-700 dark:text-gray-300"
+                                      title={chat.title}
+                                    >
+                                      {truncateText(
+                                        chat.title,
+                                        Math.floor((sidebarWidth - 120) / 6)
+                                      )}
+                                    </span>
+                                    <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-0.5">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingChatId(chat.id);
+                                        }}
+                                      >
+                                        <Edit3 className="w-2.5 h-2.5" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          selectChat(chat.id);
+                                          setShowShareDialog(true);
+                                        }}
+                                        disabled={chat.messages.length === 0}
+                                        title={
+                                          chat.messages.length === 0
+                                            ? "No conversation to share"
+                                            : "Share conversation"
+                                        }
+                                      >
+                                        <Upload className="w-2.5 h-2.5" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          deleteChat(chat.id);
+                                        }}
+                                      >
+                                        <Trash2 className="w-2.5 h-2.5" />
+                                      </Button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
+                            <ContextMenuItem
+                              onClick={() => setEditingChatId(chat.id)}
+                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                            >
+                              <Edit3 className="w-4 h-4 mr-2" />
+                              Rename
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onClick={() => {
+                                selectChat(chat.id);
+                                setShowShareDialog(true);
+                              }}
+                              disabled={chat.messages.length === 0}
+                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Upload className="w-4 h-4 mr-2" />
+                              Share
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onClick={() => deleteChat(chat.id)}
+                              className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      ))}
+                    </div>
+                  )}
+                </div>
                   </>
                 )}
               </div>

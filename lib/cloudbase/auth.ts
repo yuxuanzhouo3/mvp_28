@@ -29,6 +29,7 @@ export interface CloudBaseUser {
     targetPlan: string;
     effectiveAt?: string;
   } | null;
+  hide_ads?: boolean; // 是否去除广告
 }
 
 export interface CloudBaseSession {
@@ -48,6 +49,7 @@ export interface CloudBaseAuthUser {
     region: "CN";
     plan?: string | null;
     plan_exp?: string | null;
+    hide_ads?: boolean; // 是否去除广告
   };
 }
 
@@ -378,6 +380,7 @@ export class CloudBaseAuthService {
         region: "CN",
         plan,
         plan_exp: planExp,
+        hide_ads: user.hide_ads ?? false, // 返回 hide_ads 设置
       },
     };
   }

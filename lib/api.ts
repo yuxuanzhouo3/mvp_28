@@ -157,6 +157,7 @@ class ApiService {
     videos?: string[],
     audios?: string[],
     quotaChecked?: boolean,
+    expertModelId?: string,
     onChunk?: (chunk: string) => void,
     onEnd?: () => void,
     onError?: (error: string) => void,
@@ -192,6 +193,7 @@ class ApiService {
         videos,
         audios,
         quotaChecked,
+        expertModelId,
       });
 
       const doRequest = async (attempt: number): Promise<void> => {

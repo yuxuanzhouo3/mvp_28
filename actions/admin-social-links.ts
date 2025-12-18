@@ -824,6 +824,16 @@ export async function deleteSocialLinkFile(
         return { success: false, error: "Supabase 未配置" };
       }
 
+      // 如果有关联的社交链接记录，先删除数据库记录
+      if (linkId) {
+        try {
+          await supabaseAdmin.from("social_links").delete().eq("id", linkId);
+          console.log("Supabase social link record deleted:", linkId);
+        } catch (dbErr) {
+          console.warn("Supabase delete social link record warning:", dbErr);
+        }
+      }
+
       const { error } = await supabaseAdmin.storage
         .from("social-icons")
         .remove([fileName]);

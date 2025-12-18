@@ -213,6 +213,11 @@ export async function POST(
     modelId, // 新增：当前使用的模型 ID
   } = reqBody;
 
+  const normalizedClientId =
+    typeof client_id === "string" && client_id.trim().length > 0
+      ? client_id.trim()
+      : null;
+
   // 构建媒体 payload
   const mediaPayload: MediaPayload = {
     images: Array.isArray(images) ? images : Array.isArray(imageFileIds) ? imageFileIds : [],
@@ -393,12 +398,50 @@ export async function POST(
       return new Response(null, { status: 201 });
     }
 
+    // Idempotency: avoid duplicate inserts for the same client_id in a conversation
+    if (normalizedClientId) {
+      const { data: existing, error: existingErr } = await supabase
+        .from("messages")
+        .select("id, content")
+        .eq("conversation_id", conversationId)
+        .eq("user_id", userId)
+        .eq("client_id", normalizedClientId)
+        .maybeSingle();
+
+      if (existingErr) {
+        console.warn("[messages][dedupe] lookup failed", existingErr);
+      } else if (existing) {
+        const existingContent = typeof existing.content === "string" ? existing.content : "";
+        const nextContent = typeof content === "string" ? content : "";
+        const shouldUpdate = nextContent.length > existingContent.length;
+        if (shouldUpdate) {
+          const { error: updateErr } = await supabase
+            .from("messages")
+            .update({ content, tokens: tokens || null })
+            .eq("id", existing.id)
+            .eq("conversation_id", conversationId)
+            .eq("user_id", userId);
+          if (updateErr) {
+            console.error("[messages][dedupe] update failed", updateErr);
+          }
+        }
+
+        await supabase
+          .from("conversations")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", conversationId)
+          .eq("user_id", userId);
+
+        return new Response(null, { status: 200 });
+      }
+    }
+
     const { error } = await supabase.from("messages").insert({
       conversation_id: conversationId,
       user_id: userId,
       role,
       content,
-      client_id: client_id || null,
+      client_id: normalizedClientId,
       tokens: tokens || null,
     });
     if (error) {
@@ -455,12 +498,41 @@ export async function POST(
     }
 
     const now = new Date().toISOString();
+
+    // Idempotency: avoid duplicate inserts for the same clientId in a conversation
+    if (normalizedClientId) {
+      const existRes = await db
+        .collection("messages")
+        .where({ conversationId, userId: user.id, clientId: normalizedClientId })
+        .get();
+      const existing = (existRes?.data || [])[0] as any | undefined;
+      if (existing?._id) {
+        const existingContent = typeof existing.content === "string" ? existing.content : "";
+        const nextContent = typeof content === "string" ? content : "";
+        const shouldUpdate = nextContent.length > existingContent.length;
+        if (shouldUpdate) {
+          await db.collection("messages").doc(existing._id).update({
+            content,
+            tokens: tokens || null,
+            updatedAt: now,
+          });
+        }
+
+        // touch conversation
+        await db.collection("conversations").doc(conversationId).update({
+          updatedAt: now,
+        });
+
+        return Response.json({ id: existing._id }, { status: 200 });
+      }
+    }
+
     const addRes = await db.collection("messages").add({
       conversationId,
       userId: user.id,
       role,
       content,
-      clientId: client_id || null,
+      clientId: normalizedClientId,
       tokens: tokens || null,
       createdAt: now,
       imageFileIds: mediaPayload.images,

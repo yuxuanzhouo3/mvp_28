@@ -246,12 +246,20 @@ export async function POST(request: NextRequest) {
         videoAudioCredits,
       });
 
-      await addAddonCredits(
+      const addonSuccess = await addAddonCredits(
         effectiveUserId,
         paymentData.out_trade_no,
         imageCredits,
         videoAudioCredits
       );
+
+      if (!addonSuccess) {
+        console.error("❌ [WeChat Webhook] Failed to add addon credits");
+        return NextResponse.json(
+          { code: "FAIL", message: "Failed to add addon credits" },
+          { status: 500 }
+        );
+      }
     } else {
       // 订阅购买 - 更新订阅状态
       const days = paymentRecord?.metadata?.days || 30;
@@ -380,13 +388,14 @@ export async function POST(request: NextRequest) {
 
 /**
  * 增加加油包额度
+ * @returns boolean 表示操作是否成功
  */
 async function addAddonCredits(
   userId: string,
   transactionId: string,
   imageCredits: number,
   videoAudioCredits: number
-): Promise<void> {
+): Promise<boolean> {
   const now = new Date();
 
   if (IS_DOMESTIC_VERSION) {
@@ -427,20 +436,30 @@ async function addAddonCredits(
           imageCredits,
           videoAudioCredits,
         });
+        return true;
+      } else {
+        console.error("❌ [WeChat Webhook] User not found in CloudBase:", userId);
+        return false;
       }
     } catch (error) {
       console.error(
         "❌ [WeChat Webhook] Error updating CloudBase wallet:",
         error
       );
+      return false;
     }
   } else {
     try {
-      const { data: userData } = await supabaseAdmin
+      const { data: userData, error: userError } = await supabaseAdmin
         .from("users")
         .select("wallet")
         .eq("id", userId)
         .maybeSingle();
+
+      if (userError) {
+        console.error("❌ [WeChat Webhook] Error getting user wallet:", userError);
+        return false;
+      }
 
       const currentWallet = userData?.wallet || {
         addon: { image: 0, video: 0 },
@@ -454,7 +473,7 @@ async function addAddonCredits(
         },
       };
 
-      await supabaseAdmin
+      const { error: updateError } = await supabaseAdmin
         .from("users")
         .update({
           wallet: newWallet,
@@ -462,16 +481,23 @@ async function addAddonCredits(
         })
         .eq("id", userId);
 
+      if (updateError) {
+        console.error("❌ [WeChat Webhook] Error updating Supabase wallet:", updateError);
+        return false;
+      }
+
       console.log("✅ [WeChat Webhook] Supabase user wallet updated:", {
         userId,
         imageCredits,
         videoAudioCredits,
       });
+      return true;
     } catch (error) {
       console.error(
         "❌ [WeChat Webhook] Error updating Supabase wallet:",
         error
       );
+      return false;
     }
   }
 }

@@ -7,6 +7,7 @@ import { detectLanguage, getSelectedModelDisplay } from "../utils";
 import { createClient } from "@/lib/supabase/client";
 import { GENERAL_MODEL_ID } from "@/utils/model-limits";
 import {
+  getModelCategory,
   getFreeContextMsgLimit,
   getBasicContextMsgLimit,
   getProContextMsgLimit,
@@ -98,12 +99,17 @@ export const useMessageSubmission = (
     );
   };
 
-  const createServerConversation = async (title: string, model: string) => {
+  const createServerConversation = async (
+    title: string,
+    model: string,
+    modelType: string,
+    expertModelId?: string | null,
+  ) => {
     const res = await fetch("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ title, model }),
+      body: JSON.stringify({ title, model, modelType, expertModelId }),
     });
 
     if (!res.ok) throw new Error(`Create conversation failed ${res.status}`);
@@ -233,13 +239,10 @@ export const useMessageSubmission = (
       effectiveModelType === "general"
         ? GENERAL_MODEL_ID
         : effectiveSelectedModel || "qwen3-omni-flash";
-    let currentModel =
-      effectiveModelType === "general"
-        ? displayModelName
-        : effectiveSelectedModel || displayModelName;
+    // UI display label: Expert(MornGPT) should show the expert name, not the underlying model id.
+    let currentModel = displayModelName;
     const currentChat = chatSessions.find((c) => c.id === currentChatId);
     let conversationId = currentChatId || "";
-    const newChatCategory = selectedCategory || "general";
     const planLower = (appUser?.plan || "").toLowerCase?.() || "";
     const isFreeUser = !!appUser && (planLower === "" || planLower === "free");
 
@@ -262,6 +265,22 @@ export const useMessageSubmission = (
       setSelectedModel("qwen3-omni-flash");
     }
 
+    const resolveExpertModelId = (value?: string | null) => {
+      if (!value) return null;
+      return mornGPTCategories.some((c) => c.id === value) ? value : null;
+    };
+
+    const expertModelIdForConversation =
+      effectiveModelType === "morngpt"
+        ? resolveExpertModelId(selectedCategory) ||
+          resolveExpertModelId(currentChat?.category) ||
+          null
+        : null;
+
+    // Category is used by Expert(MornGPT) chats to store expert id (a/b/c...).
+    const newChatCategory =
+      effectiveModelType === "morngpt" ? expertModelIdForConversation || "general" : "general";
+
     try {
       if (!currentChat) {
         if (isFreeUser) {
@@ -269,7 +288,9 @@ export const useMessageSubmission = (
         } else {
           conversationId = await createServerConversation(
             userMessage.content.slice(0, 30) + "...",
-            persistedModelId
+            persistedModelId,
+            effectiveModelType,
+            expertModelIdForConversation
           );
         }
 
@@ -288,8 +309,14 @@ export const useMessageSubmission = (
         setCurrentChatId(conversationId);
         setMessages([userMessage]);
 
-        if (!expandedFolders.includes(newChatCategory)) {
-          setExpandedFolders([newChatCategory]);
+        const newChatFolder =
+          effectiveModelType === "general"
+            ? "general"
+            : effectiveModelType === "morngpt"
+              ? "morngpt"
+              : "external";
+        if (!expandedFolders.includes(newChatFolder)) {
+          setExpandedFolders([newChatFolder]);
         }
       } else if (!currentChat.isModelLocked) {
         if (isFreeUser) {
@@ -297,7 +324,9 @@ export const useMessageSubmission = (
         } else {
           conversationId = await createServerConversation(
             userMessage.content.slice(0, 30) + "...",
-            persistedModelId
+            persistedModelId,
+            effectiveModelType,
+            expertModelIdForConversation
           );
         }
 
@@ -319,8 +348,14 @@ export const useMessageSubmission = (
         setCurrentChatId(conversationId);
         setMessages([userMessage]);
 
-        if (!expandedFolders.includes(newChatCategory)) {
-          setExpandedFolders([newChatCategory]);
+        const newChatFolder =
+          effectiveModelType === "general"
+            ? "general"
+            : effectiveModelType === "morngpt"
+              ? "morngpt"
+              : "external";
+        if (!expandedFolders.includes(newChatFolder)) {
+          setExpandedFolders([newChatFolder]);
         }
       } else {
         conversationId = currentChatId;
@@ -504,7 +539,9 @@ export const useMessageSubmission = (
     }
 
     // 国际版：本地预扣免费额度；国内版/通用模型跳过（由服务端或无限制处理）
-    if (!IS_DOMESTIC_VERSION && effectiveModelType !== "general") {
+    // 以“实际调用模型分类”为准，避免 Expert(MornGPT) 误扣额度（专家模型底层走 General Model）
+    const modelCategoryForQuota = getModelCategory(persistedModelId || GENERAL_MODEL_ID);
+    if (!IS_DOMESTIC_VERSION && modelCategoryForQuota !== "general") {
       if (consumeFreeQuota && !consumeFreeQuota()) {
         setIsLoading(false);
         releaseLock();
@@ -513,7 +550,7 @@ export const useMessageSubmission = (
     }
 
     try {
-      if (selectedCategory === "h") {
+      if (false && selectedCategory === "h") {
         // MultiGPT response - also use streaming for consistency
         const aiMessageId = (Date.now() + 1).toString();
         // Don't add initial message - wait for real content
@@ -699,8 +736,12 @@ export const useMessageSubmission = (
             sendVideos,
             sendAudios,
             true, // quota already checked & persisted via /messages
+            effectiveModelType === "morngpt"
+              ? selectedCategory || currentChat?.category
+              : undefined,
             // onChunk callback
             (chunk: string) => {
+              if (controller.signal.aborted) return;
               streamedContent += chunk;
 
               // If this is the first chunk, create the message and stop thinking
@@ -752,6 +793,11 @@ export const useMessageSubmission = (
             },
             // onEnd callback
             async () => {
+              // If user clicked "Stop", keep the stopped UI state and let the stop handler persist partial content.
+              if (controller.signal.aborted) {
+                isStreamingComplete = true;
+                return;
+              }
               // Clear the thinking timeout if it exists
               if (thinkingTimeout) {
                 clearTimeout(thinkingTimeout);
@@ -807,7 +853,8 @@ export const useMessageSubmission = (
                 )
               );
 
-              if (conversationId) {
+              // Free用户使用local-前缀的conversationId，不落库
+              if (conversationId && !conversationId.startsWith("local-")) {
                 fetch(`/api/conversations/${conversationId}/messages`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -849,6 +896,7 @@ export const useMessageSubmission = (
               setIsLoading(false);
               setIsStreaming(false);
               setStreamingController(null);
+              isStreamingComplete = true;
             },
             // signal for aborting
             controller.signal
@@ -856,6 +904,7 @@ export const useMessageSubmission = (
 
           // Wait for streaming to complete
           while (!isStreamingComplete) {
+            if (controller.signal.aborted) break;
             await new Promise((resolve) => setTimeout(resolve, 100));
           }
 
@@ -868,14 +917,18 @@ export const useMessageSubmission = (
                   ? {
                       ...msg,
                       isStreaming: false,
-                      content: streamedContent || msg.content,
+                      content:
+                        msg.content.includes(selectedLanguage === "zh" ? "[已停止]" : "[Stopped]")
+                          ? msg.content
+                          : streamedContent || msg.content,
                       model: currentModel,
                     }
                   : msg
               )
             );
 
-            if (conversationId && streamedContent) {
+            // Free用户使用local-前缀的conversationId，不落库
+            if (conversationId && !conversationId.startsWith("local-") && streamedContent) {
               fetch(`/api/conversations/${conversationId}/messages`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -905,15 +958,18 @@ export const useMessageSubmission = (
                     ? {
                         ...msg,
                         isStreaming: false,
-                        content: streamedContent || msg.content,
+                        content:
+                          msg.content.includes(selectedLanguage === "zh" ? "[已停止]" : "[Stopped]")
+                            ? msg.content
+                            : streamedContent || msg.content,
                         model: currentModel,
                       }
                     : msg
                 )
               );
 
-              // 持久化当前已生成的内容
-              if (conversationId && streamedContent) {
+              // Free用户使用local-前缀的conversationId，不落库
+              if (conversationId && !conversationId.startsWith("local-") && streamedContent) {
                 fetch(`/api/conversations/${conversationId}/messages`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import ModalHub from "@/features/chat/components/ModalHub";
@@ -17,20 +17,64 @@ function ChatShell() {
     InputAreaComponent,
   } = useChatUI() as any;
 
-  // 广告关闭时显示升级弹窗
+  // 从 headerProps 获取 isDomestic 参数
+  const isDomestic = headerProps?.isDomestic ?? false;
+
+  // 获取用户信息
+  const appUser = sidebarProps?.appUser;
+
+  // 从 sidebarProps 获取全局广告显示状态（仅控制侧边栏以外的广告临时隐藏）
+  const showGlobalAds = sidebarProps?.showGlobalAds ?? true;
+
+  /**
+   * 计算是否应该显示广告
+   * 规则：
+   * 1. 订阅用户 + 开启了hideAds + 订阅未过期 = 不显示广告
+   * 2. 订阅用户 + 未开启hideAds = 显示广告
+   * 3. 订阅用户 + 订阅已过期 = 显示广告（自动恢复）
+   * 4. Free用户 = 显示广告（可手动关闭单个广告，刷新后恢复）
+   */
+  const shouldShowAds = useMemo(() => {
+    // 如果用户是订阅用户
+    if (appUser?.isPro) {
+      // 检查是否开启了去除广告功能
+      if (appUser.settings?.hideAds) {
+        // 检查订阅是否过期
+        if (appUser.planExp) {
+          const expDate = new Date(appUser.planExp);
+          const now = new Date();
+          // 订阅未过期，不显示广告
+          if (expDate > now) {
+            return false;
+          }
+          // 订阅已过期，显示广告
+          return true;
+        }
+        // 没有过期时间但是isPro，认为是有效订阅
+        return false;
+      }
+      // 未开启hideAds，显示广告
+      return true;
+    }
+    // Free用户，显示广告
+    return true;
+  }, [appUser?.isPro, appUser?.settings?.hideAds, appUser?.planExp]);
+
+  // 最终是否显示广告：shouldShowAds && showGlobalAds（Free用户关闭单个广告时临时隐藏）
+  const displayAds = shouldShowAds && showGlobalAds;
+
+  // 广告关闭时显示升级弹窗（仅Free用户）
   const handleAdClose = () => {
     modalProps?.setShowUpgradeDialog?.(true);
   };
 
-  // 从 headerProps 获取 isDomestic 参数
-  const isDomestic = headerProps?.isDomestic ?? false;
-
-  // 从 sidebarProps 获取全局广告显示状态
-  const showGlobalAds = sidebarProps?.showGlobalAds ?? true;
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-[#2d2d30] text-gray-900 dark:text-[#ececf1] flex">
-      <Sidebar {...sidebarProps} isDomestic={isDomestic} />
+      <Sidebar
+        {...sidebarProps}
+        isDomestic={isDomestic}
+        shouldShowAds={shouldShowAds}
+      />
 
       {/* Main Content */}
       <div
@@ -54,7 +98,7 @@ function ChatShell() {
           <div className="flex items-center px-4 py-3 gap-4">
             {/* 左侧广告位 - 从侧边栏到输入框，弹性填充（保留占位以保持输入框位置） */}
             <div className="flex-1 flex items-center min-w-0">
-              {showGlobalAds && (
+              {displayAds && (
                 <AdBanner
                   position="left"
                   isDomestic={isDomestic}
@@ -72,7 +116,7 @@ function ChatShell() {
 
             {/* 右侧广告位 - 从输入框到页面右侧，弹性填充（保留占位以保持输入框位置） */}
             <div className="flex-1 flex items-center min-w-0">
-              {showGlobalAds && (
+              {displayAds && (
                 <AdBanner
                   position="right"
                   isDomestic={isDomestic}
@@ -85,7 +129,7 @@ function ChatShell() {
           </div>
 
           {/* 底部广告行 - 底部左侧广告 + 底部广告 + 底部右侧广告 */}
-          {showGlobalAds && (
+          {displayAds && (
             <div className="flex items-center px-4 pb-3 gap-4">
               {/* 底部左侧广告位 - 与左侧广告对齐 */}
               <div className="flex-1 flex items-center min-w-0">

@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await supabase
       .from("conversations")
-      .select("id, title, model, updated_at")
+      .select("id, title, model, updated_at, model_type, expert_model_id")
       .order("updated_at", { ascending: false });
 
     if (error) {
@@ -67,7 +67,17 @@ export async function GET(req: NextRequest) {
       return new Response("Failed to list conversations", { status: 500 });
     }
 
-    return Response.json(data ?? []);
+    const list =
+      (data ?? []).map((c: any) => ({
+        id: c.id,
+        title: c.title,
+        model: c.model,
+        updated_at: c.updated_at,
+        modelType: c.model_type || null,
+        expertModelId: c.expert_model_id || null,
+      })) || [];
+
+    return Response.json(list);
   }
 
   // domestic -> CloudBase
@@ -101,6 +111,8 @@ export async function GET(req: NextRequest) {
           title: c.title,
           model: c.model || null,
           updated_at: c.updatedAt || c.createdAt,
+          modelType: c.modelType || null,
+          expertModelId: c.expertModelId || null,
         }))
         .sort(
           (a: any, b: any) =>
@@ -124,7 +136,7 @@ export async function POST(req: NextRequest) {
       return new Response("Unauthorized", { status: 401 });
     }
     const userId = userData.user.id;
-    const { title, model } = await req.json();
+    const { title, model, modelType, expertModelId } = await req.json();
     const userPlan =
       (userData.user.user_metadata as any)?.plan ||
       ((userData.user.user_metadata as any)?.pro ? "Pro" : null);
@@ -142,6 +154,8 @@ export async function POST(req: NextRequest) {
         model: model || null,
         created_at: now,
         updated_at: now,
+        modelType: modelType || null,
+        expertModelId: expertModelId || null,
       });
     }
 
@@ -151,8 +165,10 @@ export async function POST(req: NextRequest) {
         user_id: userId,
         title: title || "新对话",
         model: model || null,
+        model_type: modelType || null,
+        expert_model_id: expertModelId || null,
       })
-      .select("id, title, model, created_at, updated_at")
+      .select("id, title, model, created_at, updated_at, model_type, expert_model_id")
       .single();
 
     if (error) {
@@ -160,7 +176,15 @@ export async function POST(req: NextRequest) {
       return new Response("Failed to create conversation", { status: 500 });
     }
 
-    return Response.json(data);
+    return Response.json({
+      id: data.id,
+      title: data.title,
+      model: data.model,
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+      modelType: data.model_type || null,
+      expertModelId: data.expert_model_id || null,
+    });
   }
 
   // domestic -> CloudBase
@@ -168,7 +192,7 @@ export async function POST(req: NextRequest) {
   if (!user) return new Response("Unauthorized", { status: 401 });
   const plan = getPlanInfo(user.metadata);
 
-  const { title, model } = await req.json();
+  const { title, model, modelType, expertModelId } = await req.json();
 
   // Free 用户：不落库，返回本地临时会话 ID
   if (plan.isFree) {
@@ -179,6 +203,8 @@ export async function POST(req: NextRequest) {
       model: model || null,
       created_at: now,
       updated_at: now,
+      modelType: modelType || null,
+      expertModelId: expertModelId || null,
     });
   }
 
@@ -193,6 +219,8 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       title: title || "新对话",
       model: model || null,
+      modelType: modelType || null,
+      expertModelId: expertModelId || null,
       createdAt: now,
       updatedAt: now,
     });
@@ -203,6 +231,8 @@ export async function POST(req: NextRequest) {
       model: model || null,
       created_at: now,
       updated_at: now,
+      modelType: modelType || null,
+      expertModelId: expertModelId || null,
     };
 
     return Response.json(conversation);

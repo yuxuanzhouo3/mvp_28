@@ -33,7 +33,7 @@ export async function GET(req: Request) {
       // 获取用户 profile 和 wallet 信息
       const { data: profile } = await supabase
         .from("profiles")
-        .select("*")
+        .select("*, hide_ads")
         .eq("id", user.id)
         .single();
 
@@ -52,6 +52,7 @@ export async function GET(req: Request) {
           region: profile?.region || "US",
           created_at: profile?.created_at || user.created_at,
           email_confirmed: !!user.email_confirmed_at,
+          hide_ads: profile?.hide_ads ?? false, // 新增：返回 hide_ads 设置
         },
         wallet: wallet || null,
       });

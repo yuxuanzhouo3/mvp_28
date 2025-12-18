@@ -895,6 +895,16 @@ export async function deleteStorageFile(
         return { success: false, error: "Supabase 未配置" };
       }
 
+      // 如果有关联的广告记录，先删除数据库记录
+      if (adId) {
+        try {
+          await supabaseAdmin.from("advertisements").delete().eq("id", adId);
+          console.log("Supabase ad record deleted:", adId);
+        } catch (dbErr) {
+          console.warn("Supabase delete ad record warning:", dbErr);
+        }
+      }
+
       const { error } = await supabaseAdmin.storage
         .from("ads")
         .remove([fileName]);

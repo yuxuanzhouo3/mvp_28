@@ -9,12 +9,10 @@ import {
   getAddonDescription,
   type ProductType,
 } from "@/constants/addon-packages";
-import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import { cookies } from "next/headers";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
 import { isAfter } from "date-fns";
-import { calculateUpgradePrice } from "@/services/wallet";
 
 export const runtime = "nodejs";
 
@@ -76,23 +74,15 @@ export async function POST(request: NextRequest) {
         addonPackageId?: string;
       };
 
-    // 如果前端未传 userId，尝试从会话自动获取
+    // 如果前端未传 userId，尝试从会话自动获取（国内版使用 CloudBase）
     if (!userId) {
-      if (IS_DOMESTIC_VERSION) {
-        const cookieStore = await cookies();
-        const token = cookieStore.get("auth-token")?.value;
-        if (token) {
-          const auth = new CloudBaseAuthService();
-          const user = await auth.validateToken(token);
-          if (user?.id) {
-            userId = user.id;
-          }
-        }
-      } else {
-        const supabase = await createClient();
-        const { data } = await supabase.auth.getUser();
-        if (data?.user?.id) {
-          userId = data.user.id;
+      const cookieStore = await cookies();
+      const token = cookieStore.get("auth-token")?.value;
+      if (token) {
+        const auth = new CloudBaseAuthService();
+        const user = await auth.validateToken(token);
+        if (user?.id) {
+          userId = user.id;
         }
       }
     }
@@ -155,8 +145,8 @@ export async function POST(request: NextRequest) {
         resolvedPlanName === "Basic" && effectiveBillingPeriod === "monthly";
       amount = isWechatBasicTest ? 0.01 : baseAmount;
 
-      // 升级补差价：目标价 - (当前价/30 * 剩余天数)
-      if (IS_DOMESTIC_VERSION && userId) {
+      // 升级补差价：(目标套餐日价 - 当前套餐日价) × 剩余天数
+      if (userId) {
         try {
           const connector = new CloudBaseConnector();
           await connector.initialize();
@@ -185,13 +175,49 @@ export async function POST(request: NextRequest) {
               )
             );
             const currentPlanDef = resolvePlan(currentPlanKey);
-            const currentPlanPrice = extractPlanAmount(currentPlanDef, "monthly", true);
+            // 使用月度价格计算日价
+            const currentPlanMonthlyPrice = extractPlanAmount(currentPlanDef, "monthly", true);
+            const targetPlanMonthlyPrice = extractPlanAmount(resolvedPlan, "monthly", true);
+            // 目标套餐价格：根据用户选择的计费周期（月费或年费总价）
+            const targetPrice = extractPlanAmount(resolvedPlan, effectiveBillingPeriod, true);
+            const currentDailyPrice = currentPlanMonthlyPrice / 30;
+            const targetDailyPrice = targetPlanMonthlyPrice / 30;
 
-            amount = calculateUpgradePrice(
-              currentPlanPrice / 30,
+            // 计算当前套餐剩余价值
+            const remainingValue = remainingDays * currentDailyPrice;
+
+            // 目标套餐天数
+            const targetDays = effectiveBillingPeriod === "annual" ? 365 : 30;
+
+            // 新升级逻辑：
+            // 1. 如果剩余价值 ≥ 目标套餐价格：免费升级，折算天数
+            // 2. 如果剩余价值 < 目标套餐价格：补差价，获得目标套餐天数
+            const freeUpgrade = remainingValue >= targetPrice;
+
+            if (freeUpgrade) {
+              // 免费升级：剩余价值全部折算成目标套餐天数
+              amount = 0.01; // 最低支付金额
+              days = Math.floor(remainingValue / targetDailyPrice);
+            } else {
+              // 补差价：支付差额，获得目标套餐天数
+              amount = Math.max(0.01, targetPrice - remainingValue);
+              days = targetDays;
+            }
+
+            amount = Math.round(amount * 100) / 100;
+
+            console.log("📝 [WeChat Create] Upgrade calculation:", {
+              currentPlan: currentPlanKey,
+              targetPlan: resolvedPlanName,
+              billingPeriod: effectiveBillingPeriod,
+              currentPlanMonthlyPrice,
+              targetPrice,
               remainingDays,
-              amount
-            );
+              remainingValue: Math.round(remainingValue * 100) / 100,
+              freeUpgrade,
+              upgradeAmount: amount,
+              newPlanDays: days,
+            });
           }
         } catch (error) {
           console.error("[wechat][create] upgrade price calc failed", error);
@@ -199,7 +225,10 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      days = effectiveBillingPeriod === "annual" ? 365 : 30;
+      // 只有在非升级情况下才设置默认天数
+      if (days === 0) {
+        days = effectiveBillingPeriod === "annual" ? 365 : 30;
+      }
       description = `${resolvedPlan.nameZh || resolvedPlan.name} - ${effectiveBillingPeriod === "annual" ? "年度订阅" : "月度订阅"}`;
       metadata = {
         userId,
@@ -208,6 +237,8 @@ export async function POST(request: NextRequest) {
         paymentType: "onetime",
         billingCycle: effectiveBillingPeriod,
         planName: resolvedPlanName,
+        isUpgrade: amount !== baseAmount && !isWechatBasicTest, // 标记是否为升级订单
+        originalAmount: baseAmount,                              // 原始金额（用于记录）
       };
 
       console.log("📝 [WeChat Create] Creating subscription payment:", {
@@ -216,6 +247,7 @@ export async function POST(request: NextRequest) {
         billingPeriod: effectiveBillingPeriod,
         amount,
         days,
+        isUpgrade: amount !== baseAmount && !isWechatBasicTest,
       });
     }
 

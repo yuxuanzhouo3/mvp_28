@@ -1265,6 +1265,7 @@ const loadMessagesForConversation = useCallback(
   const clearUploadsAndRemote = useCallback(async () => {
     const fileIds = uploadedFiles.map((f) => f.fileId).filter(Boolean) as string[];
     setUploadedFiles([]);
+    if (!IS_DOMESTIC_VERSION) return;
     if (!fileIds.length) return;
     try {
       await fetch("/api/domestic/media/delete", {
@@ -1281,6 +1282,15 @@ const loadMessagesForConversation = useCallback(
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files) return;
+    if (!IS_DOMESTIC_VERSION) {
+      setUploadError(
+        activeLanguage === "zh"
+          ? "国际版暂未接入多模态模型，文件上传已禁用。"
+          : "File upload is disabled on the international build."
+      );
+      event.target.value = "";
+      return;
+    }
     const currentChat = chatSessions.find((c) => c.id === currentChatId);
     const incoming = Array.from(files);
     if (uploadedFiles.length >= MAX_FILES_LIMIT) {
@@ -1804,6 +1814,8 @@ const loadMessagesForConversation = useCallback(
           setFreeContextLimit(
             typeof data.contextMsgLimit === "number" ? data.contextMsgLimit : null
           );
+          // Free 模式下避免使用旧的 Basic 上下文限制（订阅到期但 plan 字段未及时同步时会串用）
+          setBasicContextLimit(null);
           setBasicQuotaUsed(0);
           setBasicQuotaDate(today);
           setProQuotaUsed(0);
@@ -4525,7 +4537,9 @@ const loadMessagesForConversation = useCallback(
     showGlobalAds,
   };
 
-  const planLowerForContext = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";
+  const planLowerForContextRaw = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";
+  // 以“是否有有效订阅”为准：过期订阅按 Free 处理（与服务端 plan_exp 逻辑一致）
+  const planLowerForContext = appUser && !appUser.isPaid ? "free" : planLowerForContextRaw;
   const effectiveContextLimit =
     planLowerForContext === "basic"
       ? basicContextLimit ?? undefined

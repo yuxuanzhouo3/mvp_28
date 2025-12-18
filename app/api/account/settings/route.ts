@@ -43,18 +43,28 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
-      // 检查用户是否为订阅用户
-      if (!user.metadata?.pro && (user.metadata?.plan || "").toLowerCase() === "free") {
+      // 更新 users 集合中的 hide_ads 字段
+      const connector = new CloudBaseConnector();
+      await connector.initialize();
+      const db = connector.getClient();
+
+      // 校验订阅状态（以数据库为准，避免 token metadata 过期导致误判）
+      const result = await db.collection("users").doc(user.id).get();
+      const userData = result?.data?.[0] || result?.data;
+      const plan = (userData?.plan || user.metadata?.plan || "").toLowerCase();
+      const planExp = userData?.plan_exp || user.metadata?.plan_exp || null;
+      const isPro = userData?.pro || user.metadata?.pro || false;
+      const isPaid = plan === "basic" || plan === "pro" || plan === "enterprise" || isPro;
+      const isExpired = planExp ? new Date(planExp) < new Date() : false;
+      const hasActiveSubscription = isPaid && !isExpired;
+
+      // 仅在“开启 hideAds”时要求有效订阅；关闭/同步修正允许放行
+      if (hideAds && !hasActiveSubscription) {
         return NextResponse.json(
           { error: "Only subscribed users can enable hide_ads" },
           { status: 403 }
         );
       }
-
-      // 更新 users 集合中的 hide_ads 字段
-      const connector = new CloudBaseConnector();
-      await connector.initialize();
-      const db = connector.getClient();
 
       await db.collection("users").doc(user.id).update({
         hide_ads: hideAds,
@@ -80,14 +90,25 @@ export async function PATCH(req: NextRequest) {
       // 获取用户 wallet 信息检查是否为订阅用户
       const { data: wallet } = await supabase
         .from("user_wallets")
-        .select("pro, plan")
+        .select("pro, plan, plan_exp, subscription_tier")
         .eq("user_id", user.id)
         .single();
 
-      const isPro = wallet?.pro || false;
       const plan = (wallet?.plan || "").toLowerCase();
+      const subscriptionTier = (wallet?.subscription_tier || "").toLowerCase();
+      const isPaid =
+        plan === "basic" ||
+        plan === "pro" ||
+        plan === "enterprise" ||
+        subscriptionTier === "basic" ||
+        subscriptionTier === "pro" ||
+        subscriptionTier === "enterprise";
+      const planExp = wallet?.plan_exp || null;
+      const isExpired = planExp ? new Date(planExp) < new Date() : false;
+      const hasActiveSubscription = isPaid && !isExpired;
 
-      if (!isPro && plan === "free") {
+      // 仅在“开启 hideAds”时要求有效订阅；关闭/同步修正允许放行
+      if (hideAds && !hasActiveSubscription) {
         return NextResponse.json(
           { error: "Only subscribed users can enable hide_ads" },
           { status: 403 }

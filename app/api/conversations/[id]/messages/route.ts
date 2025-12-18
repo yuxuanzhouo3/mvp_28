@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
-import { checkQuota, seedWalletForPlan } from "@/services/wallet";
+import { checkDailyExternalQuota, checkQuota, seedWalletForPlan } from "@/services/wallet";
 import {
   getModelCategory,
   isGeneralModel,
@@ -116,16 +116,10 @@ export async function GET(
     if (userError || !userData?.user) {
       return new Response("Unauthorized", { status: 401 });
     }
-    const userPlan =
-      (userData.user.user_metadata as any)?.plan ||
-      ((userData.user.user_metadata as any)?.pro ? "Pro" : null);
-    const isFreeUser =
-      !userPlan ||
-      (typeof userPlan === "string" &&
-        userPlan.toLowerCase() === "free");
+    const plan = getPlanInfo(userData.user.user_metadata);
 
     // Free 用户或本地会话不返回历史
-    if (isFreeUser || conversationId.startsWith("local-")) {
+    if (plan.isFree || conversationId.startsWith("local-")) {
       return Response.json([]);
     }
 
@@ -231,23 +225,25 @@ export async function POST(
       return new Response("Unauthorized", { status: 401 });
     }
     const userId = userData.user.id;
-    const userPlan =
-      (userData.user.user_metadata as any)?.plan ||
-      ((userData.user.user_metadata as any)?.pro ? "Pro" : null);
-    const planLower = typeof userPlan === "string" ? userPlan.toLowerCase() : "";
-    const isFreeUser = !planLower || planLower === "free";
-    const isBasicUser = planLower === "basic";
+    const plan = getPlanInfo(userData.user.user_metadata);
+    const effectivePlanLower = plan.planLower || "free";
+    const isBasicUser = effectivePlanLower === "basic";
 
-    // Enforce daily quota for Free/Basic users on user messages
+    // Enforce daily quota on user messages (只校验，不扣减)
     // 注意：只有外部模型才扣除 daily external quota，MornGPT 专家模型不扣除
     const currentModelId = modelId || "";
-    const shouldCheckDailyQuota = role === "user" && (isFreeUser || isBasicUser) && isExternalModel(currentModelId);
+    const shouldCheckDailyQuota = role === "user" && isExternalModel(currentModelId);
 
     if (shouldCheckDailyQuota) {
       const today = new Date().toISOString().split("T")[0];
-      const isBasic = isBasicUser;
       const limit = (() => {
-        if (isBasic) {
+        if (effectivePlanLower === "enterprise") {
+          return getEnterpriseDailyLimit();
+        }
+        if (effectivePlanLower === "pro") {
+          return getProDailyLimit();
+        }
+        if (effectivePlanLower === "basic") {
           return getBasicDailyLimit();
         }
         return getFreeDailyLimit();
@@ -266,12 +262,29 @@ export async function POST(
         return new Response("Failed to check quota", { status: 500 });
       }
 
-      // 检查是否是同一天，如果不是则重置计数
+      // 检查是否是同一天/同一套餐，如果不是则重置计数（仅重置，不在此处扣减）
       const walletDay = walletRow?.daily_external_day;
-      if (walletDay === today) {
-        used = walletRow?.daily_external_used ?? 0;
+      const walletPlan = walletRow?.daily_external_plan;
+      const isNewDay = walletDay !== today;
+      const isPlanChanged = !!walletPlan && walletPlan !== effectivePlanLower;
+
+      if (isNewDay || isPlanChanged) {
+        used = 0;
+        const { error: resetErr } = await supabase
+          .from("user_wallets")
+          .update({
+            daily_external_used: 0,
+            daily_external_day: today,
+            daily_external_plan: effectivePlanLower,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", userId);
+        if (resetErr) {
+          console.error("Quota reset error", resetErr);
+          return new Response("Failed to reset quota", { status: 500 });
+        }
       } else {
-        used = 0; // 新的一天，重置计数
+        used = walletRow?.daily_external_used ?? 0;
       }
 
       if (used >= limit) {
@@ -285,27 +298,10 @@ export async function POST(
         );
       }
 
-      const newUsed = used + 1;
-      // 使用 user_wallets 表更新每日配额
-      const { error: upsertErr } = await supabase
-        .from("user_wallets")
-        .upsert(
-          {
-            user_id: userId,
-            daily_external_day: today,
-            daily_external_used: newUsed,
-            daily_external_plan: planLower || "free",
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" }
-        );
-      if (upsertErr) {
-        console.error("Quota upsert error", upsertErr);
-        return new Response("Failed to update quota", { status: 500 });
-      }
+      // 注意：此处只做“校验”，不做“扣减”。实际扣减在 AI 成功输出后由 /chat/stream 执行，避免无响应误扣。
 
       // Basic 高级多模态媒体配额检查（国际版）- 使用 user_wallets
-      if (isBasic) {
+      if (isBasicUser) {
         const currentModelId = modelId || "qwen3-omni-flash";
         const modelCategory = getModelCategory(currentModelId);
         const hasMedia =
@@ -342,31 +338,14 @@ export async function POST(
             );
           }
 
-          // 扣减月度媒体余额
-          const updatePayload: Record<string, any> = {
-            updated_at: new Date().toISOString(),
-          };
-          if (imageCount > 0) {
-            updatePayload.monthly_image_balance = Math.max(0, monthlyImageBalance - imageCount);
-          }
-          if (videoAudioCount > 0) {
-            updatePayload.monthly_video_balance = Math.max(0, monthlyVideoBalance - videoAudioCount);
-          }
-          const { error: mediaUpsertErr } = await supabase
-            .from("user_wallets")
-            .update(updatePayload)
-            .eq("user_id", userId);
-          if (mediaUpsertErr) {
-            console.error("Basic media quota update error", mediaUpsertErr);
-            return new Response("Failed to update media quota", { status: 500 });
-          }
+          // 注意：此处只做“校验”，不做“扣减”。实际扣减在 AI 成功输出后由 /chat/stream 执行，避免无响应误扣。
         }
       }
 
     }
 
     // Free 用户或本地会话不落库消息
-    if (isFreeUser || conversationId.startsWith("local-")) {
+    if (plan.isFree || conversationId.startsWith("local-")) {
       return new Response(null, { status: 201 });
     }
 
@@ -461,6 +440,30 @@ export async function POST(
           }),
           { status: 402, headers: { "Content-Type": "application/json" } },
         );
+      }
+
+      // 国内版：外部模型 & Omni 纯文本对话，检查每日外部模型额度（只校验，扣减在 AI 成功输出后）
+      const category = getModelCategory(currentModelId);
+      const imageCount = getImageCount(mediaPayload);
+      const videoAudioCount = getVideoAudioCount(mediaPayload);
+      const shouldCheckDailyExternal =
+        category === "external" ||
+        (category === "advanced_multimodal" && imageCount === 0 && videoAudioCount === 0);
+
+      if (shouldCheckDailyExternal) {
+        const effectivePlanLower = plan.planActive ? plan.planLower || "free" : "free";
+        const dailyCheck = await checkDailyExternalQuota(user.id, effectivePlanLower, 1);
+        if (!dailyCheck.allowed) {
+          return new Response(
+            JSON.stringify({
+              error: getQuotaExceededMessage("daily", "zh"),
+              quotaType: "daily",
+              remaining: 0,
+              limit: dailyCheck.limit,
+            }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
       }
     }
 

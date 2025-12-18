@@ -244,7 +244,9 @@ export const useMessageSubmission = (
     const currentChat = chatSessions.find((c) => c.id === currentChatId);
     let conversationId = currentChatId || "";
     const planLower = (appUser?.plan || "").toLowerCase?.() || "";
-    const isFreeUser = !!appUser && (planLower === "" || planLower === "free");
+    // 以“是否有有效订阅”为准：过期订阅按 Free 处理（与服务端 plan_exp 逻辑一致）
+    const effectivePlanLower = appUser?.isPaid ? planLower : "free";
+    const isFreeUser = effectivePlanLower === "free";
 
     // 如果已有对话锁定为文字模型，阻止媒体上传；新建/未锁定则自动切换到 Qwen3-Omni-Flash
     if (hasMediaUpload) {
@@ -280,6 +282,57 @@ export const useMessageSubmission = (
     // Category is used by Expert(MornGPT) chats to store expert id (a/b/c...).
     const newChatCategory =
       effectiveModelType === "morngpt" ? expertModelIdForConversation || "general" : "general";
+
+    // =============================
+    // 上下文限额（按“轮次”计：一问一答算 1 条）
+    // =============================
+    const ctxLimit =
+      effectivePlanLower === "basic"
+        ? getBasicContextMsgLimit()
+        : effectivePlanLower === "pro"
+          ? getProContextMsgLimit()
+          : effectivePlanLower === "enterprise"
+            ? getEnterpriseContextMsgLimit()
+            : getFreeContextMsgLimit();
+
+    // 仅在“继续当前已锁定对话”时检查上下文；新建对话不受历史轮次影响
+    if (currentChat && currentChat.isModelLocked) {
+      // 轮次：以“助手回复数”近似完成的问答轮；为避免尾部多余用户消息导致误差，取用户/助手计数的较小值
+      const userCount = messages.filter((m) => m.role === "user").length;
+      const assistantCount = messages.filter((m) => m.role === "assistant").length;
+      const completedRounds = Math.min(userCount, assistantCount);
+      const remainingRounds = Math.max(0, ctxLimit - completedRounds);
+
+      if (remainingRounds <= 0) {
+        // 先弹出订阅界面，再通过 toast 提示用户
+        openUpgrade?.();
+        setTimeout(() => {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("quota:exceeded", {
+                detail: {
+                  type: "context",
+                  message:
+                    selectedLanguage === "zh"
+                      ? `上下文已达上限（${ctxLimit}条）。请升级套餐获取更多额度，或新建对话。`
+                      : `Context limit reached (${ctxLimit} messages). Upgrade for more quota or start a new chat.`,
+                },
+              }),
+            );
+          }
+        }, 100);
+
+        // Free 用户：强制进入新一轮对话，并清除上一轮记录（不落库）
+        if (isFreeUser && currentChatId) {
+          setChatSessions((prev) => prev.filter((c) => c.id !== currentChatId));
+          setMessages([]);
+          setCurrentChatId("");
+        }
+
+        releaseLock();
+        return;
+      }
+    }
 
     try {
       if (!currentChat) {
@@ -396,49 +449,6 @@ export const useMessageSubmission = (
     }
 
     setIsLoading(true);
-
-    // =============================
-    // 上下文限额（按“轮次”计：一问一答算 1 条）
-    // =============================
-    const ctxLimit =
-      planLower === "basic"
-        ? getBasicContextMsgLimit()
-        : planLower === "pro"
-          ? getProContextMsgLimit()
-          : planLower === "enterprise"
-            ? getEnterpriseContextMsgLimit()
-            : getFreeContextMsgLimit();
-
-    // 轮次：以“助手回复数”近似完成的问答轮；为避免尾部多余用户消息导致误差，取用户/助手计数的较小值
-    const userCount = messages.filter((m) => m.role === "user").length;
-    const assistantCount = messages.filter((m) => m.role === "assistant").length;
-    const completedRounds = Math.min(userCount, assistantCount);
-    const remainingRounds = Math.max(0, ctxLimit - completedRounds);
-    if (remainingRounds <= 0) {
-      // 先弹出订阅界面，再通过toast提示用户
-      openUpgrade?.();
-      // 延迟发送toast以确保弹窗先打开
-      setTimeout(() => {
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("quota:exceeded", {
-            detail: {
-              type: "context",
-              message: selectedLanguage === "zh"
-                ? `上下文已达上限（${ctxLimit}条）。请升级套餐获取更多额度，或新建对话。`
-                : `Context limit reached (${ctxLimit} messages). Upgrade for more quota or start a new chat.`,
-            },
-          }));
-        }
-      }, 100);
-      setIsLoading(false);
-      releaseLock();
-      return;
-    }
-    // 上下文警告已通过ChatInterface顶部横幅展示（剩余≤5条时），此处不再重复提示
-    // 保留注释说明：如需恢复toast提示，可取消下方注释
-    // if (remainingRounds === 10) {
-    //   window.dispatchEvent(new CustomEvent("quota:warning", { detail: { type: "context", message: "..." } }));
-    // }
 
     // 准备上下文（仅保留最近 ctxLimit 轮：用户+助手≈2条/轮）
     let preparedHistory = [...messages, userMessage];

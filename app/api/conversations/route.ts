@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { isAfter } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
@@ -20,12 +21,15 @@ function getPlanInfo(meta: any) {
     (meta?.plan_exp && meta?.plan) || // keep plan if present alongside plan_exp
     (meta?.subscriptionTier as string | undefined) ||
     "";
-  const planLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
+  const rawPlanLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
+  const planExp = meta?.plan_exp ? new Date(meta.plan_exp) : null;
+  const planActive = planExp ? isAfter(planExp, new Date()) : true;
+  const planLower = planActive ? rawPlanLower : "free";
   const isProFlag = !!meta?.pro && planLower !== "free" && planLower !== "basic";
   const isBasic = planLower === "basic";
   const isPro = planLower === "pro" || planLower === "enterprise" || isProFlag;
   const isFree = !isPro && !isBasic;
-  return { planLower, isPro, isBasic, isFree };
+  return { planLower, isPro, isBasic, isFree, planActive, planExp };
 }
 
 // 版本隔离：仅根据部署环境决定（避免通过 cookie / header 旁路访问另一套数据源）
@@ -43,16 +47,10 @@ export async function GET(req: NextRequest) {
     if (userError || !userData?.user) {
       return new Response("Unauthorized", { status: 401 });
     }
-    const userPlan =
-      (userData.user.user_metadata as any)?.plan ||
-      ((userData.user.user_metadata as any)?.pro ? "Pro" : null);
-    const isFreeUser =
-      !userPlan ||
-      (typeof userPlan === "string" &&
-        userPlan.toLowerCase() === "free");
+    const plan = getPlanInfo(userData.user.user_metadata);
 
     // Free 用户不返回历史记录（不读库）
-    if (isFreeUser) {
+    if (plan.isFree) {
       return Response.json([]);
     }
 
@@ -136,24 +134,18 @@ export async function POST(req: NextRequest) {
     }
     const userId = userData.user.id;
     const { title, model, modelType, expertModelId } = await req.json();
-    const userPlan =
-      (userData.user.user_metadata as any)?.plan ||
-      ((userData.user.user_metadata as any)?.pro ? "Pro" : null);
-    const isFreeUser =
-      !userPlan ||
-      (typeof userPlan === "string" &&
-        userPlan.toLowerCase() === "free");
+    const plan = getPlanInfo(userData.user.user_metadata);
 
     // 调试日志
     console.log("[conversations] User plan detection:", {
       userId,
-      userPlan,
-      isFreeUser,
-      metadata: userData.user.user_metadata,
+      planLower: plan.planLower,
+      planActive: plan.planActive,
+      isFree: plan.isFree,
     });
 
     // Free 用户：不落库，返回本地临时会话 ID
-    if (isFreeUser) {
+    if (plan.isFree) {
       const now = new Date().toISOString();
       return Response.json({
         id: `local-${Date.now()}`,

@@ -131,6 +131,7 @@ export default function Sidebar({
   shouldShowAds = true,
 }: SidebarProps) {
   const { currentLanguage } = useLanguage();
+  const canCloseAdsForUpsell = !appUser?.isPaid;
 
   // 社交链接数据状态
   const [socialLinks, setSocialLinks] = useState<SocialLinkData[]>([]);
@@ -245,8 +246,12 @@ export default function Sidebar({
                   <AdBanner
                     position="sidebar"
                     isDomestic={isDomestic}
-                    showCloseButton={true}
-                    onClose={() => setShowUpgradeDialog?.(true)}
+                    showCloseButton={canCloseAdsForUpsell}
+                    onClose={() => {
+                      if (canCloseAdsForUpsell) {
+                        setShowUpgradeDialog?.(true);
+                      }
+                    }}
                     className="h-[200px]"
                   />
                 </div>

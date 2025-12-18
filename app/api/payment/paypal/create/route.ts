@@ -6,11 +6,14 @@ import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
 import { isAfter } from "date-fns";
 import { calculateUpgradePrice } from "@/services/wallet";
+import { calculateSupabaseUpgradePrice } from "@/services/wallet-supabase";
 import {
   getAddonPackageById,
   getAddonDescription,
   type ProductType,
 } from "@/constants/addon-packages";
+import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
 
@@ -72,15 +75,23 @@ export async function POST(request: NextRequest) {
 
     // 尝试从登录态获取 userId（优先 cookie/header，再回退 body 传入）
     let resolvedUserId = userId;
-    const token =
-      request.cookies.get("auth-token")?.value ||
-      request.headers.get("x-auth-token") ||
-      request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
-      null;
-    if (token) {
-      const auth = new CloudBaseAuthService();
-      const user = await auth.validateToken(token);
-      if (user?.id) resolvedUserId = user.id;
+    if (!resolvedUserId) {
+      if (IS_DOMESTIC_VERSION) {
+        const token =
+          request.cookies.get("auth-token")?.value ||
+          request.headers.get("x-auth-token") ||
+          request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+          null;
+        if (token) {
+          const auth = new CloudBaseAuthService();
+          const user = await auth.validateToken(token);
+          if (user?.id) resolvedUserId = user.id;
+        }
+      } else {
+        const supabase = await createClient();
+        const { data } = await supabase.auth.getUser();
+        if (data?.user?.id) resolvedUserId = data.user.id;
+      }
     }
     if (!resolvedUserId) {
       return NextResponse.json(
@@ -132,6 +143,7 @@ export async function POST(request: NextRequest) {
         addonPkg.id,
         addonPkg.imageCredits,
         addonPkg.videoAudioCredits,
+        amount.toFixed(2),
       ].join("|");
       
       description = getAddonDescription(addonPkg, IS_DOMESTIC_VERSION);
@@ -141,7 +153,7 @@ export async function POST(request: NextRequest) {
       const effectiveBillingPeriod = billingPeriod || "monthly";
       const useDomesticPrice = false; // PayPal 始终按美元价格
 
-      // Annual UI 显示“每月折后价”，实际一次性收取 12 个月
+      // Annual UI 显示"每月折后价"，实际一次性收取 12 个月
       const baseAmount = extractPlanAmount(
         resolvedPlan,
         effectiveBillingPeriod,
@@ -149,7 +161,7 @@ export async function POST(request: NextRequest) {
       );
       amount = baseAmount;
 
-      // 国内版升级：差价计算（按剩余天数折算）
+      // 国内版升级：差价计算 (目标套餐日价 - 当前套餐日价) × 剩余天数
       if (IS_DOMESTIC_VERSION) {
         try {
           const connector = new CloudBaseConnector();
@@ -181,27 +193,84 @@ export async function POST(request: NextRequest) {
               )
             );
             const currentPlanDef = resolvePlan(currentPlanKey);
-            const currentPlanPrice = extractPlanAmount(
-              currentPlanDef,
-              "monthly",
-              useDomesticPrice
+            // 使用月度价格计算日价（美元）
+            const currentPlanMonthlyPrice = extractPlanAmount(currentPlanDef, "monthly", useDomesticPrice);
+            const targetPlanMonthlyPrice = extractPlanAmount(resolvedPlan, "monthly", useDomesticPrice);
+
+            // 计算升级差价：按日价差乘以剩余天数
+            amount = calculateUpgradePrice(
+              currentPlanMonthlyPrice / 30,  // 当前套餐日价
+              targetPlanMonthlyPrice / 30,   // 目标套餐日价
+              remainingDays                   // 剩余天数
             );
 
-            amount = calculateUpgradePrice(
-              currentPlanPrice / 30,
+            console.log("📝 [PayPal Create] Domestic upgrade calculation:", {
+              currentPlan: currentPlanKey,
+              targetPlan: resolvedPlan.name,
+              currentPlanMonthlyPrice,
+              targetPlanMonthlyPrice,
               remainingDays,
-              baseAmount
-            );
+              upgradeAmount: amount,
+            });
           }
         } catch (error) {
           console.error("[paypal][create] upgrade price calc failed", error);
           amount = baseAmount;
         }
       }
+
+      // 国际版升级：差价计算 (目标套餐日价 - 当前套餐日价) × 剩余天数
+      if (!IS_DOMESTIC_VERSION && supabaseAdmin) {
+        try {
+          const { data: walletRow } = await supabaseAdmin
+            .from("user_wallets")
+            .select("plan, plan_exp")
+            .eq("user_id", resolvedUserId)
+            .maybeSingle();
+
+          const currentPlanKey = normalizePlanName(walletRow?.plan || "");
+          const currentPlanExp = walletRow?.plan_exp ? new Date(walletRow.plan_exp) : null;
+          const now = new Date();
+          const currentActive = currentPlanExp ? isAfter(currentPlanExp, now) : false;
+          const purchaseRank = PLAN_RANK[normalizePlanName(resolvedPlan.name)] || 0;
+          const currentRank = PLAN_RANK[currentPlanKey] || 0;
+          const isUpgrade = currentActive && purchaseRank > currentRank && currentRank > 0;
+
+          if (isUpgrade && currentPlanKey) {
+            const remainingDays = Math.max(
+              0,
+              Math.ceil(((currentPlanExp?.getTime() || 0) - now.getTime()) / (1000 * 60 * 60 * 24))
+            );
+            const currentPlanDef = resolvePlan(currentPlanKey);
+            // 使用月度价格计算日价（美元）
+            const currentPlanMonthlyPrice = extractPlanAmount(currentPlanDef, "monthly", false);
+            const targetPlanMonthlyPrice = extractPlanAmount(resolvedPlan, "monthly", false);
+
+            // 计算升级差价：按日价差乘以剩余天数
+            amount = calculateSupabaseUpgradePrice(
+              currentPlanMonthlyPrice / 30,  // 当前套餐日价
+              targetPlanMonthlyPrice / 30,   // 目标套餐日价
+              remainingDays                   // 剩余天数
+            );
+
+            console.log("📝 [PayPal Create] International upgrade calculation:", {
+              currentPlan: currentPlanKey,
+              targetPlan: resolvedPlan.name,
+              currentPlanMonthlyPrice,
+              targetPlanMonthlyPrice,
+              remainingDays,
+              upgradeAmount: amount,
+            });
+          }
+        } catch (error) {
+          console.error("[paypal][create] supabase upgrade price calc failed", error);
+          amount = baseAmount;
+        }
+      }
       currency = "USD";
       
       // customId 格式: userId|planName|billingPeriod (保持兼容)
-      customId = [resolvedUserId, resolvedPlan.name, effectiveBillingPeriod].join("|");
+      customId = [resolvedUserId, resolvedPlan.name, effectiveBillingPeriod, amount.toFixed(2)].join("|");
       description = `${resolvedPlan.name} - ${effectiveBillingPeriod}`;
     }
 

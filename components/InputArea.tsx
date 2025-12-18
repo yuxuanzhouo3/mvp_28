@@ -56,6 +56,7 @@ import { StatusIndicators } from "@/features/chat/components/input/StatusIndicat
 import { CameraPanel } from "@/features/chat/components/input/CameraPanel";
 import type { AttachmentItem } from "@/types";
 import { GENERAL_MODEL_ID } from "@/utils/model-limits";
+import { IS_DOMESTIC_VERSION } from "@/config";
 
 interface InputAreaProps {
   prompt: string;
@@ -279,8 +280,14 @@ const InputArea = React.memo(function InputArea({
     selectedLanguage === "zh"
       ? "支持：图片、视频、音频（不可混合类型上传）"
       : "Allowed: image, video, or audio only (single type at a time)";
+  const fileUploadDisabledReason = !IS_DOMESTIC_VERSION
+    ? selectedLanguage === "zh"
+      ? "国际版暂未接入多模态模型，文件上传已禁用"
+      : "File upload is disabled on the international build (multimodal not yet supported)."
+    : null;
 
   const attachmentButtonTitle = React.useMemo(() => {
+    if (fileUploadDisabledReason) return fileUploadDisabledReason;
     const base =
       uploadedFiles.length >= MAX_FILES
         ? getLocalizedText("maximumFilesReached").replace("{count}", MAX_FILES.toString())
@@ -289,6 +296,7 @@ const InputArea = React.memo(function InputArea({
         : getLocalizedText("uploadFilesMaxCount").replace("{count}", MAX_FILES.toString());
     return `${base}\n${allowedTypesHint}`;
   }, [
+    fileUploadDisabledReason,
     uploadedFiles.length,
     MAX_FILES,
     isUploading,
@@ -578,7 +586,7 @@ const InputArea = React.memo(function InputArea({
                     className="hidden"
                     id="file-upload"
                     accept={["image/*", "video/*", "audio/*"].join(",")}
-                    disabled={isUploading}
+                    disabled={isUploading || !IS_DOMESTIC_VERSION}
                   />
                   <Button
                     size="sm"
@@ -588,8 +596,9 @@ const InputArea = React.memo(function InputArea({
                     }`}
                     title={attachmentButtonTitle}
                     type="button"
-                    disabled={isUploading}
+                    disabled={isUploading || !IS_DOMESTIC_VERSION}
                     onClick={() => {
+                      if (!IS_DOMESTIC_VERSION) return;
                       if (uploadedFiles.length >= MAX_FILES) {
                         setUploadError(
                           `Maximum ${MAX_FILES} files reached. Please remove some files first.`

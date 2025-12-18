@@ -5,6 +5,7 @@ import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   getAddonPackageById,
   getAddonDescription,
@@ -13,6 +14,7 @@ import {
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
 import { isAfter } from "date-fns";
 import { calculateUpgradePrice } from "@/services/wallet";
+import { calculateSupabaseUpgradePrice } from "@/services/wallet-supabase";
 
 const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
 
@@ -166,7 +168,7 @@ export async function POST(request: NextRequest) {
       );
       amount = baseAmount;
 
-      // 国内版：升级补差价公式
+      // 国内版：升级补差价公式 (目标套餐日价 - 当前套餐日价) × 剩余天数
       if (IS_DOMESTIC_VERSION && userId) {
         try {
           const connector = new CloudBaseConnector();
@@ -198,21 +200,77 @@ export async function POST(request: NextRequest) {
               )
             );
             const currentPlanDef = resolvePlan(currentPlanKey);
-            const currentPlanPrice = extractPlanAmount(
-              currentPlanDef,
-              "monthly",
-              true
+            // 使用月度价格计算日价
+            const currentPlanMonthlyPrice = extractPlanAmount(currentPlanDef, "monthly", true);
+            const targetPlanMonthlyPrice = extractPlanAmount(resolvedPlan, "monthly", true);
+
+            // 计算升级差价：按日价差乘以剩余天数
+            amount = calculateUpgradePrice(
+              currentPlanMonthlyPrice / 30,  // 当前套餐日价
+              targetPlanMonthlyPrice / 30,   // 目标套餐日价
+              remainingDays                   // 剩余天数
             );
 
-            // 公式：目标价 - (当前价/30 * 剩余天数)
-            amount = calculateUpgradePrice(
-              currentPlanPrice / 30,
+            console.log("📝 [Stripe Create] Domestic upgrade calculation:", {
+              currentPlan: currentPlanKey,
+              targetPlan: resolvedPlanName,
+              currentPlanMonthlyPrice,
+              targetPlanMonthlyPrice,
               remainingDays,
-              baseAmount
-            );
+              upgradeAmount: amount,
+            });
           }
         } catch (error) {
           console.error("[stripe][create] upgrade price calc failed", error);
+          amount = baseAmount;
+        }
+      }
+
+      // 国际版：升级补差价 (目标套餐日价 - 当前套餐日价) × 剩余天数
+      if (!IS_DOMESTIC_VERSION && userId && supabaseAdmin) {
+        try {
+          const { data: walletRow } = await supabaseAdmin
+            .from("user_wallets")
+            .select("plan, plan_exp")
+            .eq("user_id", userId)
+            .maybeSingle();
+
+          const currentPlanKey = normalizePlanName(walletRow?.plan || "");
+          const currentPlanExp = walletRow?.plan_exp ? new Date(walletRow.plan_exp) : null;
+          const now = new Date();
+          const currentActive = currentPlanExp ? isAfter(currentPlanExp, now) : false;
+          const purchaseRank = PLAN_RANK[normalizePlanName(resolvedPlan.name)] || 0;
+          const currentRank = PLAN_RANK[currentPlanKey] || 0;
+          const isUpgrade = currentActive && purchaseRank > currentRank && currentRank > 0;
+
+          if (isUpgrade && currentPlanKey) {
+            const remainingDays = Math.max(
+              0,
+              Math.ceil(((currentPlanExp?.getTime() || 0) - now.getTime()) / (1000 * 60 * 60 * 24))
+            );
+            const currentPlanDef = resolvePlan(currentPlanKey);
+            // 使用月度价格计算日价（美元）
+            const currentPlanMonthlyPrice = extractPlanAmount(currentPlanDef, "monthly", false);
+            const targetPlanMonthlyPrice = extractPlanAmount(resolvedPlan, "monthly", false);
+
+            // 计算升级差价：按日价差乘以剩余天数
+            amount = calculateSupabaseUpgradePrice(
+              currentPlanMonthlyPrice / 30,  // 当前套餐日价
+              targetPlanMonthlyPrice / 30,   // 目标套餐日价
+              remainingDays                   // 剩余天数
+            );
+
+            console.log("📝 [Stripe Create] International upgrade calculation:", {
+              currentPlan: currentPlanKey,
+              targetPlan: resolvedPlanName,
+              currentPlanMonthlyPrice,
+              targetPlanMonthlyPrice,
+              remainingDays,
+              upgradeAmount: amount,
+            });
+          }
+        } catch (error) {
+          console.error("[stripe][create] supabase upgrade price calc failed", error);
           amount = baseAmount;
         }
       }

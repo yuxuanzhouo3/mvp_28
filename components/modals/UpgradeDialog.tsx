@@ -245,12 +245,12 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
 
   const pricingInfo = React.useMemo(() => {
     if (!selectedPlanInDialog) {
-      return { payable: null, targetAmount: null, isUpgrade: false, remainingDays: 0, deduction: 0, symbol: "" };
+      return { payable: null, targetAmount: null, isUpgrade: false, remainingDays: 0, convertedDays: 0, remainingValue: 0, freeUpgrade: false, symbol: "" };
     }
 
     const target = resolvePlanByName(selectedPlanInDialog.name);
     if (!target) {
-      return { payable: null, targetAmount: null, isUpgrade: false, remainingDays: 0, deduction: 0, symbol: "" };
+      return { payable: null, targetAmount: null, isUpgrade: false, remainingDays: 0, convertedDays: 0, remainingValue: 0, freeUpgrade: false, symbol: "" };
     }
 
     const symbol = useRmb ? "￥" : "$";
@@ -275,16 +275,53 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
     const isUpgrade = currentActive && targetRank > currentRank && currentRank > 0;
 
     if (!isUpgrade) {
-      return { payable: targetAmount, targetAmount, isUpgrade: false, remainingDays: 0, deduction: 0, symbol };
+      return { payable: targetAmount, targetAmount, isUpgrade: false, remainingDays: 0, convertedDays: 0, freeUpgrade: false, symbol };
     }
 
     const remainingDays = Math.max(0, Math.ceil(((exp || now) - now) / msPerDay));
     const currentMonthly = getPlanAmount(currentKey, "monthly", useRmb);
-    const deduction = (currentMonthly / 30) * remainingDays;
-    const upgradePrice = Math.max(0, targetAmount - deduction);
-    const payable = Math.round(upgradePrice * 100) / 100;
+    // 目标套餐价格：根据用户选择的计费周期（月费或年费总价）
+    const targetPrice = getPlanAmount(target.name, billingPeriod, useRmb);
+    const targetMonthly = getPlanAmount(target.name, "monthly", useRmb);
 
-    return { payable, targetAmount, isUpgrade: true, remainingDays, deduction: Math.round(deduction * 100) / 100, symbol };
+    // 计算当前套餐剩余价值
+    const currentDailyPrice = currentMonthly / 30;
+    const targetDailyPrice = targetMonthly / 30;
+    const remainingValue = remainingDays * currentDailyPrice;
+
+    // 目标套餐天数
+    const targetDays = billingPeriod === "annual" ? 365 : 30;
+
+    // 新升级逻辑：
+    // 1. 如果剩余价值 ≥ 目标套餐价格：免费升级，剩余价值全部折算成目标套餐天数
+    // 2. 如果剩余价值 < 目标套餐价格：补差价，获得目标套餐天数（30天或365天）
+    const freeUpgrade = remainingValue >= targetPrice;
+
+    let payable: number;
+    let convertedDays: number;
+
+    if (freeUpgrade) {
+      // 免费升级：剩余价值全部折算成目标套餐天数
+      payable = 0.01; // 最低支付金额
+      convertedDays = Math.floor(remainingValue / targetDailyPrice);
+    } else {
+      // 补差价：支付差额，获得目标套餐天数
+      payable = Math.max(0.01, targetPrice - remainingValue);
+      convertedDays = targetDays;
+    }
+
+    payable = Math.round(payable * 100) / 100;
+
+    return {
+      payable,
+      targetAmount,
+      isUpgrade: true,
+      remainingDays,
+      convertedDays,
+      remainingValue: Math.round(remainingValue * 100) / 100,
+      freeUpgrade,
+      symbol
+    };
   }, [billingPeriod, currentPlan, currentPlanExp, getPlanAmount, isDomesticVersion, normalizePlanName, planRank, selectedPayment, selectedPlanInDialog, useRmb, resolvePlanByName, msPerDay]);
 
   return (
@@ -617,20 +654,44 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
                       </div>
                     </div>
                   </div>
-                  
-                  {/* 升级优惠提示 */}
+
+                  {/* 升级折算提示 */}
                 {pricingInfo.isUpgrade && (
-                    <div className="mt-4 p-3 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 rounded-xl border border-amber-200/50 dark:border-amber-700/50 text-center">
-                      <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">
-                        🎁 {tr("Upgrade discount applied", "升级优惠已应用")}：
-                        <span className="font-bold">-{pricingInfo.symbol}{pricingInfo.deduction.toFixed(2)}</span>
-                        <span className="text-amber-600 dark:text-amber-400 ml-2">
-                          ({pricingInfo.remainingDays} {tr("days remaining", "天剩余价值")})
-                        </span>
-                      </p>
+                    <div className={`mt-4 p-3 rounded-xl border text-center ${
+                      pricingInfo.freeUpgrade
+                        ? "bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950/30 dark:to-green-950/30 border-emerald-200/50 dark:border-emerald-700/50"
+                        : "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border-blue-200/50 dark:border-blue-700/50"
+                    }`}>
+                      {pricingInfo.freeUpgrade ? (
+                        <p className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">
+                          🎁 {tr("Free upgrade!", "免费升级！")}
+                          <span className="ml-2">
+                            {tr(
+                              `Your ${pricingInfo.remainingDays} days remaining value (${pricingInfo.symbol}${pricingInfo.remainingValue}) converts to`,
+                              `您的 ${pricingInfo.remainingDays} 天剩余价值（${pricingInfo.symbol}${pricingInfo.remainingValue}）折算为`
+                            )}
+                          </span>
+                          <span className="font-bold text-emerald-600 dark:text-emerald-400 ml-1">
+                            {pricingInfo.convertedDays} {tr("days of new plan", "天新套餐")}
+                          </span>
+                        </p>
+                      ) : (
+                        <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
+                          📊 {tr("Upgrade pricing", "升级计费")}：
+                          <span className="ml-1">
+                            {tr(
+                              `${pricingInfo.remainingDays} days remaining value (${pricingInfo.symbol}${pricingInfo.remainingValue}) deducted`,
+                              `${pricingInfo.remainingDays} 天剩余价值（${pricingInfo.symbol}${pricingInfo.remainingValue}）已抵扣`
+                            )}
+                          </span>
+                          <span className="text-blue-600 dark:text-blue-400 ml-2">
+                            → {tr("Pay", "支付")} {pricingInfo.symbol}{pricingInfo.payable?.toFixed(2)} {tr(`for ${pricingInfo.convertedDays} days`, `获得${pricingInfo.convertedDays}天`)}
+                          </span>
+                        </p>
+                      )}
                     </div>
                   )}
-                  
+
                 </div>
               </div>
               </div>

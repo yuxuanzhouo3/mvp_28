@@ -948,23 +948,52 @@ export async function consumeSupabaseDailyExternalQuota(
 }
 
 /**
- * 计算升级补差价
+ * 计算升级补差价（国际版 Supabase）
+ *
+ * 升级机制说明：
+ * 1. 用户从低级套餐升级到高级套餐时，需要支付剩余订阅期内的差价
+ * 2. 计算公式：(目标套餐日价 - 当前套餐日价) × 剩余天数
+ * 3. 升级后，订阅到期时间保持不变，用户在剩余期间享受新套餐权益
+ * 4. 到期后按新套餐价格续费
+ *
+ * 示例：
+ * - 用户有Basic月订阅，剩余120天，想升级到Pro月订阅
+ * - Basic日价 = $2.99/30 = $0.10/天
+ * - Pro日价 = $9.99/30 = $0.33/天
+ * - 差价 = (0.33 - 0.10) × 120 = $27.60
+ *
+ * @param currentPlanDailyPrice 当前套餐的日价格
+ * @param targetPlanDailyPrice 目标套餐的日价格
+ * @param remainingDays 当前订阅剩余天数
+ * @param minimumPayment 最低支付金额（避免支付接口报错），默认0.01
+ * @returns 升级需要支付的金额
  */
 export function calculateSupabaseUpgradePrice(
   currentPlanDailyPrice: number,
+  targetPlanDailyPrice: number,
   remainingDays: number,
-  targetPlanPrice: number
+  minimumPayment: number = 0.01
 ): number {
-  const remainingValue = currentPlanDailyPrice * remainingDays;
-  const upgradePrice = Math.max(0, targetPlanPrice - remainingValue);
+  // 计算每日差价
+  const dailyDifference = targetPlanDailyPrice - currentPlanDailyPrice;
+
+  // 计算总升级价格
+  const upgradePrice = dailyDifference * remainingDays;
+
   console.log("[wallet-supabase][calculate-upgrade-price]", {
     currentPlanDailyPrice,
+    targetPlanDailyPrice,
+    dailyDifference,
     remainingDays,
-    remainingValue,
-    targetPlanPrice,
-    upgradePrice,
+    rawUpgradePrice: upgradePrice,
   });
-  return Math.round(upgradePrice * 100) / 100;
+
+  // 确保最低支付金额（支付接口不接受0或负数）
+  const finalPrice = Math.max(minimumPayment, upgradePrice);
+
+  console.log("[wallet-supabase][calculate-upgrade-price] Final price:", finalPrice);
+
+  return Math.round(finalPrice * 100) / 100;
 }
 
 // =============================================================================

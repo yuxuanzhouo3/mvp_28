@@ -405,8 +405,8 @@ export async function POST(req: Request) {
         await sendDone();
         await closeWriter();
 
-        // 响应完成后扣减配额（AI成功输出内容后才扣费，手动暂停也算）
-        const shouldCharge = streamFinished || hasContentOutput;
+        // 响应完成后扣减配额（仅当 AI 实际输出内容后才扣费；手动暂停但已输出也算）
+        const shouldCharge = hasContentOutput;
 
         if (shouldDeductMediaQuota && shouldCharge) {
           const consumeResult = await consumeSupabaseQuota({
@@ -468,5 +468,4 @@ export async function POST(req: Request) {
     );
   }
 }
-
 

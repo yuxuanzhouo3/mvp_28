@@ -231,6 +231,7 @@ async function applySubscriptionPayment(
   const connector = new CloudBaseConnector();
   await connector.initialize();
   const db = connector.getClient();
+  const _ = db.command; // CloudBase 命令对象，用于 set/remove 等操作
 
   const now = new Date();
   const nowIso = now.toISOString();
@@ -273,32 +274,94 @@ async function applySubscriptionPayment(
 
   const subsColl = db.collection("subscriptions");
 
-  // 降级：延期生效
+  // 降级：延期生效（支持多重降级队列，按等级排序：高级先生效）
   if (isDowngrade) {
-    const scheduledStart = currentPlanExp && currentPlanActive ? currentPlanExp : now;
-    const scheduledExpire = addCalendarMonths(scheduledStart, monthsToAdd, existingAnchorDay);
-    const pendingDowngrade = {
-      targetPlan: plan,
-      effectiveAt: scheduledStart.toISOString(),
-    };
+    // 1. 查询用户所有待生效的 pending 订阅
+    const pendingSubsRes = await subsColl
+      .where({ userId, status: "pending" })
+      .get();
+    const existingPendingSubs = (pendingSubsRes?.data || []) as any[];
 
-    await subsColl.add({
+    // 2. 创建新的 pending 订阅记录（先用临时时间，后面会重新计算）
+    const tempStart = currentPlanExp && currentPlanActive ? currentPlanExp : now;
+    const newPendingSub = {
       userId,
       plan,
       period,
       status: "pending",
       provider: "wechat",
       providerOrderId,
-      startedAt: scheduledStart.toISOString(),
-      expiresAt: scheduledExpire.toISOString(),
+      startedAt: tempStart.toISOString(),
+      expiresAt: addCalendarMonths(tempStart, monthsToAdd, existingAnchorDay).toISOString(),
       updatedAt: nowIso,
       createdAt: nowIso,
       type: "SUBSCRIPTION",
+    };
+
+    // 添加新订阅到数据库
+    const addResult = await subsColl.add(newPendingSub);
+    const newSubId = addResult?.id;
+
+    // 3. 将所有 pending 订阅（包括新的）按等级降序排列，同等级按创建时间升序
+    const allPendingSubs = [
+      ...existingPendingSubs.map((s: any) => ({
+        _id: s._id,
+        plan: normalizePlanName(s.plan),
+        period: s.period,
+        rank: PLAN_RANK[normalizePlanName(s.plan)] || 0,
+        createdAt: s.createdAt || s.created_at || nowIso, // 用于同等级排序
+      })),
+      {
+        _id: newSubId,
+        plan,
+        period,
+        rank: purchaseRank,
+        createdAt: nowIso, // 新订阅的创建时间
+      },
+    ].sort((a, b) => {
+      // 先按等级降序（高级先生效）
+      if (b.rank !== a.rank) return b.rank - a.rank;
+      // 同等级按创建时间升序（先买的先生效）
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
 
+    // 4. 重新计算每个订阅的 startedAt 和 expiresAt
+    let nextStartDate = currentPlanExp && currentPlanActive ? currentPlanExp : now;
+    const updatedQueue: { targetPlan: string; effectiveAt: string; expiresAt: string }[] = [];
+
+    for (const pendingSub of allPendingSubs) {
+      const subPeriod = pendingSub.period === "annual" ? 12 : 1;
+      const subExpires = addCalendarMonths(nextStartDate, subPeriod, existingAnchorDay);
+
+      // 更新订阅记录的时间
+      if (pendingSub._id) {
+        await subsColl.doc(pendingSub._id).update({
+          startedAt: nextStartDate.toISOString(),
+          expiresAt: subExpires.toISOString(),
+          updatedAt: nowIso,
+        });
+      }
+
+      updatedQueue.push({
+        targetPlan: pendingSub.plan,
+        effectiveAt: nextStartDate.toISOString(),
+        expiresAt: subExpires.toISOString(),
+      });
+
+      // 下一个订阅从这个订阅到期后开始
+      nextStartDate = subExpires;
+    }
+
+    // 5. 更新用户的 pendingDowngrade 为数组（按生效顺序）
     await db.collection("users").doc(userId).update({
-      pendingDowngrade,
+      pendingDowngrade: _.set(updatedQueue.length > 0 ? updatedQueue : null),
       updatedAt: nowIso,
+    });
+
+    console.log("[WeChat Confirm] Downgrade queue updated:", {
+      userId,
+      newPlan: plan,
+      queue: updatedQueue,
     });
 
     return;
@@ -329,12 +392,13 @@ async function applySubscriptionPayment(
     await subsColl.add({ ...subPayload, createdAt: nowIso });
   }
 
+  // 更新用户订阅信息，使用 _.set(null) 清除 pendingDowngrade
   await db.collection("users").doc(userId).update({
     pro: planLower !== "basic",
     plan,
     plan_exp: purchaseExpiresAt.toISOString(),
     subscriptionTier: plan,
-    pendingDowngrade: null,
+    pendingDowngrade: _.set(null),
     updatedAt: nowIso,
   });
 

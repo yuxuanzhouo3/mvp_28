@@ -7,6 +7,8 @@ import { CloudBaseConnector } from "@/lib/cloudbase/connector";
 import { addAddonCredits, upgradeMonthlyQuota, renewMonthlyQuota, seedWalletForPlan, getPlanMediaLimits } from "@/services/wallet";
 import {
   addSupabaseAddonCredits,
+  addCalendarMonths,
+  getBeijingYMD,
   upgradeSupabaseMonthlyQuota,
   renewSupabaseMonthlyQuota,
   seedSupabaseWalletForPlan,
@@ -64,6 +66,64 @@ export async function POST(request: NextRequest) {
     const amount = (session.amount_total || 0) / 100;
     const currency = session.currency?.toUpperCase() || "USD";
 
+    // 金额一致性校验：期望金额写入 Stripe metadata（create 阶段），confirm 阶段严格对齐
+    const expectedCentsStr =
+      metadata.expectedAmountCents ||
+      (metadata as any).expected_amount_cents ||
+      (metadata as any).expected_amount ||
+      null;
+    const expectedAmountStr = metadata.expectedAmount || (metadata as any).expected_amount || null;
+    const actualCents = session.amount_total || 0;
+
+    if (expectedCentsStr != null) {
+      const expectedCents = parseInt(String(expectedCentsStr), 10);
+      if (!Number.isNaN(expectedCents) && expectedCents !== actualCents) {
+        console.error("[stripe][amount-mismatch]", {
+          sessionId,
+          userId,
+          expectedCents,
+          actualCents,
+          currency,
+          productType,
+          metadata,
+        });
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Amount mismatch",
+            expectedAmount: expectedCents / 100,
+            actualAmount: amount,
+            currency,
+          },
+          { status: 400 }
+        );
+      }
+    } else if (expectedAmountStr != null) {
+      const expected = parseFloat(String(expectedAmountStr));
+      const expectedCents = Math.round(expected * 100);
+      if (!Number.isNaN(expected) && expectedCents !== actualCents) {
+        console.error("[stripe][amount-mismatch]", {
+          sessionId,
+          userId,
+          expectedCents,
+          actualCents,
+          currency,
+          productType,
+          metadata,
+        });
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Amount mismatch",
+            expectedAmount: expected,
+            actualAmount: amount,
+            currency,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // ========================================
     // 加油包 (ADDON) 处理分支
     // 注意：加油包购买不影响用户的 tier 和 expired_at
@@ -90,27 +150,39 @@ export async function POST(request: NextRequest) {
         const db = connector.getClient();
         
         // 检查是否已处理过
-        const existingPayment = await db
+        const existingPaymentRes = await db
           .collection("payments")
           .where({ providerOrderId: sessionId, provider: "stripe" })
           .limit(1)
           .get();
+        const existingPayment = existingPaymentRes?.data?.[0] || null;
         
-        if (!existingPayment?.data?.[0]) {
-          await db.collection("payments").add({
-            userId,
-            provider: "stripe",
-            providerOrderId: sessionId,
-            amount,
-            currency,
-            status: "COMPLETED",
-            type: "ADDON",
+        if (existingPayment) {
+          return NextResponse.json({
+            success: true,
+            status: "already_processed",
+            productType: "ADDON",
             addonPackageId,
             imageCredits,
             videoAudioCredits,
-            createdAt: new Date().toISOString(),
+            amount,
+            currency,
           });
         }
+
+        await db.collection("payments").add({
+          userId,
+          provider: "stripe",
+          providerOrderId: sessionId,
+          amount,
+          currency,
+          status: "COMPLETED",
+          type: "ADDON",
+          addonPackageId,
+          imageCredits,
+          videoAudioCredits,
+          createdAt: new Date().toISOString(),
+        });
 
         // 国内版：使用原子操作增加加油包额度
         const addResult = await addAddonCredits(userId, imageCredits, videoAudioCredits);
@@ -137,35 +209,46 @@ export async function POST(request: NextRequest) {
           .eq("provider", "stripe")
           .maybeSingle();
 
-        if (!existingPayment) {
-          await supabaseAdmin.from("payments").insert({
-            user_id: userId,
-            provider: "stripe",
-            provider_order_id: sessionId,
+        if (existingPayment) {
+          return NextResponse.json({
+            success: true,
+            status: "already_processed",
+            productType: "ADDON",
+            addonPackageId,
+            imageCredits,
+            videoAudioCredits,
             amount,
             currency,
-            status: "COMPLETED",
-            type: "ADDON",
-            addon_package_id: addonPackageId,
-            image_credits: imageCredits,
-            video_audio_credits: videoAudioCredits,
           });
-      }
+        }
+
+        await supabaseAdmin.from("payments").insert({
+          user_id: userId,
+          provider: "stripe",
+          provider_order_id: sessionId,
+          amount,
+          currency,
+          status: "COMPLETED",
+          type: "ADDON",
+          addon_package_id: addonPackageId,
+          image_credits: imageCredits,
+          video_audio_credits: videoAudioCredits,
+        });
 
         // 国际版：使用 Supabase 钱包服务增加加油包额度
         const addResult = await addSupabaseAddonCredits(userId, imageCredits, videoAudioCredits);
 
-      if (!addResult.success) {
-        console.error("[stripe][addon-credit-error]", addResult.error);
-        return NextResponse.json({
-          success: true,
-          status: "COMPLETED",
-          productType: "ADDON",
-          addonPackageId,
-          imageCredits,
-          videoAudioCredits,
-          creditError: addResult.error,
-        });
+        if (!addResult.success) {
+          console.error("[stripe][addon-credit-error]", addResult.error);
+          return NextResponse.json({
+            success: true,
+            status: "COMPLETED",
+            productType: "ADDON",
+            addonPackageId,
+            imageCredits,
+            videoAudioCredits,
+            creditError: addResult.error,
+          });
         }
       }
 
@@ -252,7 +335,13 @@ export async function POST(request: NextRequest) {
 
       const { imageLimit, videoLimit } = getSupabasePlanMediaLimits(plan.toLowerCase());
       const baseDate = isSameActive && currentPlanExp ? currentPlanExp : now;
-      let purchaseExpiresAt = addDays(baseDate, days);
+      const monthsToAdd = period === "annual" ? 12 : 1;
+      const anchorDay =
+        walletRow?.billing_cycle_anchor ||
+        (walletRow?.monthly_reset_at
+          ? getBeijingYMD(new Date(walletRow.monthly_reset_at)).day
+          : getBeijingYMD(now).day);
+      let purchaseExpiresAt = addCalendarMonths(baseDate, monthsToAdd, anchorDay);
       let pendingDowngrade: string | null = null;
 
       // 记录支付
@@ -267,31 +356,87 @@ export async function POST(request: NextRequest) {
       });
 
       if (isDowngrade) {
-        // 降级处理：延迟生效
-        const scheduledStart = currentPlanExp && currentPlanActive ? currentPlanExp : now;
-        const scheduledExpire = addDays(scheduledStart, days);
-        pendingDowngrade = JSON.stringify({
-          targetPlan: plan,
-          effectiveAt: scheduledStart.toISOString(),
-        });
+        // 降级处理：延迟生效（支持多重降级队列，按等级排序：高级先生效）
+        // 1. 查询用户所有待生效的 pending 订阅
+        const { data: existingPendingSubs } = await supabaseAdmin
+          .from("subscriptions")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("status", "pending");
 
-        // 创建待生效订阅
-        await supabaseAdmin.from("subscriptions").upsert(
-          {
+        // 2. 创建新的 pending 订阅记录（先用临时时间，后面会重新计算）
+        const tempStart = currentPlanExp && currentPlanActive ? currentPlanExp : now;
+        const { data: newSubData } = await supabaseAdmin
+          .from("subscriptions")
+          .insert({
             user_id: userId,
             plan,
             period,
             status: "pending",
             provider: "stripe",
             provider_order_id: sessionId,
-            started_at: scheduledStart.toISOString(),
-            expires_at: scheduledExpire.toISOString(),
+            started_at: tempStart.toISOString(),
+            expires_at: addCalendarMonths(tempStart, monthsToAdd, anchorDay).toISOString(),
             type: "SUBSCRIPTION",
-          },
-          { onConflict: "user_id" }
-        );
+          })
+          .select("id")
+          .single();
 
-        // 更新钱包的 pending_downgrade
+        // 3. 将所有 pending 订阅（包括新的）按等级降序排列，同等级按创建时间升序
+        const allPendingSubs = [
+          ...(existingPendingSubs || []).map((s: any) => ({
+            id: s.id,
+            plan: normalizePlanName(s.plan),
+            period: s.period,
+            rank: PLAN_RANK[normalizePlanName(s.plan)] || 0,
+            createdAt: s.created_at || nowIso, // 用于同等级排序
+          })),
+          {
+            id: newSubData?.id,
+            plan,
+            period,
+            rank: purchaseRank,
+            createdAt: nowIso, // 新订阅的创建时间
+          },
+        ].sort((a, b) => {
+          // 先按等级降序（高级先生效）
+          if (b.rank !== a.rank) return b.rank - a.rank;
+          // 同等级按创建时间升序（先买的先生效）
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        });
+
+        // 4. 重新计算每个订阅的 startedAt 和 expiresAt
+        let nextStartDate = currentPlanExp && currentPlanActive ? currentPlanExp : now;
+        const updatedQueue: { targetPlan: string; effectiveAt: string; expiresAt: string }[] = [];
+
+        for (const pendingSub of allPendingSubs) {
+          const subPeriod = pendingSub.period === "annual" ? 12 : 1;
+          const subExpires = addCalendarMonths(nextStartDate, subPeriod, anchorDay);
+
+          // 更新订阅记录的时间
+          if (pendingSub.id) {
+            await supabaseAdmin
+              .from("subscriptions")
+              .update({
+                started_at: nextStartDate.toISOString(),
+                expires_at: subExpires.toISOString(),
+                updated_at: nowIso,
+              })
+              .eq("id", pendingSub.id);
+          }
+
+          updatedQueue.push({
+            targetPlan: pendingSub.plan,
+            effectiveAt: nextStartDate.toISOString(),
+            expiresAt: subExpires.toISOString(),
+          });
+
+          // 下一个订阅从这个订阅到期后开始
+          nextStartDate = subExpires;
+        }
+
+        // 5. 更新用户的 pendingDowngrade 为数组（按生效顺序）
+        pendingDowngrade = updatedQueue.length > 0 ? JSON.stringify(updatedQueue) : null;
         await supabaseAdmin
           .from("user_wallets")
           .update({
@@ -299,6 +444,12 @@ export async function POST(request: NextRequest) {
             updated_at: nowIso,
           })
           .eq("user_id", userId);
+
+        console.log("[Stripe Confirm] Downgrade queue updated:", {
+          userId,
+          newPlan: plan,
+          queue: updatedQueue,
+        });
 
         effectivePlan = currentPlanKey || plan;
         effectivePeriod = period;
@@ -362,6 +513,7 @@ export async function POST(request: NextRequest) {
       const connector = new CloudBaseConnector();
       await connector.initialize();
       const db = connector.getClient();
+      const _ = db.command; // CloudBase 命令对象，用于 set/remove 等操作
 
       const now = new Date();
       const nowIso = now.toISOString();
@@ -405,31 +557,94 @@ export async function POST(request: NextRequest) {
 
       const subsColl = db.collection("subscriptions");
 
+      // 降级：延期生效（支持多重降级队列，按等级排序：高级先生效）
       if (isDowngrade) {
-        const scheduledStart = currentPlanExp && currentPlanActive ? currentPlanExp : now;
-        const scheduledExpire = addDays(scheduledStart, days);
-        pendingDowngrade = {
-          targetPlan: plan,
-          effectiveAt: scheduledStart.toISOString(),
-        };
+        // 1. 查询用户所有待生效的 pending 订阅
+        const pendingSubsRes = await subsColl
+          .where({ userId, status: "pending" })
+          .get();
+        const existingPendingSubs = (pendingSubsRes?.data || []) as any[];
 
-        await subsColl.add({
+        // 2. 创建新的 pending 订阅记录（先用临时时间，后面会重新计算）
+        const tempStart = currentPlanExp && currentPlanActive ? currentPlanExp : now;
+        const newPendingSub = {
           userId,
           plan,
           period,
           status: "pending",
           provider: "stripe",
           providerOrderId: sessionId,
-          startedAt: scheduledStart.toISOString(),
-          expiresAt: scheduledExpire.toISOString(),
+          startedAt: tempStart.toISOString(),
+          expiresAt: addDays(tempStart, days).toISOString(),
           updatedAt: nowIso,
           createdAt: nowIso,
           type: "SUBSCRIPTION",
+        };
+
+        // 添加新订阅到数据库
+        const addResult = await subsColl.add(newPendingSub);
+        const newSubId = addResult?.id;
+
+        // 3. 将所有 pending 订阅（包括新的）按等级降序排列，同等级按创建时间升序
+        const allPendingSubs = [
+          ...existingPendingSubs.map((s: any) => ({
+            _id: s._id,
+            plan: normalizePlanKey(s.plan),
+            period: s.period,
+            rank: PLAN_RANK[normalizePlanKey(s.plan)] || 0,
+            createdAt: s.createdAt || s.created_at || nowIso, // 用于同等级排序
+          })),
+          {
+            _id: newSubId,
+            plan,
+            period,
+            rank: purchaseRank,
+            createdAt: nowIso, // 新订阅的创建时间
+          },
+        ].sort((a, b) => {
+          // 先按等级降序（高级先生效）
+          if (b.rank !== a.rank) return b.rank - a.rank;
+          // 同等级按创建时间升序（先买的先生效）
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         });
 
+        // 4. 重新计算每个订阅的 startedAt 和 expiresAt
+        let nextStartDate = currentPlanExp && currentPlanActive ? currentPlanExp : now;
+        const updatedQueue: { targetPlan: string; effectiveAt: string; expiresAt: string }[] = [];
+
+        for (const pendingSub of allPendingSubs) {
+          const subDays = pendingSub.period === "annual" ? 365 : 30;
+          const subExpires = addDays(nextStartDate, subDays);
+
+          // 更新订阅记录的时间
+          if (pendingSub._id) {
+            await subsColl.doc(pendingSub._id).update({
+              startedAt: nextStartDate.toISOString(),
+              expiresAt: subExpires.toISOString(),
+              updatedAt: nowIso,
+            });
+          }
+
+          updatedQueue.push({
+            targetPlan: pendingSub.plan,
+            effectiveAt: nextStartDate.toISOString(),
+            expiresAt: subExpires.toISOString(),
+          });
+
+          // 下一个订阅从这个订阅到期后开始
+          nextStartDate = subExpires;
+        }
+
+        // 5. 更新用户的 pendingDowngrade 为数组（按生效顺序）
         await db.collection("users").doc(userId).update({
-          pendingDowngrade,
+          pendingDowngrade: _.set(updatedQueue.length > 0 ? updatedQueue : null),
           updatedAt: nowIso,
+        });
+
+        console.log("[Stripe Confirm] Downgrade queue updated:", {
+          userId,
+          newPlan: plan,
+          queue: updatedQueue,
         });
 
         effectivePlan = currentPlanKey || plan;
@@ -469,7 +684,7 @@ export async function POST(request: NextRequest) {
           plan,
           plan_exp: purchaseExpiresAt.toISOString(),
           subscriptionTier: plan,
-          pendingDowngrade: null,
+          pendingDowngrade: _.set(null),
           updatedAt: nowIso,
         });
 

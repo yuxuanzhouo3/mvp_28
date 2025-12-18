@@ -46,6 +46,8 @@ export async function createStripeCheckoutSession(params: {
     userId: params.userId || "",
     customId: params.customId || "",
     paymentType: "onetime",
+    expectedAmount: params.amount.toFixed(2),
+    expectedAmountCents: String(Math.round(params.amount * 100)),
   };
 
   if (isAddon) {

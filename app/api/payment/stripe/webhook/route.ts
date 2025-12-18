@@ -1,9 +1,16 @@
 import { headers } from "next/headers";
 import Stripe from "stripe";
+import { isAfter } from "date-fns";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
-  renewSupabaseMonthlyQuota,
   addSupabaseAddonCredits,
+  addCalendarMonths,
+  getBeijingYMD,
+  getSupabasePlanMediaLimits,
+  renewSupabaseMonthlyQuota,
+  seedSupabaseWalletForPlan,
+  updateSupabaseSubscription,
+  upgradeSupabaseMonthlyQuota,
 } from "@/services/wallet-supabase";
 
 export const runtime = "nodejs";
@@ -12,6 +19,17 @@ export const dynamic = "force-dynamic";
 const stripeKey = process.env.STRIPE_SECRET_KEY || "";
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
 
+const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
+
+// 统一套餐名称，兼容中文/英文，返回英文 canonical key
+const normalizePlanName = (p?: string) => {
+  const lower = (p || "").toLowerCase();
+  if (lower === "basic" || lower === "基础版") return "Basic";
+  if (lower === "pro" || lower === "专业版") return "Pro";
+  if (lower === "enterprise" || lower === "企业版") return "Enterprise";
+  return p || "";
+};
+
 export async function POST(req: Request) {
   // 如果未配置 Stripe 密钥，则跳过处理，避免构建/运行时报错
   if (!stripeKey || !webhookSecret) {
@@ -19,10 +37,10 @@ export async function POST(req: Request) {
     return new Response("stripe disabled", { status: 200 });
   }
 
-  const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+  const stripe = new Stripe(stripeKey);
 
   const body = await req.text();
-  const signature = headers().get("stripe-signature") as string;
+  const signature = (await headers()).get("stripe-signature") as string;
 
   let event: Stripe.Event;
 
@@ -33,9 +51,14 @@ export async function POST(req: Request) {
     return new Response(`Webhook Error: ${err.message}`, { status: 400 });
   }
 
+  // 当前实现使用 Checkout Session（mode=payment，一次性支付），以 checkout.session.completed 为权威
+  if (event.type !== "checkout.session.completed") {
+    return new Response(null, { status: 200 });
+  }
+
   // 订阅续费（Stripe 账期为权威）
-  if (event.type === "invoice.payment_succeeded") {
-    const invoice = event.data.object as Stripe.Invoice;
+  if (false) {
+    const invoice = event.data.object as any;
 
     // 1) 获取 userId，Invoice 优先，缺失则查 Subscription
     let userId = invoice.metadata?.userId as string | undefined;
@@ -138,6 +161,11 @@ export async function POST(req: Request) {
       return new Response(null, { status: 200 });
     }
 
+    if (!supabaseAdmin) {
+      console.warn("[stripe webhook] supabaseAdmin not available, skipping");
+      return new Response(null, { status: 200 });
+    }
+
     const metadata = session.metadata || {};
     const productType = (metadata.productType as string) || "SUBSCRIPTION";
     const userId =
@@ -154,13 +182,71 @@ export async function POST(req: Request) {
 
     const amount = (session.amount_total || 0) / 100;
     const currency = session.currency?.toUpperCase() || "USD";
+    const actualCents = session.amount_total || 0;
+
+    // 金额一致性校验：期望金额写入 Stripe metadata（create 阶段），webhook 阶段严格对齐
+    const expectedCentsStr =
+      metadata.expectedAmountCents ||
+      (metadata as any).expected_amount_cents ||
+      null;
+    const expectedAmountStr =
+      metadata.expectedAmount ||
+      (metadata as any).expected_amount ||
+      null;
+
+    if (expectedCentsStr != null) {
+      const expectedCents = parseInt(String(expectedCentsStr), 10);
+      if (!Number.isNaN(expectedCents) && expectedCents !== actualCents) {
+        console.error("[stripe webhook][amount-mismatch]", {
+          sessionId: session.id,
+          userId,
+          expectedCents,
+          actualCents,
+          currency,
+          productType,
+          metadata,
+        });
+        return new Response(null, { status: 200 });
+      }
+    } else if (expectedAmountStr != null) {
+      const expected = parseFloat(String(expectedAmountStr));
+      if (!Number.isNaN(expected)) {
+        const expectedCents = Math.round(expected * 100);
+        if (expectedCents !== actualCents) {
+          console.error("[stripe webhook][amount-mismatch]", {
+            sessionId: session.id,
+            userId,
+            expectedCents,
+            actualCents,
+            currency,
+            productType,
+            metadata,
+          });
+          return new Response(null, { status: 200 });
+        }
+      }
+    }
+
+    // 幂等：按 provider + provider_order_id best-effort 去重（建议后续在 DB 加唯一约束）
+    const { data: existingPayment } = await supabaseAdmin
+      .from("payments")
+      .select("id")
+      .eq("provider_order_id", session.id)
+      .eq("provider", "stripe")
+      .maybeSingle();
 
     // 加油包
     if (productType === "ADDON") {
       const imageCredits = parseInt(metadata.imageCredits || "0", 10);
       const videoAudioCredits = parseInt(metadata.videoAudioCredits || "0", 10);
+
+      if (existingPayment) {
+        console.log("[Stripe][ADDON] already processed", { sessionId: session.id, userId });
+        return new Response(null, { status: 200 });
+      }
+
       try {
-        await supabaseAdmin?.from("payments").insert({
+        await supabaseAdmin.from("payments").insert({
           user_id: userId,
           provider: "stripe",
           provider_order_id: session.id,
@@ -181,61 +267,46 @@ export async function POST(req: Request) {
       return new Response(null, { status: 200 });
     }
 
-    // 订阅新购/升级：直接用 subscription 的 current_period_end 作为权威
-    if (session.subscription) {
-      const sub =
-        typeof session.subscription === "string"
-          ? await stripe.subscriptions.retrieve(session.subscription)
-          : (session.subscription as Stripe.Subscription);
+    // 订阅 (SUBSCRIPTION)：一次性支付，基于 metadata 计算到期与降级计划
+    const plan = normalizePlanName((metadata.planName as string) || "Pro") || "Pro";
+    const periodStr = String(metadata.billingCycle || "monthly").toLowerCase();
+    const period: "monthly" | "annual" =
+      periodStr === "annual" || periodStr === "yearly" ? "annual" : "monthly";
 
-      const plan = (() => {
-        const lower =
-          (metadata.planName ||
-            sub.metadata?.planName ||
-            sub.items?.data?.[0]?.price?.nickname ||
-            "Pro")?.toLowerCase() || "pro";
-        if (lower.includes("basic")) return "Basic";
-        if (lower.includes("enterprise")) return "Enterprise";
-        return "Pro";
-      })();
-      const isProFlag = plan.toLowerCase() !== "basic";
-      const periodEnd = sub.current_period_end;
-      const periodStart = sub.current_period_start;
-      const planExpIso = new Date(periodEnd * 1000).toISOString();
-      const anchorDay = periodStart
-        ? new Date(periodStart * 1000).getUTCDate()
-        : undefined;
+    try {
+      const now = new Date();
+      const nowIso = now.toISOString();
 
-      try {
-        await supabaseAdmin
-          ?.from("subscriptions")
-          .upsert(
-            {
-              user_id: userId,
-              plan,
-              period: sub.items?.data?.[0]?.plan?.interval === "year" ? "annual" : "monthly",
-              status: "active",
-              provider: "stripe",
-              provider_order_id: session.id,
-              started_at: periodStart ? new Date(periodStart * 1000).toISOString() : null,
-              expires_at: planExpIso,
-            },
-            { onConflict: "user_id" }
-          );
+      const { data: walletRow } = await supabaseAdmin
+        .from("user_wallets")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
 
-        await supabaseAdmin
-          ?.from("user_wallets")
-          .update({
-            plan,
-            subscription_tier: plan,
-            pro: isProFlag,
-            plan_exp: planExpIso,
-            billing_cycle_anchor: anchorDay ?? undefined,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("user_id", userId);
+      const currentPlanKey = normalizePlanName(walletRow?.plan || "");
+      const currentPlanExp = walletRow?.plan_exp ? new Date(walletRow.plan_exp) : null;
+      const currentPlanActive = currentPlanExp ? isAfter(currentPlanExp, now) : false;
 
-        await supabaseAdmin?.from("payments").insert({
+      const purchasePlanKey = normalizePlanName(plan);
+      const purchaseRank = PLAN_RANK[purchasePlanKey] || 0;
+      const currentRank = PLAN_RANK[currentPlanKey] || 0;
+      const isUpgrade = purchaseRank > currentRank && currentPlanActive;
+      const isDowngrade = purchaseRank < currentRank && currentPlanActive;
+      const isSameActive = purchaseRank === currentRank && currentPlanActive;
+      const isNewOrExpired = !currentPlanActive || !currentPlanKey;
+
+      const monthsToAdd = period === "annual" ? 12 : 1;
+      const anchorDay =
+        walletRow?.billing_cycle_anchor ||
+        (walletRow?.monthly_reset_at
+          ? getBeijingYMD(new Date(walletRow.monthly_reset_at)).day
+          : getBeijingYMD(now).day);
+
+      const baseDate = isSameActive && currentPlanExp ? currentPlanExp : now;
+      const purchaseExpiresAt = addCalendarMonths(baseDate, monthsToAdd, anchorDay);
+
+      if (!existingPayment) {
+        await supabaseAdmin.from("payments").insert({
           user_id: userId,
           provider: "stripe",
           provider_order_id: session.id,
@@ -243,16 +314,87 @@ export async function POST(req: Request) {
           currency,
           status: "COMPLETED",
           type: "SUBSCRIPTION",
-          plan,
-          period: sub.items?.data?.[0]?.plan?.interval === "year" ? "annual" : "monthly",
+        });
+      }
+
+      const { imageLimit, videoLimit } = getSupabasePlanMediaLimits(plan.toLowerCase());
+
+      if (isDowngrade) {
+        const scheduledStart = currentPlanExp && currentPlanActive ? currentPlanExp : now;
+        const scheduledExpire = addCalendarMonths(scheduledStart, monthsToAdd, anchorDay);
+        const pendingDowngrade = JSON.stringify({
+          targetPlan: plan,
+          effectiveAt: scheduledStart.toISOString(),
         });
 
-        await renewSupabaseMonthlyQuota(userId);
-        console.log(`[Stripe][SUBSCRIPTION] processed for user ${userId}`);
-      } catch (err) {
-        console.error("[Stripe][SUBSCRIPTION] error", err);
-        return new Response("DB Error", { status: 500 });
+        await supabaseAdmin.from("subscriptions").upsert(
+          {
+            user_id: userId,
+            plan,
+            period,
+            status: "pending",
+            provider: "stripe",
+            provider_order_id: session.id,
+            started_at: scheduledStart.toISOString(),
+            expires_at: scheduledExpire.toISOString(),
+            type: "SUBSCRIPTION",
+          },
+          { onConflict: "user_id" }
+        );
+
+        await supabaseAdmin
+          .from("user_wallets")
+          .update({
+            pending_downgrade: pendingDowngrade,
+            updated_at: nowIso,
+          })
+          .eq("user_id", userId);
+
+        console.log(`[Stripe][SUBSCRIPTION] downgrade scheduled for user ${userId}`);
+        return new Response(null, { status: 200 });
       }
+
+      await supabaseAdmin.from("subscriptions").upsert(
+        {
+          user_id: userId,
+          plan,
+          period,
+          status: "active",
+          provider: "stripe",
+          provider_order_id: session.id,
+          started_at: nowIso,
+          expires_at: purchaseExpiresAt.toISOString(),
+          type: "SUBSCRIPTION",
+        },
+        { onConflict: "user_id" }
+      );
+
+      const isProFlag = plan.toLowerCase() !== "basic" && plan.toLowerCase() !== "free";
+
+      await supabaseAdmin.auth.admin.updateUserById(userId, {
+        user_metadata: {
+          pro: isProFlag,
+          plan,
+          plan_exp: purchaseExpiresAt.toISOString(),
+        },
+      });
+
+      await updateSupabaseSubscription(userId, plan, purchaseExpiresAt.toISOString(), isProFlag, null);
+
+      if (isUpgrade || isNewOrExpired) {
+        await upgradeSupabaseMonthlyQuota(userId, imageLimit, videoLimit);
+      } else if (isSameActive) {
+        await renewSupabaseMonthlyQuota(userId);
+      }
+
+      await seedSupabaseWalletForPlan(userId, plan.toLowerCase(), {
+        forceReset: isUpgrade || isNewOrExpired,
+      });
+
+      console.log(`[Stripe][SUBSCRIPTION] processed for user ${userId}`);
+    } catch (err) {
+      console.error("[Stripe][SUBSCRIPTION] error", err);
+      return new Response("DB Error", { status: 500 });
     }
   }
 

@@ -183,6 +183,7 @@ export default function Header({
     !isProUserLimited &&
     !isEnterpriseUser &&
     (planLower === "" || planLower === "free");
+  const canCloseAdsForUpsell = !appUser?.isPaid;
 
   const quotaText = isUnlimited ? "∞/∞" : null;
   // 实时钱包（用于显示加油包最新额度）
@@ -548,8 +549,12 @@ export default function Header({
               <AdBanner
                 position="top"
                 isDomestic={isDomestic}
-                showCloseButton={true}
-                onClose={() => setShowUpgradeDialog(true)}
+                showCloseButton={canCloseAdsForUpsell}
+                onClose={() => {
+                  if (canCloseAdsForUpsell) {
+                    setShowUpgradeDialog(true);
+                  }
+                }}
                 className="max-w-3xl"
               />
             </div>

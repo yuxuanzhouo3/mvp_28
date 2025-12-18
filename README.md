@@ -183,6 +183,7 @@ docker run -p 3000:3000 morngpt
 ## 管理后台
 
 访问 `/admin/login` 进入管理后台。
+注意：管理后台登录依赖 Supabase（`admin_users` 表）。即使部署为国内版（`NEXT_PUBLIC_DEFAULT_LANGUAGE=zh`），也需要配置 `SUPABASE_URL`（或 `NEXT_PUBLIC_SUPABASE_URL`）与 `SUPABASE_SERVICE_ROLE_KEY`（仅服务端）。
 
 功能：
 - 广告位管理 (增删改查、图片上传)

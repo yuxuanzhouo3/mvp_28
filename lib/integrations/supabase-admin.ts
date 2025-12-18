@@ -1,8 +1,12 @@
 // lib/integrations/supabase-admin.ts - Supabase Admin Client (使用 Service Role Key)
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import {
+  getSupabaseServiceRoleKeyFromEnv,
+  getSupabaseUrlFromEnv,
+} from "@/lib/supabase/env";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = getSupabaseUrlFromEnv();
+const supabaseServiceRoleKey = getSupabaseServiceRoleKeyFromEnv();
 
 /**
  * Supabase Admin Client - 使用 Service Role Key
@@ -21,7 +25,7 @@ if (supabaseUrl && supabaseServiceRoleKey) {
   });
 } else {
   console.warn(
-    "[supabaseAdmin] Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY; admin operations will fail."
+    "[supabaseAdmin] Missing SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) or SUPABASE_SERVICE_ROLE_KEY; admin operations will fail."
   );
 }
 

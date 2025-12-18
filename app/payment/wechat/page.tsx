@@ -35,6 +35,22 @@ function WechatPaymentContent() {
 
       if (data.success && data.trade_state === "SUCCESS") {
         setStatus("success");
+
+        // 调用确认API处理业务逻辑（增加额度/激活订阅）
+        try {
+          console.log("[WeChat Payment] Confirming payment:", outTradeNo);
+          const confirmRes = await fetch("/api/payment/wechat/confirm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ outTradeNo }),
+          });
+          const confirmData = await confirmRes.json();
+          console.log("[WeChat Payment] Confirm result:", confirmData);
+        } catch (confirmError) {
+          console.error("[WeChat Payment] Confirm error:", confirmError);
+          // 即使确认失败也继续跳转，success页面会再次尝试
+        }
+
         // 3秒后跳转，传递订单信息
         setTimeout(() => {
           router.push(`/payment/success?provider=wechat&out_trade_no=${outTradeNo}&total_amount=${amount}&transaction_id=${data.transaction_id || ""}`);
@@ -48,7 +64,7 @@ function WechatPaymentContent() {
     } catch (error) {
       console.error("Check payment status error:", error);
     }
-  }, [outTradeNo, router]);
+  }, [outTradeNo, router, amount]);
 
   useEffect(() => {
     if (status !== "pending") return;

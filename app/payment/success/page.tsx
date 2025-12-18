@@ -6,15 +6,18 @@ import { CheckCircle, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/context/LanguageContext";
 
-function AlipaySuccessContent() {
+function PaymentSuccessContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const outTradeNo = searchParams.get("out_trade_no");
   const tradeNo = searchParams.get("trade_no");
-  const tradeStatus = searchParams.get("trade_status");
+  const transactionId = searchParams.get("transaction_id");
   const totalAmount = searchParams.get("total_amount");
+  const provider = searchParams.get("provider") || "alipay"; // 默认支付宝
   const { currentLanguage } = useLanguage();
   const isZh = currentLanguage === "zh";
+
+  const isWechat = provider === "wechat";
 
   const [status, setStatus] = useState<"loading" | "success" | "error">(
     "loading"
@@ -30,8 +33,7 @@ function AlipaySuccessContent() {
   const confirmedRef = useRef(false);
 
   useEffect(() => {
-    // 支付宝同步跳转时会携带这些参数
-    // 由于异步 webhook 在开发/沙箱环境无法访问 localhost，需要主动调用确认 API
+    // 支付完成后调用确认API处理业务逻辑
     async function confirmPayment() {
       if (!outTradeNo) {
         setError(isZh ? "缺少订单信息" : "Missing order information");
@@ -44,9 +46,14 @@ function AlipaySuccessContent() {
       confirmedRef.current = true;
 
       try {
-        console.log("[Payment Success] Confirming payment:", outTradeNo);
+        console.log(`[Payment Success] Confirming ${provider} payment:`, outTradeNo);
 
-        const response = await fetch("/api/payment/alipay/confirm", {
+        // 根据支付方式调用不同的确认API
+        const confirmUrl = isWechat
+          ? "/api/payment/wechat/confirm"
+          : "/api/payment/alipay/confirm";
+
+        const response = await fetch(confirmUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ outTradeNo }),
@@ -58,7 +65,7 @@ function AlipaySuccessContent() {
         if (data.success) {
           setResult({
             orderId: outTradeNo,
-            tradeNo: tradeNo || undefined,
+            tradeNo: isWechat ? (transactionId || undefined) : (tradeNo || undefined),
             amount: totalAmount || undefined,
             productType: data.productType,
             message: data.message,
@@ -66,7 +73,7 @@ function AlipaySuccessContent() {
           setStatus("success");
         } else {
           // 如果是"支付未完成"，说明用户可能取消了支付
-          if (data.error === "Payment not completed" || data.status === "WAIT_BUYER_PAY") {
+          if (data.error === "Payment not completed" || data.status === "WAIT_BUYER_PAY" || data.status === "NOTPAY") {
             setError(isZh ? "支付未完成，请重新支付" : "Payment not completed, please try again");
           } else {
             setError(data.error || (isZh ? "确认支付失败" : "Failed to confirm payment"));
@@ -81,7 +88,7 @@ function AlipaySuccessContent() {
     }
 
     confirmPayment();
-  }, [outTradeNo, tradeNo, totalAmount, isZh]);
+  }, [outTradeNo, tradeNo, transactionId, totalAmount, isZh, provider, isWechat]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-4">
@@ -127,7 +134,9 @@ function AlipaySuccessContent() {
                 {result.tradeNo && (
                   <div className="flex justify-between py-2 border-b border-gray-200 dark:border-gray-600">
                     <span className="text-gray-600 dark:text-gray-400">
-                      {isZh ? "支付宝交易号" : "Alipay Trade No"}
+                      {isWechat
+                        ? (isZh ? "微信交易号" : "WeChat Transaction ID")
+                        : (isZh ? "支付宝交易号" : "Alipay Trade No")}
                     </span>
                     <span className="font-semibold text-gray-900 dark:text-white text-sm">
                       {result.tradeNo}
@@ -199,7 +208,7 @@ function AlipaySuccessContent() {
   );
 }
 
-export default function AlipaySuccessPage() {
+export default function PaymentSuccessPage() {
   return (
     <Suspense
       fallback={
@@ -208,7 +217,7 @@ export default function AlipaySuccessPage() {
         </div>
       }
     >
-      <AlipaySuccessContent />
+      <PaymentSuccessContent />
     </Suspense>
   );
 }

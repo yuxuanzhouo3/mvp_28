@@ -1,4 +1,4 @@
-// app/api/payment/alipay/create/route.ts - 支付宝支付创建API
+// app/api/payment/alipay/create/route.ts - 支付宝支付创建API（国内版专用）
 import { NextRequest, NextResponse } from "next/server";
 import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
 import { pricingPlans, type PricingPlan } from "@/constants/pricing";
@@ -6,9 +6,7 @@ import { ADDON_PACKAGES, getAddonPackageById, getAddonDescription, type ProductT
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
-import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
 import { isAfter } from "date-fns";
 import { calculateUpgradePrice } from "@/services/wallet";
 
@@ -244,29 +242,11 @@ export async function POST(request: NextRequest) {
     };
 
     try {
-      if (IS_DOMESTIC_VERSION) {
-        // CloudBase 插入
-        const connector = new CloudBaseConnector();
-        await connector.initialize();
-        const db = connector.getClient();
-        await db.collection("payments").add(paymentData);
-      } else {
-        // Supabase 插入
-        const { error: insertError } = await supabaseAdmin
-          .from("payments")
-          .insert([
-            {
-              ...paymentData,
-              user_id: userId,
-              provider_order_id: result.paymentId,
-            },
-          ]);
-
-        if (insertError) {
-          console.error("❌ [Alipay Create] Supabase insert error:", insertError);
-          throw insertError;
-        }
-      }
+      // 国内版使用 CloudBase
+      const connector = new CloudBaseConnector();
+      await connector.initialize();
+      const db = connector.getClient();
+      await db.collection("payments").add(paymentData);
 
       console.log("✅ [Alipay Create] Payment record created:", {
         transactionId: result.paymentId,
@@ -275,7 +255,7 @@ export async function POST(request: NextRequest) {
       });
     } catch (dbError) {
       console.error("❌ [Alipay Create] Database error:", dbError);
-      // 若无法落库 pending 支付单，则拒绝返回 formHtml，避免“已支付但无法发放权益”
+      // 若无法落库 pending 支付单，则拒绝返回 formHtml，避免"已支付但无法发放权益"
       return NextResponse.json(
         { success: false, error: "创建支付失败，请稍后重试" },
         { status: 500 }

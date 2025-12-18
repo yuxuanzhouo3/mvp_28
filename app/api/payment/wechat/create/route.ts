@@ -1,5 +1,5 @@
 // app/api/payment/wechat/create/route.ts
-// 微信支付创建 API - 支持订阅和加油包
+// 微信支付创建 API - 支持订阅和加油包（国内版专用）
 
 import { NextRequest, NextResponse } from "next/server";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider";
@@ -12,9 +12,7 @@ import {
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
-import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
 import { isAfter } from "date-fns";
 import { calculateUpgradePrice } from "@/services/wallet";
 
@@ -263,28 +261,11 @@ export async function POST(request: NextRequest) {
     };
 
     try {
-      if (IS_DOMESTIC_VERSION) {
-        // CloudBase 插入
-        const connector = new CloudBaseConnector();
-        await connector.initialize();
-        const db = connector.getClient();
-        await db.collection("payments").add(paymentData);
-      } else {
-        // Supabase 插入
-        const { error: insertError } = await supabaseAdmin
-          .from("payments")
-          .insert([
-            {
-              ...paymentData,
-              provider_order_id: out_trade_no,
-            },
-          ]);
-
-        if (insertError) {
-          console.error("❌ [WeChat Create] Supabase insert error:", insertError);
-          throw insertError;
-        }
-      }
+      // 国内版使用 CloudBase
+      const connector = new CloudBaseConnector();
+      await connector.initialize();
+      const db = connector.getClient();
+      await db.collection("payments").add(paymentData);
 
       console.log("✅ [WeChat Create] Payment record created:", {
         out_trade_no,
@@ -293,7 +274,7 @@ export async function POST(request: NextRequest) {
       });
     } catch (dbError) {
       console.error("❌ [WeChat Create] Database error:", dbError);
-      // 若无法落库 pending 支付单，则拒绝返回 code_url，避免“已支付但无法发放权益”
+      // 若无法落库 pending 支付单，则拒绝返回 code_url，避免"已支付但无法发放权益"
       return NextResponse.json(
         { success: false, error: "创建支付失败，请稍后重试" },
         { status: 500 }

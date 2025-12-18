@@ -158,10 +158,29 @@ export async function GET(req: NextRequest) {
       const result = await db.collection("users").doc(user.id).get();
       const userData = result?.data?.[0] || result?.data;
 
+      // 获取订阅状态
+      const plan = (userData?.plan || user.metadata?.plan || "").toLowerCase();
+      const planExp = userData?.plan_exp || user.metadata?.plan_exp || null;
+      const isPro = userData?.pro || user.metadata?.pro || false;
+
+      // 判断是否为付费用户
+      const isPaid = plan === "basic" || plan === "pro" || plan === "enterprise" || isPro;
+      const isExpired = planExp ? new Date(planExp) < new Date() : false;
+      const hasActiveSubscription = isPaid && !isExpired;
+
       return NextResponse.json({
         success: true,
         data: {
           hide_ads: userData?.hide_ads ?? false,
+          // 返回订阅状态供前端使用
+          subscription: {
+            plan: userData?.plan || user.metadata?.plan || "Free",
+            planExp: planExp,
+            isPro: isPro,
+            isPaid: isPaid,
+            isExpired: isExpired,
+            hasActiveSubscription: hasActiveSubscription,
+          },
         },
       });
     } else {
@@ -183,10 +202,39 @@ export async function GET(req: NextRequest) {
         .eq("id", user.id)
         .single();
 
+      // 从 user_wallets 表获取订阅状态（比 user_metadata 更准确）
+      const { data: wallet } = await supabase
+        .from("user_wallets")
+        .select("plan, plan_exp, pro, subscription_tier")
+        .eq("user_id", user.id)
+        .single();
+
+      const plan = (wallet?.plan || "").toLowerCase();
+      const subscriptionTier = (wallet?.subscription_tier || "").toLowerCase();
+      const planExp = wallet?.plan_exp || null;
+      const isPro = wallet?.pro || false;
+
+      // 判断是否为付费用户（Basic/Pro/Enterprise）
+      const isPaid = plan === "basic" || plan === "pro" || plan === "enterprise" ||
+                     subscriptionTier === "basic" || subscriptionTier === "pro" || subscriptionTier === "enterprise";
+
+      // 判断订阅是否过期
+      const isExpired = planExp ? new Date(planExp) < new Date() : false;
+      const hasActiveSubscription = isPaid && !isExpired;
+
       return NextResponse.json({
         success: true,
         data: {
           hide_ads: profile?.hide_ads ?? false,
+          // 返回订阅状态供前端使用
+          subscription: {
+            plan: wallet?.plan || "Free",
+            planExp: planExp,
+            isPro: isPro,
+            isPaid: isPaid,
+            isExpired: isExpired,
+            hasActiveSubscription: hasActiveSubscription,
+          },
         },
       });
     }

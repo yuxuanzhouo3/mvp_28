@@ -505,12 +505,21 @@ export class AlipayProvider extends AbstractAlipayProvider {
         },
       });
 
-      if (result.code === "10000") {
+      console.log("[Alipay] Raw query result:", JSON.stringify(result, null, 2));
+
+      // Alipay SDK 可能返回 snake_case 或 camelCase，兼容两种格式
+      const tradeStatus = result.tradeStatus || result.trade_status;
+      const tradeNo = result.tradeNo || result.trade_no;
+      const totalAmount = result.totalAmount || result.total_amount;
+      const buyerPayAmount = result.buyerPayAmount || result.buyer_pay_amount || totalAmount;
+      const code = result.code;
+
+      if (code === "10000") {
         return {
-          trade_status: result.tradeStatus,
-          trade_no: result.tradeNo,
-          total_amount: result.totalAmount,
-          buyer_pay_amount: result.buyerPayAmount || result.totalAmount,
+          trade_status: tradeStatus,
+          trade_no: tradeNo,
+          total_amount: totalAmount,
+          buyer_pay_amount: buyerPayAmount,
         };
       } else {
         // 检测查询失败的错误

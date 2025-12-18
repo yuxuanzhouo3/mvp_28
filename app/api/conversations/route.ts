@@ -28,11 +28,10 @@ function getPlanInfo(meta: any) {
   return { planLower, isPro, isBasic, isFree };
 }
 
-// 动态判定是否走国内逻辑：环境为 zh 或请求携带 auth-token 即视为国内
+// 版本隔离：仅根据部署环境决定（避免通过 cookie / header 旁路访问另一套数据源）
 function isDomesticRequest(req: NextRequest) {
-  const langIsZh = IS_DOMESTIC_VERSION;
-  const hasCloudToken = !!req.cookies.get("auth-token");
-  return langIsZh || hasCloudToken;
+  // 版本隔离：仅根据部署环境决定（避免 en 环境因残留 auth-token 误访问国内数据）
+  return IS_DOMESTIC_VERSION;
 }
 
 // List conversations for current user
@@ -144,6 +143,14 @@ export async function POST(req: NextRequest) {
       !userPlan ||
       (typeof userPlan === "string" &&
         userPlan.toLowerCase() === "free");
+
+    // 调试日志
+    console.log("[conversations] User plan detection:", {
+      userId,
+      userPlan,
+      isFreeUser,
+      metadata: userData.user.user_metadata,
+    });
 
     // Free 用户：不落库，返回本地临时会话 ID
     if (isFreeUser) {

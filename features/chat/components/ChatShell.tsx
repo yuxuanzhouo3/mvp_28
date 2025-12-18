@@ -35,8 +35,8 @@ function ChatShell() {
    * 4. Free用户 = 显示广告（可手动关闭单个广告，刷新后恢复）
    */
   const shouldShowAds = useMemo(() => {
-    // 如果用户是订阅用户
-    if (appUser?.isPro) {
+    // 如果用户是订阅用户（Basic/Pro/Enterprise）
+    if (appUser?.isPaid) {
       // 检查是否开启了去除广告功能
       if (appUser.settings?.hideAds) {
         // 检查订阅是否过期
@@ -50,7 +50,7 @@ function ChatShell() {
           // 订阅已过期，显示广告
           return true;
         }
-        // 没有过期时间但是isPro，认为是有效订阅
+        // 没有过期时间但是isPaid，认为是有效订阅
         return false;
       }
       // 未开启hideAds，显示广告
@@ -58,7 +58,7 @@ function ChatShell() {
     }
     // Free用户，显示广告
     return true;
-  }, [appUser?.isPro, appUser?.settings?.hideAds, appUser?.planExp]);
+  }, [appUser?.isPaid, appUser?.settings?.hideAds, appUser?.planExp]);
 
   // 最终是否显示广告：shouldShowAds && showGlobalAds（Free用户关闭单个广告时临时隐藏）
   const displayAds = shouldShowAds && showGlobalAds;
@@ -85,7 +85,8 @@ function ChatShell() {
         {/* Header - Fixed height */}
         <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#40414f] flex-shrink-0 transition-colors">
           <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
-            <Header {...headerProps} />
+            {/* 覆盖 showGlobalAds，使用基于订阅状态计算的 displayAds */}
+            <Header {...headerProps} showGlobalAds={displayAds} />
           </div>
         </header>
 

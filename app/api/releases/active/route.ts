@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
+import { IS_DOMESTIC_VERSION } from "@/config";
 
 // 平台类型
 type Platform = "ios" | "android" | "windows" | "macos" | "linux";
@@ -29,7 +30,8 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const platform = searchParams.get("platform") as Platform | null;
-    const isDomestic = searchParams.get("isDomestic") === "true";
+    // 版本隔离：以部署版本为准，忽略客户端传参，避免跨库读取
+    const isDomestic = IS_DOMESTIC_VERSION;
 
     // 验证平台参数（如果提供）
     if (platform && !VALID_PLATFORMS.includes(platform)) {

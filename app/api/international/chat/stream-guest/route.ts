@@ -135,8 +135,8 @@ export async function POST(req: Request) {
     if (isLoggedIn && userData?.user) {
       userId = userData.user.id;
       const userMeta = userData.user.user_metadata as any;
-      const wallet = await getSupabaseUserWallet(userId);
-      const plan = getPlanInfo(userMeta, wallet);
+      let wallet = await getSupabaseUserWallet(userId);
+      let plan = getPlanInfo(userMeta, wallet);
       effectivePlanLower = plan.planActive ? plan.planLower : "free";
       
       // 登录用户使用完整上下文限制
@@ -144,6 +144,9 @@ export async function POST(req: Request) {
       
       // 确保钱包存在
       await seedSupabaseWalletForPlan(userId, effectivePlanLower);
+      wallet = await getSupabaseUserWallet(userId);
+      plan = getPlanInfo(userMeta, wallet);
+      effectivePlanLower = plan.planActive ? plan.planLower : "free";
       
       // 外部模型需要扣减配额
       if (category === "external") {

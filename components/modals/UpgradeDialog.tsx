@@ -253,14 +253,18 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
       return { payable: null, targetAmount: null, isUpgrade: false, remainingDays: 0, deduction: 0, symbol: "" };
     }
 
-    const targetAmount = getPlanAmount(target.name, billingPeriod, useRmb);
+    const symbol = useRmb ? "￥" : "$";
+    const baseTargetAmount = getPlanAmount(target.name, billingPeriod, useRmb);
+    // 国内版微信 Basic 月付测试价：0.01（测试阶段请勿修改）
+    const targetAmount =
+      isDomesticVersion &&
+      selectedPayment === "wechat" &&
+      billingPeriod === "monthly" &&
+      target.name === "Basic"
+        ? 0.01
+        : baseTargetAmount;
     const priceLabel = billingPeriod === "annual" ? selectedPlanInDialog.annualPrice || selectedPlanInDialog.price : selectedPlanInDialog.price;
     const trimmed = priceLabel.trim();
-    const symbol = useRmb ? "￥" : "$";
-
-    if (!isDomesticVersion) {
-      return { payable: targetAmount, targetAmount, isUpgrade: false, remainingDays: 0, deduction: 0, symbol };
-    }
 
     const currentKey = normalizePlanName(currentPlan);
     const currentRank = planRank[currentKey.toLowerCase()] || 0;
@@ -275,13 +279,13 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
     }
 
     const remainingDays = Math.max(0, Math.ceil(((exp || now) - now) / msPerDay));
-    const currentMonthly = getPlanAmount(currentKey, "monthly", true);
+    const currentMonthly = getPlanAmount(currentKey, "monthly", useRmb);
     const deduction = (currentMonthly / 30) * remainingDays;
     const upgradePrice = Math.max(0, targetAmount - deduction);
     const payable = Math.round(upgradePrice * 100) / 100;
 
     return { payable, targetAmount, isUpgrade: true, remainingDays, deduction: Math.round(deduction * 100) / 100, symbol };
-  }, [billingPeriod, currentPlan, currentPlanExp, getPlanAmount, isDomesticVersion, normalizePlanName, planRank, selectedPlanInDialog, useRmb, resolvePlanByName, msPerDay]);
+  }, [billingPeriod, currentPlan, currentPlanExp, getPlanAmount, isDomesticVersion, normalizePlanName, planRank, selectedPayment, selectedPlanInDialog, useRmb, resolvePlanByName, msPerDay]);
 
   return (
     <>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { IS_DOMESTIC_VERSION } from "@/config";
 
 /**
  * GET /api/auth/wechat/qrcode
@@ -7,6 +8,11 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function GET(request: NextRequest) {
   try {
+    // 版本隔离：国际版不返回微信扫码登录二维码
+    if (!IS_DOMESTIC_VERSION) {
+      return new NextResponse(null, { status: 404 });
+    }
+
     const appId =
       process.env.WECHAT_APP_ID ||
       process.env.NEXT_PUBLIC_WECHAT_APP_ID ||

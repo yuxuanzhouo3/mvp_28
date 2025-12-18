@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { CheckCircle, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,25 +23,64 @@ function AlipaySuccessContent() {
     orderId?: string;
     tradeNo?: string;
     amount?: string;
+    productType?: string;
+    message?: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const confirmedRef = useRef(false);
 
   useEffect(() => {
     // 支付宝同步跳转时会携带这些参数
-    // 真正的支付确认通过异步 webhook 完成
-    if (outTradeNo) {
-      // 有订单号，显示成功状态
-      setResult({
-        orderId: outTradeNo,
-        tradeNo: tradeNo || undefined,
-        amount: totalAmount || undefined,
-      });
-      setStatus("success");
-    } else {
-      // 没有订单号，可能是直接访问
-      setError(isZh ? "缺少订单信息" : "Missing order information");
-      setStatus("error");
+    // 由于异步 webhook 在开发/沙箱环境无法访问 localhost，需要主动调用确认 API
+    async function confirmPayment() {
+      if (!outTradeNo) {
+        setError(isZh ? "缺少订单信息" : "Missing order information");
+        setStatus("error");
+        return;
+      }
+
+      // 防止重复确认
+      if (confirmedRef.current) return;
+      confirmedRef.current = true;
+
+      try {
+        console.log("[Payment Success] Confirming payment:", outTradeNo);
+
+        const response = await fetch("/api/payment/alipay/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ outTradeNo }),
+        });
+
+        const data = await response.json();
+        console.log("[Payment Success] Confirm result:", data);
+
+        if (data.success) {
+          setResult({
+            orderId: outTradeNo,
+            tradeNo: tradeNo || undefined,
+            amount: totalAmount || undefined,
+            productType: data.productType,
+            message: data.message,
+          });
+          setStatus("success");
+        } else {
+          // 如果是"支付未完成"，说明用户可能取消了支付
+          if (data.error === "Payment not completed" || data.status === "WAIT_BUYER_PAY") {
+            setError(isZh ? "支付未完成，请重新支付" : "Payment not completed, please try again");
+          } else {
+            setError(data.error || (isZh ? "确认支付失败" : "Failed to confirm payment"));
+          }
+          setStatus("error");
+        }
+      } catch (err) {
+        console.error("[Payment Success] Confirm error:", err);
+        setError(isZh ? "网络错误，请刷新页面重试" : "Network error, please refresh and retry");
+        setStatus("error");
+      }
     }
+
+    confirmPayment();
   }, [outTradeNo, tradeNo, totalAmount, isZh]);
 
   return (
@@ -70,9 +109,9 @@ function AlipaySuccessContent() {
               {isZh ? "支付成功！" : "Payment Successful!"}
             </h1>
             <p className="text-gray-600 dark:text-gray-400 mb-6">
-              {isZh
-                ? "感谢您的购买，您的订阅正在激活中"
-                : "Thank you for your purchase. Your subscription is being activated."}
+              {result?.productType === "ADDON"
+                ? (isZh ? "加油包额度已添加到您的账户" : "Addon credits have been added to your account")
+                : (isZh ? "感谢您的购买，您的订阅已激活" : "Thank you for your purchase. Your subscription is activated.")}
             </p>
 
             {result && (
@@ -109,9 +148,9 @@ function AlipaySuccessContent() {
             )}
 
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              {isZh
-                ? "订阅将在几分钟内自动激活，请刷新页面查看"
-                : "Your subscription will be activated within a few minutes. Please refresh the page."}
+              {result?.productType === "ADDON"
+                ? (isZh ? "额度已立即生效，可在账户中查看" : "Credits are effective immediately. Check your account.")
+                : (isZh ? "订阅已立即生效，可在账户中查看" : "Subscription is effective immediately. Check your account.")}
             </p>
 
             <Button

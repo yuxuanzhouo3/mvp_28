@@ -206,14 +206,24 @@ export function createDefaultWallet(): UserWallet {
 
 export function normalizeWallet(raw: any): UserWallet {
   const wallet = raw?.wallet || {};
+  // 兼容旧结构 (wallet.addon.image/video) 和新结构 (wallet.addon_image_balance/addon_video_balance)
+  const addonImageBalance =
+    wallet.addon_image_balance ??
+    wallet.addon?.image ??
+    0;
+  const addonVideoBalance =
+    wallet.addon_video_balance ??
+    wallet.addon?.video ??
+    0;
+
   return {
     monthly_image_balance: wallet.monthly_image_balance ?? 0,
     monthly_video_balance: wallet.monthly_video_balance ?? 0,
     monthly_reset_at: wallet.monthly_reset_at,
     plan_exp: wallet.plan_exp ?? raw?.plan_exp,
     billing_cycle_anchor: wallet.billing_cycle_anchor ?? wallet.billing_cycle_anchor,
-    addon_image_balance: wallet.addon_image_balance ?? 0,
-    addon_video_balance: wallet.addon_video_balance ?? 0,
+    addon_image_balance: addonImageBalance,
+    addon_video_balance: addonVideoBalance,
     daily_external_used: wallet.daily_external_used ?? 0,
     daily_external_day: wallet.daily_external_day,
     daily_external_plan: wallet.daily_external_plan,
@@ -406,6 +416,7 @@ export async function ensureUserWallet(userId: string): Promise<UserWallet> {
 
 /**
  * 增加加油包额度
+ * 兼容旧结构 (wallet.addon.image/video) 和新结构 (wallet.addon_image_balance/addon_video_balance)
  */
 export async function addAddonCredits(
   userId: string,
@@ -416,13 +427,35 @@ export async function addAddonCredits(
     const connector = new CloudBaseConnector();
     await connector.initialize();
     const db = connector.getClient();
-    const _ = db.command;
 
-    await ensureUserWallet(userId);
+    // 1. 获取当前用户数据
+    const userRes = await db.collection("users").doc(userId).get();
+    const userDoc = userRes?.data?.[0] || null;
+    if (!userDoc) {
+      console.error("[wallet][addon-add] User not found:", userId);
+      return { success: false, error: `User not found: ${userId}` };
+    }
 
+    // 2. 读取当前余额（兼容旧结构和新结构）
+    const wallet = userDoc.wallet || {};
+    // 新结构优先，回退到旧结构
+    const currentImageBalance =
+      wallet.addon_image_balance ??
+      wallet.addon?.image ??
+      0;
+    const currentVideoBalance =
+      wallet.addon_video_balance ??
+      wallet.addon?.video ??
+      0;
+
+    // 3. 计算新余额
+    const newImageBalance = currentImageBalance + imageCredits;
+    const newVideoBalance = currentVideoBalance + videoAudioCredits;
+
+    // 4. 以统一的新结构更新数据库
     await db.collection("users").doc(userId).update({
-      "wallet.addon_image_balance": _.inc(imageCredits),
-      "wallet.addon_video_balance": _.inc(videoAudioCredits),
+      "wallet.addon_image_balance": newImageBalance,
+      "wallet.addon_video_balance": newVideoBalance,
       updatedAt: new Date().toISOString(),
     });
 
@@ -430,6 +463,8 @@ export async function addAddonCredits(
       userId,
       imageCredits,
       videoAudioCredits,
+      previousBalance: { image: currentImageBalance, video: currentVideoBalance },
+      newBalance: { image: newImageBalance, video: newVideoBalance },
       timestamp: new Date().toISOString(),
     });
 
@@ -756,6 +791,7 @@ export async function consumeDailyExternalQuota(
 
 /**
  * 智能扣费 FEFO：先月度，再加油包
+ * 兼容旧结构和新结构钱包
  */
 export async function consumeQuota(
   request: QuotaDeductionRequest
@@ -767,7 +803,6 @@ export async function consumeQuota(
     const connector = new CloudBaseConnector();
     await connector.initialize();
     const db = connector.getClient();
-    const _ = db.command;
 
     const wallet = await getUserWallet(userId);
     if (!wallet) return { success: false, error: "User wallet not found" };
@@ -802,20 +837,21 @@ export async function consumeQuota(
     }
     if (mediaNeed > 0) return { success: false, error: "Insufficient video/audio quota" };
 
-    await db.collection("users").doc(userId).update({
-      "wallet.monthly_image_balance": _.inc(-deducted.monthly_image),
-      "wallet.monthly_video_balance": _.inc(-deducted.monthly_video),
-      "wallet.addon_image_balance": _.inc(-deducted.addon_image),
-      "wallet.addon_video_balance": _.inc(-deducted.addon_video),
-      updatedAt: new Date().toISOString(),
-    });
-
+    // 计算新余额（使用绝对值更新，避免 _.inc 在字段不存在时失败）
     const remaining = {
       monthly_image_balance: wallet.monthly_image_balance - deducted.monthly_image,
       monthly_video_balance: wallet.monthly_video_balance - deducted.monthly_video,
       addon_image_balance: wallet.addon_image_balance - deducted.addon_image,
       addon_video_balance: wallet.addon_video_balance - deducted.addon_video,
     };
+
+    await db.collection("users").doc(userId).update({
+      "wallet.monthly_image_balance": remaining.monthly_image_balance,
+      "wallet.monthly_video_balance": remaining.monthly_video_balance,
+      "wallet.addon_image_balance": remaining.addon_image_balance,
+      "wallet.addon_video_balance": remaining.addon_video_balance,
+      updatedAt: new Date().toISOString(),
+    });
 
     console.log("[wallet][consume-quota]", {
       userId,

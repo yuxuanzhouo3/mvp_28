@@ -935,13 +935,52 @@ const loadMessagesForConversation = useCallback(
           const data = await res.json();
           const user = data.user;
           const planExp = user.metadata?.plan_exp || null;
+          const planLower = (user.metadata?.plan || "").toLowerCase();
+          // 检查用户是否有付费订阅（Basic/Pro/Enterprise）
+          const isPaid = planLower === "basic" || planLower === "pro" || planLower === "enterprise";
+          const isPro = isPaid && planLower !== "basic";
+          // 检查订阅是否过期
+          const isExpired = planExp ? new Date(planExp) < new Date() : false;
+          const hasActiveSubscription = isPaid && !isExpired; // 有效订阅（用于 hideAds 判断）
+          const effectiveIsPro = isPro && !isExpired;
+
+          // 获取 hide_ads 设置和订阅状态（从服务器获取更准确）
+          let hideAds = user.metadata?.hide_ads ?? false;
+          let serverHasActiveSubscription = hasActiveSubscription;
+          try {
+            const settingsRes = await fetch("/api/account/settings", { credentials: "include" });
+            if (settingsRes.ok) {
+              const settingsData = await settingsRes.json();
+              hideAds = settingsData?.data?.hide_ads ?? hideAds;
+              // 使用服务器返回的订阅状态
+              if (settingsData?.data?.subscription) {
+                serverHasActiveSubscription = settingsData.data.subscription.hasActiveSubscription ?? hasActiveSubscription;
+                console.log("[syncSession] Domestic server subscription status:", settingsData.data.subscription);
+              }
+            }
+          } catch (e) {
+            console.error("[syncSession] Failed to load settings from server:", e);
+          }
+
+          // 仅当服务器确认订阅已过期时才自动关闭 hideAds
+          if (hideAds && !serverHasActiveSubscription) {
+            console.log("[syncSession] Domestic: Auto-disabling hideAds due to expired subscription");
+            hideAds = false;
+            // 异步同步到数据库
+            fetch("/api/account/settings", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ hideAds: false }),
+            }).catch((err) => console.error("[syncSession] Failed to reset hideAds on expired subscription:", err));
+          }
           const mappedUser: AppUser = {
             id: user.id,
             email: user.email || "",
             name: user.name || user.email || "User",
             // Basic 不是无限制，忽略 pro 标记
-            isPro: !!user.metadata?.pro && (user.metadata?.plan || "").toLowerCase?.() !== "basic",
-            isPaid: !!user.metadata?.pro,
+            isPro: effectiveIsPro,
+            isPaid: serverHasActiveSubscription, // 使用服务器返回的订阅状态
             plan: user.metadata?.plan || undefined,
             planExp: planExp || undefined,
             settings: {
@@ -950,7 +989,7 @@ const loadMessagesForConversation = useCallback(
               notifications: true,
               soundEnabled: true,
               autoSave: true,
-              hideAds: user.metadata?.hide_ads ?? false, // 从数据库加载 hide_ads 设置
+              hideAds: hideAds, // 从服务器加载 hide_ads 设置
             },
           };
           isDomesticSessionRef.current = true;
@@ -979,46 +1018,78 @@ const loadMessagesForConversation = useCallback(
       }
       if (data.session?.user) {
         const user = data.session.user;
-        // 获取 hide_ads 设置
+        // 获取用户元数据中的订阅信息
+        const userMeta = user.user_metadata as any;
+        const planExp = userMeta?.plan_exp || null;
+        const planLower = (userMeta?.plan || "").toLowerCase();
+        // 检查用户是否有付费订阅（Basic/Pro/Enterprise）
+        const isPaid = planLower === "basic" || planLower === "pro" || planLower === "enterprise";
+        const isPro = isPaid && planLower !== "basic";
+        // 检查订阅是否过期
+        const isExpired = planExp ? new Date(planExp) < new Date() : false;
+        const hasActiveSubscription = isPaid && !isExpired; // 有效订阅（用于 hideAds 判断）
+        const effectiveIsPro = isPro && !isExpired;
+
+        // 获取 hide_ads 设置和订阅状态（从服务器获取更准确）
         let hideAds = false;
+        let serverHasActiveSubscription = hasActiveSubscription; // 默认使用本地计算的值
         try {
           const settingsRes = await fetch("/api/account/settings", { credentials: "include" });
           if (settingsRes.ok) {
             const settingsData = await settingsRes.json();
             hideAds = settingsData?.data?.hide_ads ?? false;
+            // 使用服务器返回的订阅状态（比 user_metadata 更准确）
+            if (settingsData?.data?.subscription) {
+              serverHasActiveSubscription = settingsData.data.subscription.hasActiveSubscription ?? hasActiveSubscription;
+              console.log("[syncSession] Server subscription status:", settingsData.data.subscription);
+            }
           }
         } catch (e) {
           console.error("Failed to load hide_ads setting", e);
         }
+
+        // 仅当服务器确认订阅已过期时才自动关闭 hideAds
+        if (hideAds && !serverHasActiveSubscription) {
+          console.log("[syncSession] Auto-disabling hideAds due to expired subscription (server confirmed)");
+          hideAds = false;
+          // 异步同步到数据库
+          fetch("/api/account/settings", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ hideAds: false }),
+          }).catch((err) => console.error("[syncSession] Failed to reset hideAds on expired subscription:", err));
+        }
+
         const mappedUser: AppUser = {
           id: user.id,
           email: user.email || "",
           name:
-            (user.user_metadata as any)?.full_name ||
+            userMeta?.full_name ||
             user.email?.split("@")[0] ||
             "User",
-          isPro: false,
-          isPaid: false,
-          plan: (user.user_metadata as any)?.plan,
-          planExp: (user.user_metadata as any)?.plan_exp,
+          isPro: effectiveIsPro,
+          isPaid: serverHasActiveSubscription, // 使用服务器返回的订阅状态（更准确）
+          plan: userMeta?.plan,
+          planExp: planExp,
           settings: {
             theme: "light",
             language: "en",
             notifications: true,
             soundEnabled: true,
             autoSave: true,
-            hideAds: hideAds, // 从数据库加载 hide_ads 设置
+            hideAds: hideAds, // 从数据库加载 hide_ads 设置，过期用户自动关闭
           },
         };
         isDomesticSessionRef.current = false;
         setAppUser(mappedUser);
         setIsLoggedIn(true);
         setShowAuthDialog(false);
-        const planMeta = (user.user_metadata as any)?.plan;
+        const planMeta = userMeta?.plan;
         if (planMeta) {
           setCurrentPlan(planMeta as "Basic" | "Pro" | "Enterprise");
           localStorage.setItem("morngpt_current_plan", planMeta);
-          const expMeta = (user.user_metadata as any)?.plan_exp;
+          const expMeta = userMeta?.plan_exp;
           if (expMeta) {
             localStorage.setItem("morngpt_current_plan_exp", expMeta);
           }
@@ -1048,6 +1119,32 @@ const loadMessagesForConversation = useCallback(
           if (!mounted) return;
           if (event === "SIGNED_IN" && session?.user) {
             const user = session.user;
+            const userMeta = user.user_metadata as any;
+            const planLower = (userMeta?.plan || "").toLowerCase();
+            const planExp = userMeta?.plan_exp || null;
+
+            // 正确计算 isPaid：Basic/Pro/Enterprise 都是付费用户
+            const isPaidCalc = planLower === "basic" || planLower === "pro" || planLower === "enterprise";
+            const isExpired = planExp ? new Date(planExp) < new Date() : false;
+
+            // 从服务器获取 hideAds 设置和准确的订阅状态
+            let hideAds = false;
+            let serverIsPaid = isPaidCalc && !isExpired;
+            let serverIsPro = isPaidCalc && planLower !== "basic" && !isExpired;
+            try {
+              const settingsRes = await fetch("/api/account/settings", { credentials: "include" });
+              if (settingsRes.ok) {
+                const settingsData = await settingsRes.json();
+                hideAds = settingsData?.data?.hide_ads ?? false;
+                if (settingsData?.data?.subscription) {
+                  serverIsPaid = settingsData.data.subscription.hasActiveSubscription ?? serverIsPaid;
+                  serverIsPro = settingsData.data.subscription.isPro ?? serverIsPro;
+                }
+              }
+            } catch (e) {
+              console.error("[onAuthStateChange] Failed to load settings:", e);
+            }
+
             const mappedUser: AppUser = {
               id: user.id,
               email: user.email || "",
@@ -1055,19 +1152,27 @@ const loadMessagesForConversation = useCallback(
                 (user.user_metadata as any)?.full_name ||
                 user.email?.split("@")[0] ||
                 "User",
-              isPro: false,
-              isPaid: false,
-              plan: (user.user_metadata as any)?.plan,
-              planExp: (user.user_metadata as any)?.plan_exp,
+              isPro: serverIsPro,
+              isPaid: serverIsPaid,
+              plan: userMeta?.plan,
+              planExp: planExp,
+              settings: {
+                theme: "light",
+                language: "en",
+                notifications: true,
+                soundEnabled: true,
+                autoSave: true,
+                hideAds: hideAds,
+              },
             };
             setAppUser(mappedUser);
             setIsLoggedIn(true);
             setShowAuthDialog(false);
-            const planMeta = (user.user_metadata as any)?.plan;
+            const planMeta = userMeta?.plan;
             if (planMeta) {
               setCurrentPlan(planMeta as "Basic" | "Pro" | "Enterprise");
               localStorage.setItem("morngpt_current_plan", planMeta);
-              const expMeta = (user.user_metadata as any)?.plan_exp;
+              const expMeta = userMeta?.plan_exp;
               if (expMeta) {
                 localStorage.setItem("morngpt_current_plan_exp", expMeta);
               }
@@ -2533,14 +2638,26 @@ const loadMessagesForConversation = useCallback(
           if (!res.ok) throw new Error(data.error || "Register failed");
           // CloudBase 返回用户对象
           const storedExp = localStorage.getItem("morngpt_current_plan_exp");
+          // 正确判断 isPaid：Basic/Pro/Enterprise 都是付费用户
+          const planLower = (data.user.metadata?.plan || "").toLowerCase();
+          const isProMeta = !!data.user.metadata?.pro;
+          const isPaidUser = planLower === "basic" || planLower === "pro" || planLower === "enterprise" || isProMeta;
           const mappedUser: AppUser = {
             id: data.user.id,
             email: data.user.email || "",
             name: data.user.name || data.user.email || "User",
-            isPro: !!data.user.metadata?.pro,
-            isPaid: !!data.user.metadata?.pro,
+            isPro: isProMeta && planLower !== "basic",
+            isPaid: isPaidUser,
             plan: data.user.metadata?.plan,
             planExp: data.user.metadata?.plan_exp || storedExp || undefined,
+            settings: {
+              theme: "light",
+              language: "zh",
+              notifications: true,
+              soundEnabled: true,
+              autoSave: true,
+              hideAds: data.user.metadata?.hide_ads ?? false,
+            },
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
@@ -2612,14 +2729,26 @@ const loadMessagesForConversation = useCallback(
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || "Login failed");
           const storedExp = localStorage.getItem("morngpt_current_plan_exp");
+          // 正确判断 isPaid：Basic/Pro/Enterprise 都是付费用户
+          const planLower = (data.user.metadata?.plan || "").toLowerCase();
+          const isProMeta = !!data.user.metadata?.pro;
+          const isPaidUser = planLower === "basic" || planLower === "pro" || planLower === "enterprise" || isProMeta;
           const mappedUser: AppUser = {
             id: data.user.id,
             email: data.user.email || "",
             name: data.user.name || data.user.email || "User",
-            isPro: !!data.user.metadata?.pro,
-            isPaid: !!data.user.metadata?.pro,
+            isPro: isProMeta && planLower !== "basic",
+            isPaid: isPaidUser,
             plan: data.user.metadata?.plan,
             planExp: data.user.metadata?.plan_exp || storedExp || undefined,
+            settings: {
+              theme: "light",
+              language: "zh",
+              notifications: true,
+              soundEnabled: true,
+              autoSave: true,
+              hideAds: data.user.metadata?.hide_ads ?? false,
+            },
           };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
@@ -2720,6 +2849,24 @@ const loadMessagesForConversation = useCallback(
             }
 
             const user = data.user;
+            // 从服务器获取用户设置和订阅状态
+            let hideAds = false;
+            let serverIsPaid = false;
+            let serverIsPro = false;
+            try {
+              const settingsRes = await fetch("/api/account/settings", { credentials: "include" });
+              if (settingsRes.ok) {
+                const settingsData = await settingsRes.json();
+                hideAds = settingsData?.data?.hide_ads ?? false;
+                if (settingsData?.data?.subscription) {
+                  serverIsPaid = settingsData.data.subscription.hasActiveSubscription ?? false;
+                  serverIsPro = settingsData.data.subscription.isPro ?? false;
+                }
+              }
+            } catch (e) {
+              console.error("[handleAuthSubmit] Failed to load settings:", e);
+            }
+
             const mappedUser: AppUser = {
               id: user.id,
               email: user.email || "",
@@ -2727,9 +2874,17 @@ const loadMessagesForConversation = useCallback(
                 (user.user_metadata as any)?.full_name ||
                 user.email?.split("@")[0] ||
                 "User",
-              isPro: false,
-            isPaid: false,
-          };
+              isPro: serverIsPro,
+              isPaid: serverIsPaid,
+              settings: {
+                theme: "light",
+                language: "en",
+                notifications: true,
+                soundEnabled: true,
+                autoSave: true,
+                hideAds: hideAds,
+              },
+            };
           setAppUser(mappedUser);
           setIsLoggedIn(true);
           setShowAuthDialog(false);

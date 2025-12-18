@@ -15,8 +15,12 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
 import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
+import { isAfter } from "date-fns";
+import { calculateUpgradePrice } from "@/services/wallet";
 
 export const runtime = "nodejs";
+
+const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
 
 // 统一套餐名称
 const normalizePlanName = (p?: string) => {
@@ -145,7 +149,58 @@ export async function POST(request: NextRequest) {
       const effectiveBillingPeriod = billingPeriod || "monthly";
       const resolvedPlanName = resolvedPlan.name;
 
-      amount = extractPlanAmount(resolvedPlan, effectiveBillingPeriod, true);
+      // 基础金额（人民币）
+      const baseAmount = extractPlanAmount(resolvedPlan, effectiveBillingPeriod, true);
+
+      // ⚠️ 国内版微信 Basic 月付测试价：0.01（测试阶段请勿修改）
+      const isWechatBasicTest =
+        resolvedPlanName === "Basic" && effectiveBillingPeriod === "monthly";
+      amount = isWechatBasicTest ? 0.01 : baseAmount;
+
+      // 升级补差价：目标价 - (当前价/30 * 剩余天数)
+      if (IS_DOMESTIC_VERSION && userId) {
+        try {
+          const connector = new CloudBaseConnector();
+          await connector.initialize();
+          const db = connector.getClient();
+          const userRes = await db.collection("users").doc(userId).get();
+          const userDoc = userRes?.data?.[0] || null;
+
+          const currentPlanKey = normalizePlanName(
+            userDoc?.plan || userDoc?.subscriptionTier || ""
+          );
+          const currentPlanExp = userDoc?.plan_exp
+            ? new Date(userDoc.plan_exp)
+            : null;
+          const now = new Date();
+          const currentActive = currentPlanExp ? isAfter(currentPlanExp, now) : false;
+          const purchaseRank = PLAN_RANK[normalizePlanName(resolvedPlan.name)] || 0;
+          const currentRank = PLAN_RANK[currentPlanKey] || 0;
+          const isUpgrade = currentActive && purchaseRank > currentRank;
+
+          if (isUpgrade && currentPlanKey) {
+            const remainingDays = Math.max(
+              0,
+              Math.ceil(
+                ((currentPlanExp?.getTime() || 0) - now.getTime()) /
+                  (1000 * 60 * 60 * 24)
+              )
+            );
+            const currentPlanDef = resolvePlan(currentPlanKey);
+            const currentPlanPrice = extractPlanAmount(currentPlanDef, "monthly", true);
+
+            amount = calculateUpgradePrice(
+              currentPlanPrice / 30,
+              remainingDays,
+              amount
+            );
+          }
+        } catch (error) {
+          console.error("[wechat][create] upgrade price calc failed", error);
+          amount = isWechatBasicTest ? 0.01 : baseAmount;
+        }
+      }
+
       days = effectiveBillingPeriod === "annual" ? 365 : 30;
       description = `${resolvedPlan.nameZh || resolvedPlan.name} - ${effectiveBillingPeriod === "annual" ? "年度订阅" : "月度订阅"}`;
       metadata = {
@@ -188,16 +243,23 @@ export async function POST(request: NextRequest) {
     });
 
     // 记录 pending 支付到数据库
+    const nowIso = new Date().toISOString();
     const paymentData = {
-      user_id: userId,
-      out_trade_no,
+      userId,
+      provider: "wechat",
+      providerOrderId: out_trade_no,
       amount,
       currency: "CNY",
-      status: "pending",
-      payment_method: "wechat",
-      code_url: wechatResponse.codeUrl,
+      status: "PENDING",
+      type: isAddon ? "ADDON" : "SUBSCRIPTION",
+      plan: isAddon ? null : (metadata.planName || null),
+      period: isAddon ? null : (metadata.billingCycle || null),
+      addonPackageId: isAddon ? addonPackageId : null,
+      imageCredits: isAddon ? (metadata.imageCredits || 0) : 0,
+      videoAudioCredits: isAddon ? (metadata.videoAudioCredits || 0) : 0,
       metadata,
-      created_at: new Date().toISOString(),
+      createdAt: nowIso,
+      updatedAt: nowIso,
     };
 
     try {
@@ -214,15 +276,13 @@ export async function POST(request: NextRequest) {
           .insert([
             {
               ...paymentData,
-              transaction_id: out_trade_no,
+              provider_order_id: out_trade_no,
             },
           ]);
 
         if (insertError) {
-          console.error(
-            "❌ [WeChat Create] Supabase insert error:",
-            insertError
-          );
+          console.error("❌ [WeChat Create] Supabase insert error:", insertError);
+          throw insertError;
         }
       }
 
@@ -233,7 +293,11 @@ export async function POST(request: NextRequest) {
       });
     } catch (dbError) {
       console.error("❌ [WeChat Create] Database error:", dbError);
-      // 继续执行，不阻断支付流程
+      // 若无法落库 pending 支付单，则拒绝返回 code_url，避免“已支付但无法发放权益”
+      return NextResponse.json(
+        { success: false, error: "创建支付失败，请稍后重试" },
+        { status: 500 }
+      );
     }
 
     console.log("✅ [WeChat Create] Payment created successfully:", {

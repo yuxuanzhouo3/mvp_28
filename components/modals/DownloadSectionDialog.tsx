@@ -30,6 +30,7 @@ interface AppUser {
     hideAds?: boolean; // 订阅用户是否开启去除广告功能
   };
   isPro?: boolean;
+  isPaid?: boolean; // 是否为付费订阅用户（Basic/Pro/Enterprise 且未过期）
   planExp?: string; // 订阅到期时间
 }
 
@@ -571,7 +572,7 @@ export default function DownloadSectionDialog({
                     {tr("Hide Ads", "去除广告")}
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {appUser.isPro
+                    {appUser.isPaid
                       ? tr(
                           "Turn on to remove all ads during your subscription",
                           "开启后在订阅有效期内不显示广告"
@@ -586,17 +587,17 @@ export default function DownloadSectionDialog({
                   checked={appUser?.settings?.hideAds ?? false}
                   onCheckedChange={(checked) => {
                     // Free 用户点击开关时跳转到订阅页面
-                    if (!appUser.isPro) {
+                    if (!appUser.isPaid) {
                       onUpgradeFromAds();
                       return;
                     }
-                    // 订阅用户正常切换
+                    // 订阅用户（Basic/Pro/Enterprise）正常切换
                     onUpdateUserSettings({ hideAds: checked });
                   }}
                 />
               </div>
               {/* 非订阅用户提示升级 */}
-              {!appUser.isPro && (
+              {!appUser.isPaid && (
                 <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                   <div className="flex items-start space-x-2 mb-2">
                     <Crown className="w-4 h-4 text-yellow-600" />
@@ -620,7 +621,7 @@ export default function DownloadSectionDialog({
                 </div>
               )}
               {/* 订阅用户开启了去除广告但快到期时提示 */}
-              {appUser.isPro && appUser.settings?.hideAds && appUser.planExp && (
+              {appUser.isPaid && appUser.settings?.hideAds && appUser.planExp && (
                 <div className="p-2 bg-gray-50 dark:bg-[#565869] rounded-lg">
                   <p className="text-xs text-gray-600 dark:text-gray-400">
                     {tr("Subscription expires: ", "订阅到期时间：")}

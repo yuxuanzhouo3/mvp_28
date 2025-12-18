@@ -6,12 +6,37 @@ import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
 import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
+import { isAfter } from "date-fns";
+import {
+  addAddonCredits as addWalletAddonCredits,
+  addCalendarMonths,
+  getBeijingYMD,
+  getPlanMediaLimits,
+  renewMonthlyQuota,
+  seedWalletForPlan,
+  upgradeMonthlyQuota,
+} from "@/services/wallet";
 
 // WeChat Webhook 依赖 Node.js 运行时
 export const runtime = "nodejs";
 
+const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
+
+// 统一套餐名称，兼容中文/英文，返回英文 canonical key
+const normalizePlanName = (p?: string) => {
+  const lower = (p || "").toLowerCase();
+  if (lower === "basic" || lower === "基础版") return "Basic";
+  if (lower === "pro" || lower === "专业版") return "Pro";
+  if (lower === "enterprise" || lower === "企业版") return "Enterprise";
+  return p || "";
+};
+
 export async function POST(request: NextRequest) {
   try {
+    if (!IS_DOMESTIC_VERSION) {
+      return new NextResponse(null, { status: 404 });
+    }
+
     // 1. 获取 Webhook 签名信息
     const signature = request.headers.get("Wechatpay-Signature") || "";
     const timestamp = request.headers.get("Wechatpay-Timestamp") || "";
@@ -195,7 +220,7 @@ export async function POST(request: NextRequest) {
         const db = connector.getClient();
         const result = await db
           .collection("payments")
-          .where({ out_trade_no: paymentData.out_trade_no })
+          .where({ provider: "wechat", providerOrderId: paymentData.out_trade_no })
           .get();
         paymentRecord = result.data?.[0];
       } catch (error) {
@@ -209,7 +234,7 @@ export async function POST(request: NextRequest) {
         const { data } = await supabaseAdmin
           .from("payments")
           .select("*")
-          .eq("transaction_id", paymentData.out_trade_no)
+          .eq("provider_order_id", paymentData.out_trade_no)
           .maybeSingle();
         paymentRecord = data;
       } catch (error) {
@@ -220,7 +245,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const effectiveUserId = paymentRecord?.user_id || userId;
+    if (!paymentRecord) {
+      console.error("[WeChat Webhook] Payment record not found:", {
+        out_trade_no: paymentData.out_trade_no,
+      });
+      return NextResponse.json(
+        { code: "FAIL", message: "Payment record not found" },
+        { status: 400 }
+      );
+    }
+
+    const effectiveUserId = paymentRecord?.userId || userId;
 
     if (!effectiveUserId) {
       console.error(
@@ -232,13 +267,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const currentStatus = (paymentRecord?.status || "").toString().toUpperCase();
+    if (currentStatus === "COMPLETED") {
+      return NextResponse.json({ code: "SUCCESS", message: "Ok" }, { status: 200 });
+    }
+
+    // 交易金额校验：防止金额不一致导致错误发放权益
+    const expectedAmount = Number(paymentRecord?.amount || 0);
+    if (expectedAmount > 0 && Math.abs(expectedAmount - amount) > 0.01) {
+      console.error("[WeChat Webhook] amount mismatch", {
+        out_trade_no: paymentData.out_trade_no,
+        expectedAmount,
+        paidAmount: amount,
+      });
+      return NextResponse.json(
+        { code: "FAIL", message: "Amount mismatch" },
+        { status: 400 }
+      );
+    }
+
     // 12. 检查是否是加油包购买
-    const isAddon = paymentRecord?.metadata?.productType === "ADDON";
+    const isAddon =
+      (paymentRecord?.type as string | undefined) === "ADDON" ||
+      paymentRecord?.metadata?.productType === "ADDON";
 
     if (isAddon) {
       // 加油包购买 - 增加用户额度
-      const imageCredits = paymentRecord?.metadata?.imageCredits || 0;
-      const videoAudioCredits = paymentRecord?.metadata?.videoAudioCredits || 0;
+      const imageCredits =
+        paymentRecord?.imageCredits ?? paymentRecord?.metadata?.imageCredits ?? 0;
+      const videoAudioCredits =
+        paymentRecord?.videoAudioCredits ??
+        paymentRecord?.metadata?.videoAudioCredits ??
+        0;
 
       console.log("📦 [WeChat Webhook] Processing addon purchase:", {
         userId: effectiveUserId,
@@ -246,14 +306,13 @@ export async function POST(request: NextRequest) {
         videoAudioCredits,
       });
 
-      const addonSuccess = await addAddonCredits(
+      const addResult = await addWalletAddonCredits(
         effectiveUserId,
-        paymentData.out_trade_no,
-        imageCredits,
-        videoAudioCredits
+        Number(imageCredits) || 0,
+        Number(videoAudioCredits) || 0
       );
 
-      if (!addonSuccess) {
+      if (!addResult.success) {
         console.error("❌ [WeChat Webhook] Failed to add addon credits");
         return NextResponse.json(
           { code: "FAIL", message: "Failed to add addon credits" },
@@ -262,8 +321,11 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // 订阅购买 - 更新订阅状态
-      const days = paymentRecord?.metadata?.days || 30;
-      const planName = paymentRecord?.metadata?.planName || "Pro";
+      const period = (paymentRecord?.period || paymentRecord?.metadata?.billingCycle || "monthly") as
+        | "monthly"
+        | "annual";
+      const days = Number(paymentRecord?.metadata?.days) || (period === "annual" ? 365 : 30);
+      const planName = normalizePlanName(paymentRecord?.plan || paymentRecord?.metadata?.planName || "Pro") || "Pro";
 
       console.log("📦 [WeChat Webhook] Processing subscription:", {
         userId: effectiveUserId,
@@ -273,10 +335,11 @@ export async function POST(request: NextRequest) {
         metadata: paymentRecord?.metadata,
       });
 
-      await updateSubscription(
+      await applySubscriptionPayment(
         effectiveUserId,
         paymentData.out_trade_no,
         paymentData.transaction_id,
+        period,
         days,
         planName
       );
@@ -284,9 +347,9 @@ export async function POST(request: NextRequest) {
 
     // 13. 更新支付订单状态
     const updateData = {
-      status: "completed",
-      transaction_id: paymentData.transaction_id,
-      updated_at: new Date().toISOString(),
+      status: "COMPLETED",
+      providerTransactionId: paymentData.transaction_id,
+      updatedAt: new Date().toISOString(),
     };
 
     if (IS_DOMESTIC_VERSION) {
@@ -296,7 +359,7 @@ export async function POST(request: NextRequest) {
         const db = connector.getClient();
         await db
           .collection("payments")
-          .where({ out_trade_no: paymentData.out_trade_no })
+          .where({ provider: "wechat", providerOrderId: paymentData.out_trade_no })
           .update(updateData);
         console.log(
           "✅ [WeChat Webhook] Updated CloudBase payment:",
@@ -313,7 +376,7 @@ export async function POST(request: NextRequest) {
         await supabaseAdmin
           .from("payments")
           .update(updateData)
-          .eq("transaction_id", paymentData.out_trade_no);
+          .eq("provider_order_id", paymentData.out_trade_no);
         console.log(
           "✅ [WeChat Webhook] Updated Supabase payment:",
           paymentData.out_trade_no
@@ -387,119 +450,138 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * 增加加油包额度
- * @returns boolean 表示操作是否成功
+ * 国内版：应用订阅购买结果（同级顺延 / 升级立即生效并重置周期 / 降级延期生效）
+ * 说明：微信支付为一次性购买周期，本函数仅负责落库与配额初始化/刷新。
  */
-async function addAddonCredits(
+async function applySubscriptionPayment(
   userId: string,
-  transactionId: string,
-  imageCredits: number,
-  videoAudioCredits: number
-): Promise<boolean> {
+  providerOrderId: string,
+  _providerTransactionId: string,
+  period: "monthly" | "annual",
+  days: number,
+  planName: string,
+): Promise<void> {
+  if (!IS_DOMESTIC_VERSION) return;
+
+  const connector = new CloudBaseConnector();
+  await connector.initialize();
+  const db = connector.getClient();
+
   const now = new Date();
+  const nowIso = now.toISOString();
+  const plan = normalizePlanName(planName) || "Pro";
+  const planLower = plan.toLowerCase();
 
-  if (IS_DOMESTIC_VERSION) {
-    try {
-      const connector = new CloudBaseConnector();
-      await connector.initialize();
-      const db = connector.getClient();
-
-      // 获取当前用户数据
-      const userResult = await db
-        .collection("users")
-        .where({ _id: userId })
-        .get();
-
-      if (userResult.data && userResult.data.length > 0) {
-        const currentUser = userResult.data[0];
-        const currentWallet = currentUser.wallet || {
-          addon: { image: 0, video: 0 },
-        };
-
-        // 更新钱包额度
-        await db
-          .collection("users")
-          .doc(userId)
-          .update({
-            wallet: {
-              ...currentWallet,
-              addon: {
-                image: (currentWallet.addon?.image || 0) + imageCredits,
-                video: (currentWallet.addon?.video || 0) + videoAudioCredits,
-              },
-            },
-            updated_at: now.toISOString(),
-          });
-
-        console.log("✅ [WeChat Webhook] CloudBase user wallet updated:", {
-          userId,
-          imageCredits,
-          videoAudioCredits,
-        });
-        return true;
-      } else {
-        console.error("❌ [WeChat Webhook] User not found in CloudBase:", userId);
-        return false;
-      }
-    } catch (error) {
-      console.error(
-        "❌ [WeChat Webhook] Error updating CloudBase wallet:",
-        error
-      );
-      return false;
-    }
-  } else {
-    try {
-      const { data: userData, error: userError } = await supabaseAdmin
-        .from("users")
-        .select("wallet")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (userError) {
-        console.error("❌ [WeChat Webhook] Error getting user wallet:", userError);
-        return false;
-      }
-
-      const currentWallet = userData?.wallet || {
-        addon: { image: 0, video: 0 },
-      };
-
-      const newWallet = {
-        ...currentWallet,
-        addon: {
-          image: (currentWallet.addon?.image || 0) + imageCredits,
-          video: (currentWallet.addon?.video || 0) + videoAudioCredits,
-        },
-      };
-
-      const { error: updateError } = await supabaseAdmin
-        .from("users")
-        .update({
-          wallet: newWallet,
-          updated_at: now.toISOString(),
-        })
-        .eq("id", userId);
-
-      if (updateError) {
-        console.error("❌ [WeChat Webhook] Error updating Supabase wallet:", updateError);
-        return false;
-      }
-
-      console.log("✅ [WeChat Webhook] Supabase user wallet updated:", {
-        userId,
-        imageCredits,
-        videoAudioCredits,
-      });
-      return true;
-    } catch (error) {
-      console.error(
-        "❌ [WeChat Webhook] Error updating Supabase wallet:",
-        error
-      );
-      return false;
-    }
+  const userRes = await db.collection("users").doc(userId).get();
+  const userDoc = userRes?.data?.[0] || null;
+  if (!userDoc) {
+    console.error("[WeChat Webhook] user not found:", userId);
+    return;
   }
+
+  const currentPlanKey = normalizePlanName(userDoc?.plan || userDoc?.subscriptionTier || "");
+  const currentPlanExp = userDoc?.plan_exp ? new Date(userDoc.plan_exp) : null;
+  const currentPlanActive = currentPlanExp ? isAfter(currentPlanExp, now) : false;
+
+  const purchasePlanKey = normalizePlanName(plan);
+  const purchaseRank = PLAN_RANK[purchasePlanKey] || 0;
+  const currentRank = PLAN_RANK[currentPlanKey] || 0;
+  const isUpgrade = purchaseRank > currentRank && currentPlanActive;
+  const isDowngrade = purchaseRank < currentRank && currentPlanActive;
+  const isSameActive = purchaseRank === currentRank && currentPlanActive;
+  const isNewOrExpired = !currentPlanActive || !currentPlanKey;
+
+  const { imageLimit, videoLimit } = getPlanMediaLimits(planLower);
+  const anchorDayNow = getBeijingYMD(now).day;
+  const existingAnchorDay =
+    userDoc?.wallet?.billing_cycle_anchor ||
+    (userDoc?.wallet?.monthly_reset_at
+      ? getBeijingYMD(new Date(userDoc.wallet.monthly_reset_at)).day
+      : null) ||
+    (currentPlanExp ? getBeijingYMD(currentPlanExp).day : null) ||
+    anchorDayNow;
+
+  const monthsToAdd = period === "annual" ? 12 : 1;
+  const anchorDay = isUpgrade || isNewOrExpired ? anchorDayNow : existingAnchorDay;
+  const baseDate = isSameActive && currentPlanExp ? currentPlanExp : now;
+  const purchaseExpiresAt = addCalendarMonths(baseDate, monthsToAdd, anchorDay);
+
+  const subsColl = db.collection("subscriptions");
+
+  // 降级：延期生效（不改变当前用户的 plan / plan_exp）
+  if (isDowngrade) {
+    const scheduledStart = currentPlanExp && currentPlanActive ? currentPlanExp : now;
+    const scheduledExpire = addCalendarMonths(scheduledStart, monthsToAdd, existingAnchorDay);
+    const pendingDowngrade = {
+      targetPlan: plan,
+      effectiveAt: scheduledStart.toISOString(),
+    };
+
+    await subsColl.add({
+      userId,
+      plan,
+      period,
+      status: "pending",
+      provider: "wechat",
+      providerOrderId,
+      startedAt: scheduledStart.toISOString(),
+      expiresAt: scheduledExpire.toISOString(),
+      updatedAt: nowIso,
+      createdAt: nowIso,
+      type: "SUBSCRIPTION",
+    });
+
+    await db.collection("users").doc(userId).update({
+      pendingDowngrade,
+      updatedAt: nowIso,
+    });
+
+    return;
+  }
+
+  // 新购/续费/升级：立即生效
+  const subPayload = {
+    userId,
+    plan,
+    period,
+    status: "active",
+    provider: "wechat",
+    providerOrderId,
+    startedAt: nowIso,
+    expiresAt: purchaseExpiresAt.toISOString(),
+    updatedAt: nowIso,
+    type: "SUBSCRIPTION",
+  };
+
+  const existing = await subsColl
+    .where({ userId, provider: "wechat", plan })
+    .limit(1)
+    .get();
+
+  if (existing?.data?.[0]?._id) {
+    await subsColl.doc(existing.data[0]._id).update(subPayload);
+  } else {
+    await subsColl.add({ ...subPayload, createdAt: nowIso });
+  }
+
+  await db.collection("users").doc(userId).update({
+    pro: planLower !== "basic",
+    plan,
+    plan_exp: purchaseExpiresAt.toISOString(),
+    subscriptionTier: plan,
+    pendingDowngrade: null,
+    updatedAt: nowIso,
+  });
+
+  if (isUpgrade || isNewOrExpired) {
+    await upgradeMonthlyQuota(userId, imageLimit, videoLimit);
+  } else if (isSameActive) {
+    await renewMonthlyQuota(userId);
+  }
+
+  await seedWalletForPlan(userId, planLower, {
+    forceReset: isUpgrade || isNewOrExpired,
+  });
 }
 
 /**

@@ -60,10 +60,9 @@ const getPlanInfo = (meta: any) => {
 export async function GET(req: NextRequest) {
   const modelId = req.nextUrl.searchParams.get("modelId") || "";
   const modelCategory = modelId ? getModelCategory(modelId) : null;
-  const hasCloudToken = !!req.cookies.get("auth-token");
 
-  // Domestic 版：使用 CloudBase 文档数据库（或请求显式携带 CloudBase token）
-  if (IS_DOMESTIC_VERSION || hasCloudToken) {
+  // 版本隔离：仅国内版走 CloudBase
+  if (IS_DOMESTIC_VERSION) {
     const cookieStore = await cookies();
     const token =
       cookieStore.get("auth-token")?.value ||

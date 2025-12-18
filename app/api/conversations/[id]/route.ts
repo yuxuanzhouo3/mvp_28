@@ -20,8 +20,8 @@ async function getDomesticUser(req: NextRequest) {
 }
 
 function isDomesticRequest(req: NextRequest) {
-  const hasToken = !!req.cookies.get("auth-token");
-  return IS_DOMESTIC_VERSION || hasToken;
+  // 版本隔离：仅根据部署环境决定（避免 en 环境因残留 auth-token 误访问国内数据）
+  return IS_DOMESTIC_VERSION;
 }
 
 // Delete a conversation (cascade messages)

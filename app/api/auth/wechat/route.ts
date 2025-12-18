@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 
 /**
@@ -8,6 +9,11 @@ import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
  */
 export async function POST(request: NextRequest) {
   try {
+    // 版本隔离：国际版不允许访问国内版微信登录接口
+    if (!IS_DOMESTIC_VERSION) {
+      return new NextResponse(null, { status: 404 });
+    }
+
     const body = await request.json().catch(() => ({}));
     const code = body?.code as string | undefined;
     if (!code) {

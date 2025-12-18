@@ -1,9 +1,10 @@
-// app/api/payment/webhook/alipay/route.ts - 支付宝 Webhook 处理
+// app/api/payment/alipay/confirm/route.ts
+// 支付宝支付确认 API - 用于同步回调时主动确认支付状态并处理业务逻辑
+
 import { NextRequest, NextResponse } from "next/server";
-import * as crypto from "crypto";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
-import { isAfter } from "date-fns";
+import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
 import {
   addAddonCredits,
   addCalendarMonths,
@@ -13,8 +14,8 @@ import {
   seedWalletForPlan,
   upgradeMonthlyQuota,
 } from "@/services/wallet";
+import { isAfter } from "date-fns";
 
-// Alipay Webhook 依赖 Node.js 加密库
 export const runtime = "nodejs";
 
 const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
@@ -31,93 +32,25 @@ const normalizePlanName = (p?: string) => {
 export async function POST(request: NextRequest) {
   try {
     if (!IS_DOMESTIC_VERSION) {
-      return new NextResponse(null, { status: 404 });
-    }
-    console.log("🔔 [Alipay Webhook] 收到 webhook 请求");
-
-    // 支付宝在POST body中以form-urlencoded格式传递数据
-    const formData = await request.formData();
-    const params: Record<string, string> = {};
-
-    // 收集所有参数
-    formData.forEach((value, key) => {
-      params[key] = value as string;
-    });
-
-    console.log("📝 [Alipay Webhook] 接收到的参数:", {
-      outTradeNo: params.out_trade_no,
-      tradeNo: params.trade_no,
-      tradeStatus: params.trade_status,
-      totalAmount: params.total_amount,
-      passbackParams: params.passback_params,
-      hasSignature: !!params.sign,
-    });
-
-    // 验证支付宝签名
-    const isValidSignature = verifyAlipaySignature(
-      params,
-      process.env.ALIPAY_ALIPAY_PUBLIC_KEY
-    );
-
-    console.log(
-      "🔐 [Alipay Webhook] 签名验证:",
-      isValidSignature ? "✅ 通过" : "❌ 失败"
-    );
-
-    if (!isValidSignature) {
-      console.error("❌ [Alipay Webhook] Invalid Alipay webhook signature");
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-    }
-
-    // 检查支付状态
-    const tradeStatus = params.trade_status;
-    console.log("💰 [Alipay Webhook] 支付状态:", tradeStatus);
-
-    if (tradeStatus !== "TRADE_SUCCESS" && tradeStatus !== "TRADE_FINISHED") {
-      console.log(
-        "⏭️  [Alipay Webhook] 支付状态不是最终状态，忽略:",
-        tradeStatus
+      return NextResponse.json(
+        { success: false, error: "Only available in domestic version" },
+        { status: 404 }
       );
-      return NextResponse.json({ status: "ignored" });
     }
 
-    console.log("✅ [Alipay Webhook] 支付成功，开始处理");
+    const body = await request.json();
+    const { outTradeNo } = body as { outTradeNo?: string };
 
-    const success = await processAlipayWebhook(tradeStatus, params);
-
-    console.log(
-      "📊 [Alipay Webhook] 处理结果:",
-      success ? "✅ 成功" : "❌ 失败"
-    );
-
-    if (success) {
-      // 支付宝要求返回success字符串
-      console.log("✨ [Alipay Webhook] 返回 success");
-      return new NextResponse("success");
-    } else {
-      console.error("❌ [Alipay Webhook] Failed to process Alipay webhook");
-      return new NextResponse("failure");
+    if (!outTradeNo) {
+      return NextResponse.json(
+        { success: false, error: "Missing outTradeNo" },
+        { status: 400 }
+      );
     }
-  } catch (error) {
-    console.error("❌ [Alipay Webhook] 异常错误:", error);
-    return new NextResponse("failure");
-  }
-}
 
-async function processAlipayWebhook(
-  _tradeStatus: string,
-  params: Record<string, string>
-): Promise<boolean> {
-  const outTradeNo = params.out_trade_no || "";
-  const tradeNo = params.trade_no || "";
-  const totalAmount = parseFloat(params.total_amount || "0");
+    console.log("📥 [Alipay Confirm] Processing:", outTradeNo);
 
-  if (!outTradeNo) {
-    console.error("[Alipay Webhook] Missing out_trade_no");
-    return false;
-  }
-
-  try {
+    // 1. 查询本地支付记录
     const connector = new CloudBaseConnector();
     await connector.initialize();
     const db = connector.getClient();
@@ -129,34 +62,61 @@ async function processAlipayWebhook(
       .get();
 
     const paymentRecord = (payRes?.data?.[0] as any | undefined) || null;
+
     if (!paymentRecord) {
-      console.error("[Alipay Webhook] Payment record not found:", outTradeNo);
-      return false;
+      console.error("[Alipay Confirm] Payment record not found:", outTradeNo);
+      return NextResponse.json(
+        { success: false, error: "Payment record not found" },
+        { status: 404 }
+      );
     }
 
+    // 2. 检查是否已经处理过
     const currentStatus = (paymentRecord.status || "").toString().toUpperCase();
     if (currentStatus === "COMPLETED") {
-      return true;
-    }
-
-    const expectedAmount = Number(paymentRecord.amount || 0);
-    if (
-      expectedAmount > 0 &&
-      Number.isFinite(totalAmount) &&
-      Math.abs(expectedAmount - totalAmount) > 0.01
-    ) {
-      console.error("[Alipay Webhook] amount mismatch", {
-        outTradeNo,
-        expectedAmount,
-        paidAmount: totalAmount,
+      console.log("[Alipay Confirm] Already completed:", outTradeNo);
+      return NextResponse.json({
+        success: true,
+        status: "COMPLETED",
+        message: "Payment already processed",
+        productType: paymentRecord.type,
       });
-      return false;
     }
 
+    // 3. 查询支付宝确认支付状态
+    const alipayProvider = new AlipayProvider(process.env);
+    let alipayStatus: any;
+
+    try {
+      alipayStatus = await alipayProvider.queryPayment(outTradeNo);
+      console.log("[Alipay Confirm] Alipay query result:", alipayStatus);
+    } catch (queryError) {
+      console.error("[Alipay Confirm] Query failed:", queryError);
+      return NextResponse.json(
+        { success: false, error: "Failed to query Alipay payment status" },
+        { status: 500 }
+      );
+    }
+
+    // 4. 检查支付状态
+    const tradeStatus = alipayStatus?.trade_status;
+    if (tradeStatus !== "TRADE_SUCCESS" && tradeStatus !== "TRADE_FINISHED") {
+      console.log("[Alipay Confirm] Payment not successful:", tradeStatus);
+      return NextResponse.json({
+        success: false,
+        status: tradeStatus || "UNKNOWN",
+        error: "Payment not completed",
+      });
+    }
+
+    // 5. 处理业务逻辑
     const userId = (paymentRecord.userId || paymentRecord.user_id || "") as string;
     if (!userId) {
-      console.error("[Alipay Webhook] Missing userId in payment record:", outTradeNo);
-      return false;
+      console.error("[Alipay Confirm] Missing userId in payment record:", outTradeNo);
+      return NextResponse.json(
+        { success: false, error: "Missing userId in payment record" },
+        { status: 400 }
+      );
     }
 
     const productType = (paymentRecord.type || paymentRecord?.metadata?.productType || "SUBSCRIPTION")
@@ -165,6 +125,7 @@ async function processAlipayWebhook(
     const isAddon = productType === "ADDON";
 
     if (isAddon) {
+      // 加油包处理
       const imageCredits =
         paymentRecord?.imageCredits ?? paymentRecord?.metadata?.imageCredits ?? 0;
       const videoAudioCredits =
@@ -172,16 +133,29 @@ async function processAlipayWebhook(
         paymentRecord?.metadata?.videoAudioCredits ??
         0;
 
+      console.log("[Alipay Confirm] Processing addon:", {
+        userId,
+        imageCredits,
+        videoAudioCredits,
+      });
+
       const addRes = await addAddonCredits(
         userId,
         Number(imageCredits) || 0,
         Number(videoAudioCredits) || 0
       );
+
       if (!addRes.success) {
-        console.error("[Alipay Webhook] Failed to add addon credits:", addRes.error);
-        return false;
+        console.error("[Alipay Confirm] Failed to add addon credits:", addRes.error);
+        return NextResponse.json(
+          { success: false, error: addRes.error || "Failed to add addon credits" },
+          { status: 500 }
+        );
       }
+
+      console.log("[Alipay Confirm] Addon credits added successfully");
     } else {
+      // 订阅处理
       const period = (paymentRecord.period || paymentRecord?.metadata?.billingCycle || "monthly") as
         | "monthly"
         | "annual";
@@ -190,12 +164,20 @@ async function processAlipayWebhook(
         normalizePlanName(paymentRecord.plan || paymentRecord?.metadata?.planName || "Pro") ||
         "Pro";
 
+      console.log("[Alipay Confirm] Processing subscription:", {
+        userId,
+        planName,
+        period,
+        days,
+      });
+
       await applySubscriptionPayment(userId, outTradeNo, period, days, planName);
     }
 
+    // 6. 更新支付记录状态
     const updatePayload = {
       status: "COMPLETED",
-      providerTransactionId: tradeNo || null,
+      providerTransactionId: alipayStatus?.trade_no || null,
       updatedAt: new Date().toISOString(),
     };
 
@@ -208,13 +190,29 @@ async function processAlipayWebhook(
         .update(updatePayload);
     }
 
-    return true;
+    console.log("✅ [Alipay Confirm] Payment confirmed and processed:", outTradeNo);
+
+    return NextResponse.json({
+      success: true,
+      status: "COMPLETED",
+      productType: isAddon ? "ADDON" : "SUBSCRIPTION",
+      message: isAddon ? "Addon credits added successfully" : "Subscription activated successfully",
+    });
   } catch (error) {
-    console.error("[Alipay Webhook] process error", error);
-    return false;
+    console.error("❌ [Alipay Confirm] Error:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to confirm payment",
+      },
+      { status: 500 }
+    );
   }
 }
 
+/**
+ * 应用订阅购买结果
+ */
 async function applySubscriptionPayment(
   userId: string,
   providerOrderId: string,
@@ -234,7 +232,7 @@ async function applySubscriptionPayment(
   const userRes = await db.collection("users").doc(userId).get();
   const userDoc = userRes?.data?.[0] || null;
   if (!userDoc) {
-    console.error("[Alipay Webhook] user not found:", userId);
+    console.error("[Alipay Confirm] user not found:", userId);
     return;
   }
 
@@ -267,7 +265,7 @@ async function applySubscriptionPayment(
 
   const subsColl = db.collection("subscriptions");
 
-  // 降级：延期生效（不改变当前用户的 plan / plan_exp）
+  // 降级：延期生效
   if (isDowngrade) {
     const scheduledStart = currentPlanExp && currentPlanActive ? currentPlanExp : now;
     const scheduledExpire = addCalendarMonths(scheduledStart, monthsToAdd, existingAnchorDay);
@@ -341,65 +339,4 @@ async function applySubscriptionPayment(
   await seedWalletForPlan(userId, planLower, {
     forceReset: isUpgrade || isNewOrExpired,
   });
-}
-
-/**
- * 验证支付宝签名
- */
-function verifyAlipaySignature(
-  params: Record<string, string>,
-  publicKey?: string
-): boolean {
-  try {
-    // 仅在非生产环境或沙箱模式下跳过签名验证
-    if (
-      process.env.NODE_ENV !== "production" ||
-      process.env.ALIPAY_SANDBOX === "true"
-    ) {
-      console.log("⚠️ [Alipay Webhook] 跳过签名验证 (非生产/沙箱环境)");
-      return true;
-    }
-
-    if (!publicKey) {
-      console.error("Missing Alipay public key");
-      return false;
-    }
-
-    // 从参数中提取签名
-    const sign = params.sign;
-    const signType = params.sign_type;
-
-    if (!sign || signType !== "RSA2") {
-      console.error("Missing or invalid Alipay signature");
-      return false;
-    }
-
-    // 移除签名相关参数
-    const paramsToSign = { ...params };
-    delete paramsToSign.sign;
-    delete paramsToSign.sign_type;
-
-    // 排序参数
-    const sortedKeys = Object.keys(paramsToSign).sort();
-    const signString = sortedKeys
-      .map((key) => `${key}=${paramsToSign[key]}`)
-      .join("&");
-
-    // 验证RSA2签名
-    const verify = crypto.createVerify("RSA-SHA256");
-    verify.update(signString, "utf8");
-
-    const publicKeyPem = `-----BEGIN PUBLIC KEY-----\n${publicKey}\n-----END PUBLIC KEY-----`;
-
-    const isValid = verify.verify(publicKeyPem, sign, "base64");
-
-    if (!isValid) {
-      console.error("Alipay signature verification failed");
-    }
-
-    return isValid;
-  } catch (error) {
-    console.error("Alipay signature verification error:", error);
-    return false;
-  }
 }

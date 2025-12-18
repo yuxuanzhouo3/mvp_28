@@ -46,9 +46,8 @@ async function getDomesticUser(req: NextRequest) {
 }
 
 function isDomesticRequest(req: NextRequest) {
-  const langIsZh = IS_DOMESTIC_VERSION;
-  const hasCloudToken = !!req.cookies.get("auth-token");
-  return langIsZh || hasCloudToken;
+  // 版本隔离：仅根据部署环境决定（避免 en 环境因残留 auth-token 误访问国内数据）
+  return IS_DOMESTIC_VERSION;
 }
 
 function getPlanInfo(meta: any) {
@@ -232,7 +231,6 @@ export async function POST(
       return new Response("Unauthorized", { status: 401 });
     }
     const userId = userData.user.id;
-    let missingQuotaTable = false;
     const userPlan =
       (userData.user.user_metadata as any)?.plan ||
       ((userData.user.user_metadata as any)?.pro ? "Pro" : null);
@@ -241,7 +239,11 @@ export async function POST(
     const isBasicUser = planLower === "basic";
 
     // Enforce daily quota for Free/Basic users on user messages
-    if (role === "user" && (isFreeUser || isBasicUser)) {
+    // 注意：只有外部模型才扣除 daily external quota，MornGPT 专家模型不扣除
+    const currentModelId = modelId || "";
+    const shouldCheckDailyQuota = role === "user" && (isFreeUser || isBasicUser) && isExternalModel(currentModelId);
+
+    if (shouldCheckDailyQuota) {
       const today = new Date().toISOString().split("T")[0];
       const isBasic = isBasicUser;
       const limit = (() => {
@@ -251,31 +253,25 @@ export async function POST(
         return getFreeDailyLimit();
       })();
 
+      // 使用 user_wallets 表跟踪每日配额
       let used = 0;
-      if (isBasic) {
-        const { data: quotaRow, error: quotaErr } = await supabase
-          .from("basic_quotas")
-          .select("used, limit_per_day")
-          .eq("user_id", userId)
-          .eq("day", today)
-          .single();
-        if (quotaErr && quotaErr.code !== "PGRST116") {
-          console.error("Quota fetch error", quotaErr);
-          return new Response("Failed to check quota", { status: 500 });
-        }
-        used = quotaRow?.used ?? 0;
+      const { data: walletRow, error: walletErr } = await supabase
+        .from("user_wallets")
+        .select("daily_external_day, daily_external_used, daily_external_plan, monthly_image_balance, monthly_video_balance")
+        .eq("user_id", userId)
+        .single();
+
+      if (walletErr && walletErr.code !== "PGRST116") {
+        console.error("Quota fetch error", walletErr);
+        return new Response("Failed to check quota", { status: 500 });
+      }
+
+      // 检查是否是同一天，如果不是则重置计数
+      const walletDay = walletRow?.daily_external_day;
+      if (walletDay === today) {
+        used = walletRow?.daily_external_used ?? 0;
       } else {
-        const { data: quotaRow, error: quotaErr } = await supabase
-          .from("free_quotas")
-          .select("used, limit_per_day")
-          .eq("user_id", userId)
-          .eq("day", today)
-          .single();
-        if (quotaErr && quotaErr.code !== "PGRST116") {
-          console.error("Quota fetch error", quotaErr);
-          return new Response("Failed to check quota", { status: 500 });
-        }
-        used = quotaRow?.used ?? 0;
+        used = 0; // 新的一天，重置计数
       }
 
       if (used >= limit) {
@@ -290,39 +286,25 @@ export async function POST(
       }
 
       const newUsed = used + 1;
-      if (isBasic) {
-        const { error: upsertErr } = await supabase.from("basic_quotas").upsert(
+      // 使用 user_wallets 表更新每日配额
+      const { error: upsertErr } = await supabase
+        .from("user_wallets")
+        .upsert(
           {
             user_id: userId,
-            day: today,
-            used: newUsed,
-            limit_per_day: limit,
+            daily_external_day: today,
+            daily_external_used: newUsed,
+            daily_external_plan: planLower || "free",
             updated_at: new Date().toISOString(),
           },
-          { onConflict: "user_id,day" },
+          { onConflict: "user_id" }
         );
-        if (upsertErr) {
-          console.error("Quota upsert error", upsertErr);
-          return new Response("Failed to update quota", { status: 500 });
-        }
-      } else if (!missingQuotaTable) {
-        const { error: upsertErr } = await supabase.from("free_quotas").upsert(
-          {
-            user_id: userId,
-            day: today,
-            used: newUsed,
-            limit_per_day: limit,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id,day" },
-        );
-        if (upsertErr) {
-          console.error("Quota upsert error", upsertErr);
-          return new Response("Failed to update quota", { status: 500 });
-        }
+      if (upsertErr) {
+        console.error("Quota upsert error", upsertErr);
+        return new Response("Failed to update quota", { status: 500 });
       }
 
-      // Basic 高级多模态媒体配额检查（国际版）
+      // Basic 高级多模态媒体配额检查（国际版）- 使用 user_wallets
       if (isBasic) {
         const currentModelId = modelId || "qwen3-omni-flash";
         const modelCategory = getModelCategory(currentModelId);
@@ -331,61 +313,51 @@ export async function POST(
           (mediaPayload.videos?.length || 0) > 0 ||
           (mediaPayload.audios?.length || 0) > 0;
         if (modelCategory === "advanced_multimodal" && hasMedia) {
-          const currentMonth = getCurrentYearMonth();
           const imageCount = getImageCount(mediaPayload);
           const videoAudioCount = getVideoAudioCount(mediaPayload);
-          const photoLimit = getBasicMonthlyPhotoLimit();
-          const videoAudioLimit = getBasicMonthlyVideoAudioLimit();
 
-          const { data: mediaRow, error: mediaErr } = await supabase
-            .from("basic_quotas")
-            .select("month_used_photo, month_used_video_audio")
-            .eq("user_id", userId)
-            .eq("month", currentMonth)
-            .single();
+          // 从已查询的 walletRow 获取月度余额
+          const monthlyImageBalance = walletRow?.monthly_image_balance ?? 0;
+          const monthlyVideoBalance = walletRow?.monthly_video_balance ?? 0;
 
-          if (mediaErr && mediaErr.code !== "PGRST116") {
-            console.error("Basic media quota fetch error", mediaErr);
-            return new Response("Failed to check media quota", { status: 500 });
-          }
-
-          const monthUsedPhoto = mediaRow?.month_used_photo ?? 0;
-          const monthUsedVideoAudio = mediaRow?.month_used_video_audio ?? 0;
-
-          if (imageCount > 0 && monthUsedPhoto + imageCount > photoLimit) {
+          if (imageCount > 0 && monthlyImageBalance < imageCount) {
             return new Response(
               JSON.stringify({
                 error: getQuotaExceededMessage("monthly_photo", "en"),
                 quotaType: "monthly_photo",
-                remaining: Math.max(0, photoLimit - monthUsedPhoto),
+                remaining: Math.max(0, monthlyImageBalance),
               }),
               { status: 402, headers: { "Content-Type": "application/json" } },
             );
           }
 
-          if (videoAudioCount > 0 && monthUsedVideoAudio + videoAudioCount > videoAudioLimit) {
+          if (videoAudioCount > 0 && monthlyVideoBalance < videoAudioCount) {
             return new Response(
               JSON.stringify({
                 error: getQuotaExceededMessage("monthly_video_audio", "en"),
                 quotaType: "monthly_video_audio",
-                remaining: Math.max(0, videoAudioLimit - monthUsedVideoAudio),
+                remaining: Math.max(0, monthlyVideoBalance),
               }),
               { status: 402, headers: { "Content-Type": "application/json" } },
             );
           }
 
-          const { error: mediaUpsertErr } = await supabase.from("basic_quotas").upsert(
-            {
-              user_id: userId,
-              month: currentMonth,
-              month_used_photo: monthUsedPhoto + imageCount,
-              month_used_video_audio: monthUsedVideoAudio + videoAudioCount,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "user_id,month" },
-          );
+          // 扣减月度媒体余额
+          const updatePayload: Record<string, any> = {
+            updated_at: new Date().toISOString(),
+          };
+          if (imageCount > 0) {
+            updatePayload.monthly_image_balance = Math.max(0, monthlyImageBalance - imageCount);
+          }
+          if (videoAudioCount > 0) {
+            updatePayload.monthly_video_balance = Math.max(0, monthlyVideoBalance - videoAudioCount);
+          }
+          const { error: mediaUpsertErr } = await supabase
+            .from("user_wallets")
+            .update(updatePayload)
+            .eq("user_id", userId);
           if (mediaUpsertErr) {
-            console.error("Basic media quota upsert error", mediaUpsertErr);
+            console.error("Basic media quota update error", mediaUpsertErr);
             return new Response("Failed to update media quota", { status: 500 });
           }
         }

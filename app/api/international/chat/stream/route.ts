@@ -4,6 +4,8 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getExpertModelDefinition, isExpertModelId } from "@/constants/expert-models";
 import {
   getModelCategory,
   getFreeContextMsgLimit,
@@ -28,6 +30,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
+const INTERNATIONAL_GENERAL_MODEL_ID = "mistral-small-latest";
 
 /**
  * 获取用户计划信息
@@ -111,6 +114,7 @@ export async function POST(req: Request) {
       images = [],
       videos = [],
       audios = [],
+      expertModelId,
     } = (await req.json()) as {
       model?: string;
       modelId?: string;
@@ -120,7 +124,13 @@ export async function POST(req: Request) {
       images?: string[];
       videos?: string[];
       audios?: string[];
+      expertModelId?: string;
     };
+
+    const expertDef =
+      typeof expertModelId === "string" && isExpertModelId(expertModelId)
+        ? getExpertModelDefinition(expertModelId)
+        : null;
 
     // ============================================================
     // 用户认证
@@ -138,13 +148,16 @@ export async function POST(req: Request) {
     const userId = userData.user.id;
     const userMeta = userData.user.user_metadata as any;
 
-    // 获取钱包信息
-    const wallet = await getSupabaseUserWallet(userId);
-    const plan = getPlanInfo(userMeta, wallet);
-    
-    // 确保钱包存在
-    const effectivePlanLower = plan.planActive ? plan.planLower : "free";
+    // 获取钱包信息（seed 可能触发延期降级落库，因此这里需要二次读取）
+    let wallet = await getSupabaseUserWallet(userId);
+    let plan = getPlanInfo(userMeta, wallet);
+
+    let effectivePlanLower = plan.planActive ? plan.planLower : "free";
     await seedSupabaseWalletForPlan(userId, effectivePlanLower);
+
+    wallet = await getSupabaseUserWallet(userId);
+    plan = getPlanInfo(userMeta, wallet);
+    effectivePlanLower = plan.planActive ? plan.planLower : "free";
 
     // ============================================================
     // 上下文截断
@@ -168,6 +181,20 @@ export async function POST(req: Request) {
       (Array.isArray(messages) &&
         messages.some((m) => (m?.images || m?.videos || m?.audios || []).length > 0));
 
+    // 专家模型不支持多模态
+    if (expertDef && hasMediaPayload) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error:
+            language === "zh"
+              ? "专家模型暂不支持图片/视频/音频，请切换到通用模型（General Model）。"
+              : "Expert models do not support image/video/audio. Please switch to the General Model.",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     // 国际版暂不支持多模态，如果有媒体附件则返回提示
     if (hasMediaPayload) {
       return new Response(
@@ -181,8 +208,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const modelName = model || modelId || "mistral-small-latest";
-    const finalModelId = modelId || modelName;
+    // 专家模型强制使用通用模型底座
+    const modelName = expertDef
+      ? INTERNATIONAL_GENERAL_MODEL_ID
+      : model || modelId || INTERNATIONAL_GENERAL_MODEL_ID;
+    const finalModelId = expertDef ? modelName : modelId || modelName;
     const provider = getMistralProvider(modelName);
 
     if (!provider) {
@@ -293,6 +323,9 @@ export async function POST(req: Request) {
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
 
+    const userMessageAt = new Date().toISOString();
+    let assistantMessage = "";
+
     (async () => {
       const reader = upstream.body!.getReader();
       let buffer = "";
@@ -348,6 +381,7 @@ export async function POST(req: Request) {
               const delta = extractDelta(parsed);
               if (delta && delta.trim().length > 0) {
                 hasContentOutput = true; // AI已开始输出内容
+                assistantMessage += delta;
                 await safeWrite(
                   encoder.encode(`data: ${JSON.stringify({ chunk: delta })}\n\n`)
                 );
@@ -373,7 +407,7 @@ export async function POST(req: Request) {
 
         // 响应完成后扣减配额（AI成功输出内容后才扣费，手动暂停也算）
         const shouldCharge = streamFinished || hasContentOutput;
-        
+
         if (shouldDeductMediaQuota && shouldCharge) {
           const consumeResult = await consumeSupabaseQuota({
             userId,
@@ -393,6 +427,25 @@ export async function POST(req: Request) {
           );
           if (!consumeDailyResult.success) {
             console.error("[quota][stream][daily-consume-error]", consumeDailyResult.error);
+          }
+        }
+
+        // 专家模型对话落库（分表），不影响主流程
+        if (expertDef && supabaseAdmin && shouldCharge && assistantMessage.trim().length > 0) {
+          try {
+            const { error } = await supabaseAdmin.from(expertDef.supabaseTable).insert({
+              user_id: userId,
+              user_message: message || "",
+              user_message_at: userMessageAt,
+              assistant_message: assistantMessage,
+              assistant_message_at: new Date().toISOString(),
+              model_id: modelName,
+            });
+            if (error) {
+              console.error("[expert-log][supabase] insert failed", error);
+            }
+          } catch (err) {
+            console.error("[expert-log][supabase] insert failed", err);
           }
         }
       }
@@ -415,6 +468,5 @@ export async function POST(req: Request) {
     );
   }
 }
-
 
 

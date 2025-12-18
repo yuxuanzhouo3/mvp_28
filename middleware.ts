@@ -49,6 +49,44 @@ export async function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
 
   // =====================
+  // 版本隔离：根据 NEXT_PUBLIC_DEFAULT_LANGUAGE 限制可访问的 API 路由
+  // - 国内版(zh)：禁止访问 /api/international 及 Stripe/PayPal
+  // - 国际版(en)：禁止访问 /api/domestic 及 微信/支付宝/国内 webhook
+  // =====================
+  const envDefaultLang = (process.env.NEXT_PUBLIC_DEFAULT_LANGUAGE || "zh").toLowerCase();
+  const isDomesticVersion = envDefaultLang !== "en";
+
+  if (pathname.startsWith("/api/domestic") && !isDomesticVersion) {
+    return new NextResponse(null, { status: 404 });
+  }
+  if (pathname.startsWith("/api/international") && isDomesticVersion) {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  if (isDomesticVersion) {
+    if (pathname.startsWith("/api/payment/stripe") || pathname.startsWith("/api/payment/paypal")) {
+      return new NextResponse(null, { status: 404 });
+    }
+  } else {
+    if (
+      pathname.startsWith("/api/payment/wechat") ||
+      pathname.startsWith("/api/payment/alipay") ||
+      pathname.startsWith("/api/payment/webhook/wechat") ||
+      pathname.startsWith("/api/payment/webhook/alipay") ||
+      pathname.startsWith("/api/webhooks/domestic-renew") ||
+      pathname === "/api/auth/check-email" ||
+      // 国内版（CloudBase）认证接口：国际版不允许访问，保证数据库/存储绝对隔离
+      pathname === "/api/auth/login" ||
+      pathname === "/api/auth/register" ||
+      pathname === "/api/auth/logout" ||
+      pathname === "/api/auth/wechat" ||
+      pathname.startsWith("/api/auth/wechat/")
+    ) {
+      return new NextResponse(null, { status: 404 });
+    }
+  }
+
+  // =====================
   // Admin 路由保护
   // =====================
   if (pathname.startsWith("/admin") && !pathname.startsWith("/admin/login")) {

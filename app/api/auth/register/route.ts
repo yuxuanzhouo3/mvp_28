@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
+import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    // 版本隔离：国际版不允许访问 CloudBase 注册接口
+    if (!IS_DOMESTIC_VERSION) {
+      return new NextResponse(null, { status: 404 });
+    }
+
     const { email, password, name } = await req.json();
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password required" }, { status: 400 });

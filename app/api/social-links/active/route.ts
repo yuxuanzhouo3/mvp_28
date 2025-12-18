@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
+import { IS_DOMESTIC_VERSION } from "@/config";
 
 export interface PublicSocialLink {
   id: string;
@@ -20,7 +21,8 @@ export interface PublicSocialLink {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const isDomestic = searchParams.get("isDomestic") === "true";
+    // 版本隔离：以部署版本为准，忽略客户端传参，避免跨库读取
+    const isDomestic = IS_DOMESTIC_VERSION;
 
     const links: PublicSocialLink[] = [];
 

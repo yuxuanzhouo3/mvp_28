@@ -78,7 +78,7 @@ function toBeijingDate(date: Date): Date {
   return new Date(utcMs + BEIJING_OFFSET_MS);
 }
 
-function getBeijingYMD(date: Date): { year: number; month: number; day: number } {
+export function getBeijingYMD(date: Date): { year: number; month: number; day: number } {
   const bj = toBeijingDate(date);
   return { year: bj.getFullYear(), month: bj.getMonth() + 1, day: bj.getDate() };
 }
@@ -98,7 +98,7 @@ function clampAnchorDay(year: number, month1Based: number, anchorDay: number): n
 /**
  * 日历月累加，保持账单锚点（含月末粘性）
  */
-function addCalendarMonths(baseDate: Date, months: number, anchorDay: number): Date {
+export function addCalendarMonths(baseDate: Date, months: number, anchorDay: number): Date {
   let current = baseDate;
   for (let i = 0; i < months; i++) {
     current = getNextBillingDateSticky(current, anchorDay);
@@ -281,6 +281,151 @@ export async function ensureSupabaseUserWallet(userId: string): Promise<Supabase
 /**
  * 确保钱包存在，并按套餐初始化/懒刷新月度配额（含账单锚点）
  */
+function normalizeSupabasePlanLabel(planLower: string): string {
+  const lower = (planLower || "").toLowerCase();
+  if (lower === "basic" || lower === "基础版") return "Basic";
+  if (lower === "pro" || lower === "专业版") return "Pro";
+  if (lower === "enterprise" || lower === "企业版") return "Enterprise";
+  return "Free";
+}
+
+async function applySupabasePendingDowngradeIfNeeded(params: {
+  userId: string;
+  wallet: SupabaseUserWallet;
+  now: Date;
+}): Promise<SupabaseUserWallet | null> {
+  const { userId, wallet, now } = params;
+  if (!supabaseAdmin) return null;
+
+  const raw = wallet.pending_downgrade;
+  if (!raw) return null;
+
+  let pending: any = null;
+  try {
+    pending = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  const targetPlanRaw =
+    pending?.targetPlan ||
+    pending?.target_plan ||
+    pending?.plan ||
+    pending?.target ||
+    null;
+  if (!targetPlanRaw) return null;
+
+  const targetPlanLower = String(targetPlanRaw).toLowerCase();
+  const targetPlan = normalizeSupabasePlanLabel(targetPlanLower);
+  const pro = targetPlanLower !== "free" && targetPlanLower !== "basic";
+
+  const effectiveAt = pending?.effectiveAt
+    ? new Date(pending.effectiveAt)
+    : wallet.plan_exp
+      ? new Date(wallet.plan_exp)
+      : null;
+  if (!effectiveAt || Number.isNaN(effectiveAt.getTime()) || effectiveAt > now) {
+    return null;
+  }
+
+  const { data: pendingSub, error: pendingErr } = await supabaseAdmin
+    .from("subscriptions")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .maybeSingle();
+
+  if (pendingErr) {
+    console.error("[wallet-supabase] pending subscription fetch error:", pendingErr);
+  }
+
+  const periodStr = (pendingSub?.period || "monthly").toString().toLowerCase();
+  const period: "monthly" | "annual" =
+    periodStr === "annual" || periodStr === "yearly" ? "annual" : "monthly";
+  const monthsToAdd = period === "annual" ? 12 : 1;
+
+  const anchorDay =
+    wallet.billing_cycle_anchor ||
+    (wallet.monthly_reset_at
+      ? getBeijingYMD(new Date(wallet.monthly_reset_at)).day
+      : getBeijingYMD(now).day);
+
+  const nextExpireIso =
+    pendingSub?.expires_at ||
+    addCalendarMonths(effectiveAt, monthsToAdd, anchorDay).toISOString();
+  const nowIso = now.toISOString();
+
+  // 1) 激活待生效订阅记录
+  if (pendingSub?.user_id) {
+    const { error } = await supabaseAdmin
+      .from("subscriptions")
+      .update({
+        status: "active",
+        started_at: pendingSub.started_at || effectiveAt.toISOString(),
+        expires_at: nextExpireIso,
+        updated_at: nowIso,
+        plan: targetPlan,
+        period,
+      })
+      .eq("user_id", userId);
+    if (error) {
+      console.error("[wallet-supabase] activate pending subscription error:", error);
+    }
+  } else {
+    const { error } = await supabaseAdmin.from("subscriptions").upsert(
+      {
+        user_id: userId,
+        plan: targetPlan,
+        period,
+        status: "active",
+        started_at: effectiveAt.toISOString(),
+        expires_at: nextExpireIso,
+        type: "SUBSCRIPTION",
+        updated_at: nowIso,
+      },
+      { onConflict: "user_id" }
+    );
+    if (error) {
+      console.error("[wallet-supabase] upsert active subscription error:", error);
+    }
+  }
+
+  // 2) 更新钱包订阅态
+  const { error: walletUpdateError } = await supabaseAdmin
+    .from("user_wallets")
+    .update({
+      plan: targetPlan,
+      subscription_tier: targetPlan,
+      plan_exp: nextExpireIso,
+      pro,
+      pending_downgrade: null,
+      updated_at: nowIso,
+    })
+    .eq("user_id", userId);
+  if (walletUpdateError) {
+    console.error("[wallet-supabase] apply pending downgrade wallet update error:", walletUpdateError);
+  }
+
+  // 3) 同步 auth.users 元数据（best-effort）
+  try {
+    await supabaseAdmin.auth.admin.updateUserById(userId, {
+      user_metadata: {
+        pro,
+        plan: targetPlan,
+        plan_exp: nextExpireIso,
+      },
+    });
+  } catch (e) {
+    console.warn("[wallet-supabase] auth metadata sync failed:", e);
+  }
+
+  // 4) 重置月度配额到目标套餐（降级生效时视为新账期开始）
+  const limits = getSupabasePlanMediaLimits(targetPlanLower);
+  await resetSupabaseMonthlyQuota(userId, limits.imageLimit, limits.videoLimit);
+
+  return await getSupabaseUserWallet(userId);
+}
+
 export async function seedSupabaseWalletForPlan(
   userId: string,
   planLowerInput: string,
@@ -309,6 +454,18 @@ export async function seedSupabaseWalletForPlan(
 
   let wallet = walletRes;
   const activeSub = subRes.error ? null : subRes.data;
+
+  // 1.1) 处理到期的降级请求（延迟生效）
+  if (wallet?.pending_downgrade) {
+    const appliedWallet = await applySupabasePendingDowngradeIfNeeded({
+      userId,
+      wallet,
+      now,
+    });
+    if (appliedWallet) return appliedWallet;
+    // best-effort refresh，避免后续逻辑基于过期的 pending_downgrade 做错误判断
+    wallet = await getSupabaseUserWallet(userId);
+  }
 
   // 2) 判定真实 Plan（自愈）
   let effectivePlan = (planLowerInput || "free").toLowerCase();
@@ -867,6 +1024,9 @@ export async function addSupabaseAddonCredits(
 ): Promise<{ success: boolean; error?: string }> {
   if (!supabaseAdmin) return { success: false, error: "supabaseAdmin not available" };
   try {
+    // 确保钱包存在，否则 update 会静默失败
+    await ensureSupabaseUserWallet(userId);
+
     const { data: wallet } = await supabaseAdmin
       .from("user_wallets")
       .select("addon_image_balance, addon_video_balance")
@@ -886,6 +1046,15 @@ export async function addSupabaseAddonCredits(
       .eq("user_id", userId);
 
     if (error) return { success: false, error: error.message };
+
+    console.log("[wallet-supabase][addon-credits-added]", {
+      userId,
+      imageCredits,
+      videoAudioCredits,
+      newImageBalance: currentImg + imageCredits,
+      newVideoBalance: currentVid + videoAudioCredits,
+    });
+
     return { success: true };
   } catch (err) {
     return {

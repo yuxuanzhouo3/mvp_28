@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { geoRouter } from "@/lib/architecture-modules/core/geo-router";
+// Use Edge-compatible versions
+import { geoRouter } from "@/lib/edge/geo-router";
 import { RegionType } from "@/lib/architecture-modules/core/types";
-import { csrfProtection } from "@/lib/security/csrf";
+import { csrfProtection } from "@/lib/edge/csrf";
 
 // Admin session cookie 配置
 const ADMIN_SESSION_COOKIE_NAME = "admin_session";
@@ -15,15 +16,19 @@ function verifyAdminSessionToken(token: string): boolean {
     const [encoded, sig] = token.split(".");
     if (!encoded || !sig) return false;
 
-    // 验证签名
-    const expectedSig = Buffer.from(
-      `${encoded}.${ADMIN_SESSION_SECRET}`
-    ).toString("base64").slice(0, 16);
+    // 验证签名 - Edge Runtime compatible
+    const encoder = new TextEncoder();
+    const data = encoder.encode(`${encoded}.${ADMIN_SESSION_SECRET}`);
+    let binaryString = '';
+    for (let i = 0; i < data.length; i++) {
+      binaryString += String.fromCharCode(data[i]);
+    }
+    const expectedSig = btoa(binaryString).slice(0, 16);
 
     if (sig !== expectedSig) return false;
 
-    // 解析 payload
-    const payload = Buffer.from(encoded, "base64").toString("utf-8");
+    // 解析 payload - Edge Runtime compatible
+    const payload = atob(encoded);
     const session = JSON.parse(payload);
 
     // 检查是否过期

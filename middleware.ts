@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-// Use dynamic imports to avoid static analysis issues
-// These will be loaded at runtime in Edge Runtime
+import { geoRouter } from "@/lib/architecture-modules/core/geo-router";
+import { RegionType } from "@/lib/architecture-modules/core/types";
+import { csrfProtection } from "@/lib/security/csrf";
 
 // Admin session cookie 配置
 const ADMIN_SESSION_COOKIE_NAME = "admin_session";
@@ -14,19 +15,15 @@ function verifyAdminSessionToken(token: string): boolean {
     const [encoded, sig] = token.split(".");
     if (!encoded || !sig) return false;
 
-    // 验证签名 - Edge Runtime compatible
-    const encoder = new TextEncoder();
-    const data = encoder.encode(`${encoded}.${ADMIN_SESSION_SECRET}`);
-    let binaryString = '';
-    for (let i = 0; i < data.length; i++) {
-      binaryString += String.fromCharCode(data[i]);
-    }
-    const expectedSig = btoa(binaryString).slice(0, 16);
+    // 验证签名
+    const expectedSig = Buffer.from(
+      `${encoded}.${ADMIN_SESSION_SECRET}`
+    ).toString("base64").slice(0, 16);
 
     if (sig !== expectedSig) return false;
 
-    // 解析 payload - Edge Runtime compatible
-    const payload = atob(encoded);
+    // 解析 payload
+    const payload = Buffer.from(encoded, "base64").toString("utf-8");
     const session = JSON.parse(payload);
 
     // 检查是否过期
@@ -341,37 +338,10 @@ export async function middleware(request: NextRequest) {
       response.headers.set("X-Debug-Mode", debugParam);
     }
 
-    // 4. CSRF防护 - 内联简化版本（避免导入问题）
-    const { pathname } = request.nextUrl;
-    const method = request.method;
-    const stateChangingMethods = ["POST", "PUT", "DELETE", "PATCH"];
-    if (stateChangingMethods.includes(method) && !pathname.startsWith("/api/") && !pathname.startsWith("/admin")) {
-      const token = request.headers.get("x-csrf-token") || new URL(request.url).searchParams.get("csrf-token");
-      const secret = request.cookies.get("csrf-secret")?.value;
-      if (!token || !secret) {
-        return new NextResponse(
-          JSON.stringify({
-            error: "CSRF token missing",
-            message: "Security token is required for this request",
-          }),
-          { status: 403, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      // Simple token verification (inline)
-      const parts = token.split(".");
-      if (parts.length === 3) {
-        const [timestamp] = parts;
-        const tokenTime = parseInt(timestamp);
-        if (Date.now() - tokenTime > 5 * 60 * 1000) {
-          return new NextResponse(
-            JSON.stringify({
-              error: "CSRF token invalid",
-              message: "Security token verification failed",
-            }),
-            { status: 403, headers: { "Content-Type": "application/json" } }
-          );
-        }
-      }
+    // 4. CSRF防护 - 对状态改变请求进行CSRF验证
+    const csrfResponse = await csrfProtection(request, response);
+    if (csrfResponse.status !== 200) {
+      return csrfResponse;
     }
 
     return response;

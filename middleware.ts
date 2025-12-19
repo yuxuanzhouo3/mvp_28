@@ -453,6 +453,12 @@ export async function middleware(request: NextRequest) {
 
     return response;
   }
+  } catch (outerError) {
+    // Catch any errors that escape the inner try-catch
+    console.error("Middleware fatal error:", outerError);
+    // Always return a valid response to prevent middleware failure
+    return NextResponse.next();
+  }
 }
 
 /**

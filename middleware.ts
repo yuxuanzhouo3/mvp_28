@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { geoRouter } from "@/lib/architecture-modules/core/geo-router";
+import { RegionType } from "@/lib/architecture-modules/core/types";
+import { csrfProtection } from "@/lib/security/csrf";
 
 // Admin session cookie 配置
 const ADMIN_SESSION_COOKIE_NAME = "admin_session";
@@ -95,6 +98,8 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
   }
+  const FAIL_CLOSED =
+    (process.env.GEO_FAIL_CLOSED || "true").toLowerCase() === "true";
 
   // =====================
   // CORS 预检统一处理（仅 API 路由）
@@ -134,7 +139,6 @@ export async function middleware(request: NextRequest) {
   // 跳过静态资源和Next.js内部路由（但保留 API 路由以便设置区域 Header）
   if (
     pathname.startsWith("/_next/") ||
-    pathname === "/favicon.ico" ||
     pathname.startsWith("/favicon.ico") ||
     (pathname.includes(".") && !pathname.startsWith("/api/"))
   ) {
@@ -366,6 +370,97 @@ export async function middleware(request: NextRequest) {
   }
 }
 
+/**
+ * 获取客户端真实IP地址
+ * 处理各种代理和CDN的情况
+ */
+function getClientIP(request: NextRequest): string | null {
+  const isDev = process.env.NODE_ENV !== "production";
+
+  // 开发/本地环境支持调试注入 IP，便于测试 geo 逻辑
+  if (isDev) {
+    const debugIp =
+      request.headers.get("x-debug-ip") ||
+      request.nextUrl.searchParams.get("debug_ip") ||
+      request.nextUrl.searchParams.get("debugip");
+    if (debugIp && isValidIP(debugIp)) {
+      return debugIp;
+    }
+  }
+
+  // 优先级：X-Real-IP > X-Forwarded-For > request.ip
+
+  // 1. 检查 X-Real-IP（Nginx等代理设置）
+  const realIP = request.headers.get("x-real-ip");
+  if (realIP && isValidIP(realIP)) {
+    return realIP;
+  }
+
+  // 2. 检查 X-Forwarded-For（多个代理的情况）
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    // X-Forwarded-For 可能包含多个IP，取第一个（最原始的客户端IP）
+    const ips = forwardedFor.split(",").map((ip) => ip.trim());
+    for (const ip of ips) {
+      if (isValidIP(ip)) {
+        return ip;
+      }
+    }
+  }
+
+  // 3. 检查其他可能的头
+  const possibleHeaders = [
+    "x-client-ip",
+    "x-forwarded",
+    "forwarded-for",
+    "forwarded",
+    "cf-connecting-ip", // Cloudflare
+    "true-client-ip", // Akamai
+  ];
+
+  for (const header of possibleHeaders) {
+    const ip = request.headers.get(header);
+    if (ip && isValidIP(ip)) {
+      return ip;
+    }
+  }
+
+  // 4. Next.js 提供的 request.ip（在 Vercel Edge/Node 上可获取真实客户端 IP）
+  if (request.ip && isValidIP(request.ip)) {
+    return request.ip;
+  }
+
+  return null;
+}
+
+/**
+ * 验证IP地址格式
+ */
+function isValidIP(ip: string): boolean {
+  // IPv4 验证
+  const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+  if (ipv4Regex.test(ip)) {
+    const parts = ip.split(".").map(Number);
+    return parts.every((part) => part >= 0 && part <= 255);
+  }
+
+  // IPv6 宽松验证：允许压缩格式，限定字符集，并过滤保留/私网/回环
+  if (ip.includes(":")) {
+    const ipv6Loose = /^[0-9a-fA-F:]+$/;
+    if (!ipv6Loose.test(ip)) return false;
+    const lower = ip.toLowerCase();
+    // 回环
+    if (lower === "::1") return false;
+    // 链路本地 fe80::/10，unique local fc00::/7，文档前缀 2001:db8::/32
+    if (lower.startsWith("fe8") || lower.startsWith("fe9") || lower.startsWith("fea") || lower.startsWith("feb"))
+      return false;
+    if (lower.startsWith("fc") || lower.startsWith("fd")) return false;
+    if (lower.startsWith("2001:db8")) return false;
+    return true;
+  }
+
+  return false;
+}
 
 export const config = {
   matcher: [

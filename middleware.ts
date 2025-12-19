@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { geoRouter } from "@/lib/architecture-modules/core/geo-router";
-import { RegionType } from "@/lib/architecture-modules/core/types";
-import { csrfProtection } from "@/lib/security/csrf";
+// Use dynamic imports for Edge runtime compatibility
+// These modules may have transitive dependencies on Node.js APIs
+type RegionType = "CHINA" | "USA" | "EUROPE" | "OTHER";
+type GeoResult = {
+  region: RegionType;
+  countryCode: string;
+  currency: string;
+};
 
 // Admin session cookie 配置
 const ADMIN_SESSION_COOKIE_NAME = "admin_session";
@@ -15,15 +20,16 @@ function verifyAdminSessionToken(token: string): boolean {
     const [encoded, sig] = token.split(".");
     if (!encoded || !sig) return false;
 
-    // 验证签名
-    const expectedSig = Buffer.from(
-      `${encoded}.${ADMIN_SESSION_SECRET}`
-    ).toString("base64").slice(0, 16);
+    // 验证签名 - Edge Runtime 兼容版本（使用 TextEncoder/TextDecoder）
+    const encoder = new TextEncoder();
+    const data = encoder.encode(`${encoded}.${ADMIN_SESSION_SECRET}`);
+    // 简单的 base64 编码（Edge 兼容）
+    const expectedSig = btoa(String.fromCharCode(...data)).slice(0, 16);
 
     if (sig !== expectedSig) return false;
 
-    // 解析 payload
-    const payload = Buffer.from(encoded, "base64").toString("utf-8");
+    // 解析 payload - Edge Runtime 兼容版本
+    const payload = atob(encoded);
     const session = JSON.parse(payload);
 
     // 检查是否过期
@@ -229,7 +235,7 @@ export async function middleware(request: NextRequest) {
       switch (debugParam.toLowerCase()) {
         case "china":
           geoResult = {
-            region: RegionType.CHINA,
+            region: "CHINA" as RegionType,
             countryCode: "CN",
             currency: "CNY",
           };
@@ -237,7 +243,7 @@ export async function middleware(request: NextRequest) {
         case "usa":
         case "us":
           geoResult = {
-            region: RegionType.USA,
+            region: "USA" as RegionType,
             countryCode: "US",
             currency: "USD",
           };
@@ -245,7 +251,7 @@ export async function middleware(request: NextRequest) {
         case "europe":
         case "eu":
           geoResult = {
-            region: RegionType.EUROPE,
+            region: "EUROPE" as RegionType,
             countryCode: "DE",
             currency: "EUR",
           };
@@ -253,6 +259,7 @@ export async function middleware(request: NextRequest) {
         default:
           // 无效的debug参数，回退到正常检测
           const clientIP = getClientIP(request);
+          const { geoRouter } = await import("@/lib/architecture-modules/core/geo-router");
           geoResult = await geoRouter.detect(clientIP || "");
       }
     } else {
@@ -281,13 +288,14 @@ export async function middleware(request: NextRequest) {
         return res;
       }
 
-      // 检测地理位置
+      // 检测地理位置 - 使用动态导入以兼容 Edge Runtime
+      const { geoRouter } = await import("@/lib/architecture-modules/core/geo-router");
       geoResult = await geoRouter.detect(clientIP);
     }
 
     // 1. 禁止欧洲IP访问（开发环境调试模式除外）
     if (
-      geoResult.region === RegionType.EUROPE &&
+      geoResult.region === "EUROPE" &&
       !(debugParam && isDevelopment)
     ) {
       console.log(`禁止欧洲IP访问: ${geoResult.countryCode}`);
@@ -338,7 +346,8 @@ export async function middleware(request: NextRequest) {
       response.headers.set("X-Debug-Mode", debugParam);
     }
 
-    // 4. CSRF防护 - 对状态改变请求进行CSRF验证
+    // 4. CSRF防护 - 对状态改变请求进行CSRF验证（使用动态导入）
+    const { csrfProtection } = await import("@/lib/security/csrf");
     const csrfResponse = await csrfProtection(request, response);
     if (csrfResponse.status !== 200) {
       return csrfResponse;

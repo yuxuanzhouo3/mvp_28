@@ -1,0 +1,8 @@
+packages:
+  - .
+
+# 允许这些依赖在安装时运行 build/postinstall（pnpm@10 默认全禁）。
+onlyBuiltDependencies:
+  - core-js-pure
+  - sharp
+  - unrs-resolver

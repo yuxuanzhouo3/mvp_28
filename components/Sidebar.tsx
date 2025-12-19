@@ -1,0 +1,974 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { useLanguage } from "@/context/LanguageContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+  ContextMenuSeparator,
+} from "@/components/ui/context-menu";
+import { Badge } from "@/components/ui/badge";
+import {
+  Plus,
+  Search,
+  Folder,
+  FolderOpen,
+  MessageSquare,
+  Sparkles,
+  Globe,
+  Edit3,
+  Upload,
+  Trash2,
+  Check,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Menu,
+  Download,
+  Eye,
+  EyeOff,
+} from "lucide-react";
+import { ChatSession, BookmarkFolder } from "../types";
+import { specializedProducts } from "../constants";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import AdBanner from "@/components/AdBanner";
+
+// 社交链接类型定义
+interface SocialLinkData {
+  id: string;
+  title: string;
+  description: string | null;
+  icon_url: string;
+  target_url: string;
+  sort_order: number;
+}
+
+interface SidebarProps {
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  sidebarWidth: number;
+  handleSidebarResizeStart: (e: React.MouseEvent) => void;
+  createNewChat: (category?: string, modelType?: string, model?: string) => void;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  expandedFolders: string[];
+  toggleFolder: (folder: string) => void;
+  groupedChats: Record<string, ChatSession[]>;
+  currentChatId: string;
+  selectChat: (chatId: string) => void;
+  editingChatId: string | null;
+  setEditingChatId: (id: string) => void;
+  editingTitle: string;
+  setEditingTitle: (title: string) => void;
+  saveTitle: () => void;
+  cancelEditing: () => void;
+  deleteChat: (chatId: string) => void;
+  exportChat: (chatId: string) => void;
+  setShowShareDialog: (show: boolean) => void;
+  truncateText: (text: string, maxLength: number) => string;
+  appUser: any;
+  updateUserSettings: (settings: Partial<any>) => void;
+  showDownloadSection: boolean;
+  setShowDownloadSection: (show: boolean) => void;
+  handleSpecializedProductSelect: (product: any) => void;
+  setIsResizing: (isResizing: boolean) => void;
+  getLocalizedText: (key: string) => string;
+  isSidebarLoading: boolean;
+  isDomestic?: boolean;
+  // 全局广告显示状态（从父组件传入，用于控制全局广告）
+  showGlobalAds?: boolean;
+  setShowGlobalAds?: (show: boolean) => void;
+  // 升级弹窗控制（用于广告关闭时弹出）
+  setShowUpgradeDialog?: (show: boolean) => void;
+  // 是否应该显示广告（根据订阅状态计算，由父组件传入）
+  shouldShowAds?: boolean;
+}
+
+export default function Sidebar({
+  sidebarCollapsed,
+  setSidebarCollapsed,
+  sidebarWidth,
+  handleSidebarResizeStart,
+  createNewChat,
+  searchQuery,
+  setSearchQuery,
+  expandedFolders,
+  toggleFolder,
+  groupedChats,
+  currentChatId,
+  selectChat,
+  editingChatId,
+  setEditingChatId,
+  editingTitle,
+  setEditingTitle,
+  saveTitle,
+  cancelEditing,
+  deleteChat,
+  setShowShareDialog,
+  truncateText,
+  appUser,
+  exportChat,
+  updateUserSettings,
+  showDownloadSection,
+  setShowDownloadSection,
+  handleSpecializedProductSelect,
+  setIsResizing,
+  getLocalizedText,
+  isSidebarLoading,
+  isDomestic = false,
+  showGlobalAds = true,
+  setShowGlobalAds,
+  setShowUpgradeDialog,
+  shouldShowAds = true,
+}: SidebarProps) {
+  const { currentLanguage } = useLanguage();
+  const canCloseAdsForUpsell = !appUser?.isPaid;
+
+  // 社交链接数据状态
+  const [socialLinks, setSocialLinks] = useState<SocialLinkData[]>([]);
+  const [socialLinksLoading, setSocialLinksLoading] = useState(true);
+
+  // 侧边栏本地广告显示状态（仅控制侧边栏广告显示/社交链接切换）
+  // 默认显示广告，用户点击小眼睛后切换到社交链接
+  const [showSidebarAd, setShowSidebarAd] = useState(true);
+
+  // 获取社交链接数据
+  useEffect(() => {
+    async function fetchSocialLinks() {
+      try {
+        const response = await fetch(`/api/social-links/active?isDomestic=${isDomestic}`);
+        const result = await response.json();
+        if (result.success && result.data) {
+          setSocialLinks(result.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch social links:", err);
+      } finally {
+        setSocialLinksLoading(false);
+      }
+    }
+
+    fetchSocialLinks();
+  }, [isDomestic]);
+
+  // 处理社交链接点击
+  const handleSocialLinkClick = (link: SocialLinkData) => {
+    if (link.target_url) {
+      window.open(link.target_url, "_blank", "noopener,noreferrer");
+    }
+  };
+
+  // 合并数据：优先使用 API 数据，如果没有则使用静态数据作为后备
+  const displayLinks = socialLinks.length > 0 ? socialLinks : specializedProducts.map(p => ({
+    id: p.id,
+    title: p.name,
+    description: p.description,
+    icon_url: p.icon, // 这是 emoji，需要特殊处理
+    target_url: p.url,
+    sort_order: 0,
+  }));
+
+  // 判断是否是 URL（用于区分 emoji 和图片 URL）
+  const isImageUrl = (url: string) => {
+    return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('cloud://');
+  };
+
+  return (
+    <>
+      {/* Collapsed Sidebar Toggle - Fixed to absolute far left */}
+      {sidebarCollapsed && (
+        <div
+          className="fixed left-0 top-0 z-50 w-12 h-full bg-white dark:bg-[#40414f] border-r border-gray-200 dark:border-[#565869] flex flex-col"
+          style={{ margin: 0, padding: 0 }}
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSidebarCollapsed(false)}
+            className="w-full h-12 rounded-none border-b border-gray-200 dark:border-[#565869] m-0 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+            style={{ margin: 0, padding: 0 }}
+          >
+            <Menu className="w-4 h-4" />
+          </Button>
+
+          {/* Download Section */}
+          <div className="flex flex-col items-center space-y-2 px-1 pt-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowDownloadSection(!showDownloadSection)}
+              className="w-6 h-6 rounded-sm text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+              title={getLocalizedText("downloadApps")}
+            >
+              <Download className="w-3 h-3" />
+            </Button>
+          </div>
+
+          {/* Ads Toggle - 默认显示广告（Eye），点击后仅关闭侧边栏广告并显示社交链接 */}
+          <div className="flex justify-center px-1 pb-1 pt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSidebarAd(!showSidebarAd)}
+              className={`w-6 h-6 rounded-sm ${
+                showSidebarAd && shouldShowAds
+                  ? "text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                  : "text-gray-400 dark:text-gray-500"
+              }`}
+              title={
+                showSidebarAd && shouldShowAds
+                  ? getLocalizedText("hideAds")
+                  : getLocalizedText("showAds")
+              }
+            >
+              {showSidebarAd && shouldShowAds ? (
+                <Eye className="w-3 h-3" />
+              ) : (
+                <EyeOff className="w-3 h-3" />
+              )}
+            </Button>
+          </div>
+
+          {/* 侧边栏竖向广告 (shouldShowAds且showSidebarAd为true时显示) */}
+          {shouldShowAds && showSidebarAd && (
+            <div className="flex flex-col items-center px-1 flex-1">
+              <ScrollArea className="w-full h-full">
+                <div className="flex flex-col items-center py-2">
+                  <AdBanner
+                    position="sidebar"
+                    isDomestic={isDomestic}
+                    showCloseButton={canCloseAdsForUpsell}
+                    onClose={() => {
+                      if (canCloseAdsForUpsell) {
+                        setShowUpgradeDialog?.(true);
+                      }
+                    }}
+                    className="h-[200px]"
+                  />
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+
+          {/* 社交链接小方块 (shouldShowAds为false或showSidebarAd为false时显示) */}
+          {(!shouldShowAds || !showSidebarAd) && (
+            <div className="flex flex-col items-center space-y-0.5 px-1">
+              <ScrollArea className="w-full max-h-[calc(100vh-120px)]">
+                <div className="grid grid-cols-1 gap-0.5 w-full pb-4 justify-items-center pt-1">
+                  {socialLinksLoading ? (
+                    // 加载占位符
+                    Array.from({ length: 6 }).map((_, idx) => (
+                      <div
+                        key={`skeleton-${idx}`}
+                        className="w-7 h-7 rounded-sm bg-gray-200 dark:bg-[#565869] animate-pulse"
+                      />
+                    ))
+                  ) : (
+                    displayLinks.map((link) => (
+                      <Popover key={link.id}>
+                        <PopoverTrigger asChild>
+                          <button
+                            className="w-7 h-7 rounded-sm border border-gray-200 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869] transition-colors flex items-center justify-center group focus:outline-none focus:ring-1 focus:ring-blue-500 overflow-hidden"
+                            onMouseEnter={(e) => e.currentTarget.focus()}
+                          >
+                            {isImageUrl(link.icon_url) ? (
+                              <img
+                                src={link.icon_url}
+                                alt={link.title}
+                                className="w-5 h-5 object-contain"
+                              />
+                            ) : (
+                              <span className="text-[10px]">{link.icon_url}</span>
+                            )}
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          side="right"
+                          align="center"
+                          className="w-56 p-3 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] shadow-lg cursor-pointer z-50"
+                          onClick={() => handleSocialLinkClick(link)}
+                          onOpenAutoFocus={(e) => e.preventDefault()}
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center space-x-2">
+                              {isImageUrl(link.icon_url) ? (
+                                <img
+                                  src={link.icon_url}
+                                  alt={link.title}
+                                  className="w-8 h-8 object-contain"
+                                />
+                              ) : (
+                                <span className="text-lg">{link.icon_url}</span>
+                              )}
+                              <div>
+                                <h4 className="font-medium text-gray-900 dark:text-[#ececf1] text-sm">
+                                  {link.title}
+                                </h4>
+                                {link.description && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {link.description}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            {link.target_url && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSocialLinkClick(link);
+                                }}
+                                className="w-full text-left text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 cursor-pointer"
+                              >
+                                Click to visit:{" "}
+                                {link.target_url.replace("https://", "").replace("http://", "")}
+                              </button>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Left Sidebar - Chat History */}
+      <div
+        className={`${
+          sidebarCollapsed ? "w-0 opacity-0 pointer-events-none" : ""
+        } bg-white dark:bg-[#40414f] border-r border-gray-200 dark:border-[#565869] flex flex-col transition-all duration-300 ${
+          sidebarCollapsed ? "ml-12" : ""
+        } relative h-screen md:block hidden`}
+        style={{ width: sidebarCollapsed ? 0 : sidebarWidth }}
+      >
+        {/* Resize handle */}
+        {!sidebarCollapsed && (
+          <div
+            className="absolute right-0 top-0 w-1 h-full bg-gray-300 dark:bg-gray-600 cursor-ew-resize hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors duration-200 z-10"
+            onMouseDown={handleSidebarResizeStart}
+            title="Drag to resize sidebar"
+          />
+        )}
+        {!sidebarCollapsed && (
+          <div className="relative h-full flex flex-col">
+            <div className="p-3 border-b border-gray-200 dark:border-[#565869] space-y-2">
+              <div className="flex items-center justify-between">
+                <Button
+                  onClick={() => createNewChat()}
+                  className="flex-1 flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white"
+                >
+              <Plus className="w-4 h-4" />
+              <span>{getLocalizedText("newChat")}</span>
+            </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSidebarCollapsed(true)}
+                  className="ml-2 h-10 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+                <Input
+                  placeholder={getLocalizedText("searchChats")}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 h-8 text-sm bg-white dark:bg-[#565869] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869]"
+                />
+              </div>
+            </div>
+
+            <ScrollArea className="flex-1 max-h-[calc(100vh-180px)] relative">
+              <div className="p-2 relative">
+                {isSidebarLoading ? (
+                  <div className="space-y-2 w-full px-2 py-3 animate-pulse">
+                    {Array.from({ length: 10 }).map((_, idx) => (
+                      <div
+                        key={`skeleton-${idx}`}
+                        className="h-6 rounded-md bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-[#3a3b42] dark:via-[#32333c] dark:to-[#2a2b33]"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                {/* General Folder */}
+                <div className="mb-1">
+                  <ContextMenu>
+                    <ContextMenuTrigger>
+                      <div
+                        className="flex items-center space-x-1.5 p-1.5 hover:bg-gray-100 dark:hover:bg-[#565869] rounded cursor-pointer"
+                        onClick={() => toggleFolder("general")}
+                      >
+                        {expandedFolders.includes("general") ? (
+                          <FolderOpen className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                        ) : (
+                          <Folder className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                        )}
+                        <MessageSquare className="w-3 h-3 text-gray-500 dark:text-gray-400" />
+                        <span className="text-xs font-medium text-gray-900 dark:text-[#ececf1]">
+                          General
+                        </span>
+                        <ChevronRight
+                          className={`w-2.5 h-2.5 text-gray-400 transition-transform ${
+                            expandedFolders.includes("general")
+                              ? "rotate-90"
+                              : ""
+                          }`}
+                        />
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
+                      <ContextMenuItem
+                        onClick={() =>
+                          createNewChat("general", "general", "General")
+                        }
+                        className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                      >
+                      <Plus className="w-4 h-4 mr-2" />
+                      {getLocalizedText("newChatInGeneral")}
+                    </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                  {expandedFolders.includes("general") && (
+                    <div className="ml-5 space-y-0.5">
+                      {(groupedChats.general || []).map((chat) => (
+                        <ContextMenu key={chat.id}>
+                          <ContextMenuTrigger>
+                            <div
+                              className={`group p-1.5 rounded cursor-pointer text-xs hover:bg-gray-100 dark:hover:bg-[#565869] ${
+                                currentChatId === chat.id
+                                  ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                                  : "text-gray-700 dark:text-gray-300"
+                              }`}
+                              onClick={() => selectChat(chat.id)}
+                              onDoubleClick={() => setEditingChatId(chat.id)}
+                            >
+                              <div className="flex items-center space-x-1.5">
+                                <MessageSquare className="w-2.5 h-2.5 shrink-0" />
+                                {editingChatId === chat.id ? (
+                                  <div className="flex items-center space-x-1 flex-1">
+                                    <Input
+                                      value={editingTitle}
+                                      onChange={(e) =>
+                                        setEditingTitle(e.target.value)
+                                      }
+                                      className="h-5 text-xs bg-white dark:bg-[#565869] text-gray-900 dark:text-[#ececf1]"
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") saveTitle();
+                                        if (e.key === "Escape") cancelEditing();
+                                      }}
+                                      autoFocus
+                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 w-5 p-0"
+                                      onClick={saveTitle}
+                                    >
+                                      <Check className="w-2.5 h-2.5" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 w-5 p-0"
+                                      onClick={cancelEditing}
+                                    >
+                                      <X className="w-2.5 h-2.5" />
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <span
+                                      className="truncate flex-1 text-gray-700 dark:text-gray-300"
+                                      title={chat.title}
+                                    >
+                                      {truncateText(
+                                        chat.title,
+                                        Math.floor((sidebarWidth - 120) / 6)
+                                      )}
+                                    </span>
+                                    <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-0.5">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingChatId(chat.id);
+                                        }}
+                                      >
+                                        <Edit3 className="w-2.5 h-2.5" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          selectChat(chat.id);
+                                          setShowShareDialog(true);
+                                        }}
+                                        disabled={chat.messages.length === 0}
+                                        title={
+                                          chat.messages.length === 0
+                                            ? "No conversation to share"
+                                            : "Share conversation"
+                                        }
+                                      >
+                                        <Upload className="w-2.5 h-2.5" />
+                                      </Button>
+                                      {appUser?.plan &&
+                                        ["pro", "enterprise"].includes(
+                                          String(appUser.plan).toLowerCase()
+                                        ) && (
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              exportChat(chat.id);
+                                            }}
+                                            disabled={chat.messages.length === 0}
+                                            title={
+                                              chat.messages.length === 0
+                                                ? "No messages to export"
+                                                : "Export conversation"
+                                            }
+                                          >
+                                            <Download className="w-2.5 h-2.5" />
+                                          </Button>
+                                        )}
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          deleteChat(chat.id);
+                                        }}
+                                      >
+                                        <Trash2 className="w-2.5 h-2.5" />
+                                      </Button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
+                            <ContextMenuItem
+                              onClick={() => setEditingChatId(chat.id)}
+                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                            >
+                              <Edit3 className="w-4 h-4 mr-2" />
+                              Rename
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onClick={() => {
+                                selectChat(chat.id);
+                                setShowShareDialog(true);
+                              }}
+                              disabled={chat.messages.length === 0}
+                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Upload className="w-4 h-4 mr-2" />
+                              Share
+                            </ContextMenuItem>
+                            {appUser?.plan &&
+                              ["pro", "enterprise"].includes(
+                                String(appUser.plan).toLowerCase()
+                              ) && (
+                                <ContextMenuItem
+                                  onClick={() => exportChat(chat.id)}
+                                  disabled={chat.messages.length === 0}
+                                  className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <Download className="w-4 h-4 mr-2" />
+                                  Export
+                                </ContextMenuItem>
+                              )}
+                            <ContextMenuItem
+                              onClick={() => deleteChat(chat.id)}
+                              className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* MornGPT Folder */}
+                <div className="mb-1">
+                  <ContextMenu>
+                    <ContextMenuTrigger>
+                      <div
+                        className="flex items-center space-x-1.5 p-1.5 hover:bg-gray-100 dark:hover:bg-[#565869] rounded cursor-pointer"
+                        onClick={() => toggleFolder("morngpt")}
+                      >
+                        {expandedFolders.includes("morngpt") ? (
+                          <FolderOpen className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                        ) : (
+                          <Folder className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                        )}
+                        <Sparkles className="w-3 h-3 text-gray-500 dark:text-gray-400" />
+                        <span className="text-xs font-medium text-gray-900 dark:text-[#ececf1]">
+                          MornGPT
+                        </span>
+                        <ChevronRight
+                          className={`w-2.5 h-2.5 text-gray-400 transition-transform ${
+                            expandedFolders.includes("morngpt") ? "rotate-90" : ""
+                          }`}
+                        />
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
+                      <ContextMenuItem
+                        onClick={() => createNewChat(undefined, "morngpt")}
+                        className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        {currentLanguage === "zh" ? "新建 MornGPT 对话" : "New MornGPT Chat"}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                  {expandedFolders.includes("morngpt") && (
+                    <div className="ml-5 space-y-0.5">
+                      {(groupedChats.morngpt || []).map((chat) => (
+                        <ContextMenu key={chat.id}>
+                          <ContextMenuTrigger>
+                            <div
+                              className={`group p-1.5 rounded cursor-pointer text-xs hover:bg-gray-100 dark:hover:bg-[#565869] ${
+                                currentChatId === chat.id
+                                  ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                                  : "text-gray-700 dark:text-gray-300"
+                              }`}
+                              onClick={() => selectChat(chat.id)}
+                              onDoubleClick={() => setEditingChatId(chat.id)}
+                            >
+                              <div className="flex items-center space-x-1.5">
+                                <MessageSquare className="w-2.5 h-2.5 shrink-0" />
+                                {editingChatId === chat.id ? (
+                                  <div className="flex items-center space-x-1 flex-1">
+                                    <Input
+                                      value={editingTitle}
+                                      onChange={(e) => setEditingTitle(e.target.value)}
+                                      className="h-5 text-xs bg-white dark:bg-[#565869] text-gray-900 dark:text-[#ececf1]"
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") saveTitle();
+                                        if (e.key === "Escape") cancelEditing();
+                                      }}
+                                      autoFocus
+                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 w-5 p-0"
+                                      onClick={saveTitle}
+                                    >
+                                      <Check className="w-2.5 h-2.5" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 w-5 p-0"
+                                      onClick={cancelEditing}
+                                    >
+                                      <X className="w-2.5 h-2.5" />
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <span
+                                      className="truncate flex-1 text-gray-700 dark:text-gray-300"
+                                      title={chat.title}
+                                    >
+                                      {truncateText(
+                                        chat.title,
+                                        Math.floor((sidebarWidth - 120) / 6)
+                                      )}
+                                    </span>
+                                    <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-0.5">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingChatId(chat.id);
+                                        }}
+                                      >
+                                        <Edit3 className="w-2.5 h-2.5" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          selectChat(chat.id);
+                                          setShowShareDialog(true);
+                                        }}
+                                        disabled={chat.messages.length === 0}
+                                        title={
+                                          chat.messages.length === 0
+                                            ? "No conversation to share"
+                                            : "Share conversation"
+                                        }
+                                      >
+                                        <Upload className="w-2.5 h-2.5" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          deleteChat(chat.id);
+                                        }}
+                                      >
+                                        <Trash2 className="w-2.5 h-2.5" />
+                                      </Button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
+                            <ContextMenuItem
+                              onClick={() => setEditingChatId(chat.id)}
+                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                            >
+                              <Edit3 className="w-4 h-4 mr-2" />
+                              Rename
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onClick={() => {
+                                selectChat(chat.id);
+                                setShowShareDialog(true);
+                              }}
+                              disabled={chat.messages.length === 0}
+                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Upload className="w-4 h-4 mr-2" />
+                              Share
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onClick={() => deleteChat(chat.id)}
+                              className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* External Folder */}
+                <div className="mb-1">
+                  <ContextMenu>
+                    <ContextMenuTrigger>
+                      <div
+                        className="flex items-center space-x-1.5 p-1.5 hover:bg-gray-100 dark:hover:bg-[#565869] rounded cursor-pointer"
+                        onClick={() => toggleFolder("external")}
+                      >
+                        {expandedFolders.includes("external") ? (
+                          <FolderOpen className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                        ) : (
+                          <Folder className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                        )}
+                        <Globe className="w-3 h-3 text-gray-500 dark:text-gray-400" />
+                        <span className="text-xs font-medium text-gray-900 dark:text-[#ececf1]">
+                          External
+                        </span>
+                        <ChevronRight
+                          className={`w-2.5 h-2.5 text-gray-400 transition-transform ${
+                            expandedFolders.includes("external") ? "rotate-90" : ""
+                          }`}
+                        />
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
+                      <ContextMenuItem
+                        onClick={() => createNewChat(undefined, "external")}
+                        className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        {currentLanguage === "zh" ? "新建 External 对话" : "New External Chat"}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                  {expandedFolders.includes("external") && (
+                    <div className="ml-5 space-y-0.5">
+                      {(groupedChats.external || []).map((chat) => (
+                        <ContextMenu key={chat.id}>
+                          <ContextMenuTrigger>
+                            <div
+                              className={`group p-1.5 rounded cursor-pointer text-xs hover:bg-gray-100 dark:hover:bg-[#565869] ${
+                                currentChatId === chat.id
+                                  ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                                  : "text-gray-700 dark:text-gray-300"
+                              }`}
+                              onClick={() => selectChat(chat.id)}
+                              onDoubleClick={() => setEditingChatId(chat.id)}
+                            >
+                              <div className="flex items-center space-x-1.5">
+                                <MessageSquare className="w-2.5 h-2.5 shrink-0" />
+                                {editingChatId === chat.id ? (
+                                  <div className="flex items-center space-x-1 flex-1">
+                                    <Input
+                                      value={editingTitle}
+                                      onChange={(e) => setEditingTitle(e.target.value)}
+                                      className="h-5 text-xs bg-white dark:bg-[#565869] text-gray-900 dark:text-[#ececf1]"
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") saveTitle();
+                                        if (e.key === "Escape") cancelEditing();
+                                      }}
+                                      autoFocus
+                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 w-5 p-0"
+                                      onClick={saveTitle}
+                                    >
+                                      <Check className="w-2.5 h-2.5" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 w-5 p-0"
+                                      onClick={cancelEditing}
+                                    >
+                                      <X className="w-2.5 h-2.5" />
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <span
+                                      className="truncate flex-1 text-gray-700 dark:text-gray-300"
+                                      title={chat.title}
+                                    >
+                                      {truncateText(
+                                        chat.title,
+                                        Math.floor((sidebarWidth - 120) / 6)
+                                      )}
+                                    </span>
+                                    <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-0.5">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingChatId(chat.id);
+                                        }}
+                                      >
+                                        <Edit3 className="w-2.5 h-2.5" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          selectChat(chat.id);
+                                          setShowShareDialog(true);
+                                        }}
+                                        disabled={chat.messages.length === 0}
+                                        title={
+                                          chat.messages.length === 0
+                                            ? "No conversation to share"
+                                            : "Share conversation"
+                                        }
+                                      >
+                                        <Upload className="w-2.5 h-2.5" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 w-5 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          deleteChat(chat.id);
+                                        }}
+                                      >
+                                        <Trash2 className="w-2.5 h-2.5" />
+                                      </Button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
+                            <ContextMenuItem
+                              onClick={() => setEditingChatId(chat.id)}
+                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                            >
+                              <Edit3 className="w-4 h-4 mr-2" />
+                              Rename
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onClick={() => {
+                                selectChat(chat.id);
+                                setShowShareDialog(true);
+                              }}
+                              disabled={chat.messages.length === 0}
+                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Upload className="w-4 h-4 mr-2" />
+                              Share
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onClick={() => deleteChat(chat.id)}
+                              className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                  </>
+                )}
+              </div>
+            </ScrollArea>
+
+            {/* Resize Handle */}
+            <div
+              className="absolute right-0 top-0 w-1 h-full cursor-col-resize hover:bg-blue-500 transition-colors"
+              onMouseDown={() => setIsResizing(true)}
+            />
+          </div>
+        )}
+      </div>
+    </>
+  );
+}

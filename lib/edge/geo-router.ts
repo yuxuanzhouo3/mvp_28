@@ -1,11 +1,80 @@
 // lib/edge/geo-router.ts - Edge Runtime compatible geo router
-import {
-  getRegionFromCountryCode,
-  getPaymentMethodsByRegion,
-  getCurrencyByRegion,
-  isEuropeanCountry,
-} from "../architecture-modules/utils/ip-detection";
-import { RegionType, GeoResult } from "../architecture-modules/core/types";
+// Inline types and utilities to avoid dependency issues
+
+export enum RegionType {
+  CHINA = "china",
+  USA = "usa",
+  EUROPE = "europe",
+  INDIA = "india",
+  SINGAPORE = "singapore",
+  OTHER = "other",
+}
+
+export interface GeoResult {
+  region: RegionType;
+  countryCode: string;
+  currency: string;
+  paymentMethods: string[];
+  authMethods: string[];
+  database: "supabase" | "cloudbase";
+  deployment: "vercel" | "tencent";
+  gdprCompliant: boolean;
+}
+
+// Inline European countries list
+const EUROPEAN_COUNTRIES = [
+  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",
+  "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK",
+  "SI", "ES", "SE", "IS", "LI", "NO", "GB", "EU", "CH"
+];
+
+// Inline utility functions
+function getRegionFromCountryCode(countryCode: string): string {
+  if (countryCode === "CN") return "china";
+  if (countryCode === "US") return "usa";
+  if (countryCode === "IN") return "india";
+  if (countryCode === "SG") return "singapore";
+  if (EUROPEAN_COUNTRIES.includes(countryCode)) return "europe";
+  return "other";
+}
+
+function getPaymentMethodsByRegion(region: string): string[] {
+  switch (region) {
+    case "china":
+      return ["wechat", "alipay"];
+    case "usa":
+    case "india":
+    case "singapore":
+    case "other":
+      return ["stripe", "paypal"];
+    case "europe":
+      return [];
+    default:
+      return ["stripe", "paypal"];
+  }
+}
+
+function getCurrencyByRegion(region: string): string {
+  switch (region) {
+    case "china":
+      return "CNY";
+    case "usa":
+      return "USD";
+    case "india":
+      return "INR";
+    case "singapore":
+      return "SGD";
+    case "europe":
+      return "EUR";
+    default:
+      return "USD";
+  }
+}
+
+function isEuropeanCountry(countryCode: string): boolean {
+  const code = (countryCode || "").toUpperCase();
+  return EUROPEAN_COUNTRIES.includes(code);
+}
 import {
   fetchWithTimeout,
   withRetry,

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 // Use Edge-compatible versions
-import { geoRouter } from "@/lib/edge/geo-router";
-import { RegionType } from "@/lib/architecture-modules/core/types";
+import { geoRouter, RegionType } from "@/lib/edge/geo-router";
 import { csrfProtection } from "@/lib/edge/csrf";
 
 // Admin session cookie 配置

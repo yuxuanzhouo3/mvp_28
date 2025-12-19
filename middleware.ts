@@ -26,14 +26,10 @@ async function detectGeoSimple(ip: string): Promise<GeoResult> {
 
   try {
     // Use ipapi.co for geo detection (Edge compatible)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    
+    // Note: Edge Runtime doesn't support setTimeout, so we rely on fetch's natural timeout
     const response = await fetch(`https://ipapi.co/${ip}/json/`, {
-      signal: controller.signal,
+      // Vercel Edge Functions have a default timeout, so we don't need to set one manually
     });
-    
-    clearTimeout(timeoutId);
     
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);

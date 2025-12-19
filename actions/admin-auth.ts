@@ -5,6 +5,10 @@
  */
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  getSupabaseServiceRoleKeyFromEnv,
+  getSupabaseUrlFromEnv,
+} from "@/lib/supabase/env";
 import { verifyPassword, hashPassword } from "@/utils/password";
 import {
   createAdminSession,
@@ -12,6 +16,34 @@ import {
   getAdminSession,
 } from "@/utils/session";
 import { redirect } from "next/navigation";
+
+function getSupabaseAdminDebugInfo() {
+  const url = getSupabaseUrlFromEnv();
+  let urlHost: string | null = null;
+  if (url) {
+    try {
+      urlHost = new URL(url).host;
+    } catch {
+      urlHost = null;
+    }
+  }
+  return {
+    edition: (process.env.NEXT_PUBLIC_DEFAULT_LANGUAGE || "zh").toLowerCase(),
+    supabaseUrlHost: urlHost,
+    hasServiceRoleKey: Boolean(getSupabaseServiceRoleKeyFromEnv()),
+  };
+}
+
+let lastAdminUserNotFoundLogAt = 0;
+function logAdminUserNotFoundRateLimited() {
+  const now = Date.now();
+  // 避免被暴力尝试刷屏：最多每分钟输出一次
+  if (now - lastAdminUserNotFoundLogAt < 60_000) return;
+  lastAdminUserNotFoundLogAt = now;
+
+  const debug = getSupabaseAdminDebugInfo();
+  console.warn("[adminLogin] Admin user not found", debug);
+}
 
 export interface LoginResult {
   success: boolean;
@@ -46,9 +78,22 @@ export async function adminLogin(
       .from("admin_users")
       .select("id, username, password_hash")
       .eq("username", username)
-      .single();
+      .maybeSingle();
 
-    if (error || !admin) {
+    if (error) {
+      const debug = getSupabaseAdminDebugInfo();
+      console.error("[adminLogin] Supabase query failed", {
+        ...debug,
+        code: (error as any)?.code,
+        message: error.message,
+        details: (error as any)?.details,
+        hint: (error as any)?.hint,
+      });
+      return { success: false, error: "用户名或密码错误" };
+    }
+
+    if (!admin) {
+      logAdminUserNotFoundRateLimited();
       return { success: false, error: "用户名或密码错误" };
     }
 
@@ -63,7 +108,12 @@ export async function adminLogin(
 
     return { success: true };
   } catch (err) {
-    console.error("Login error:", err);
+    const debug = getSupabaseAdminDebugInfo();
+    const safeErr =
+      err instanceof Error
+        ? { name: err.name, message: err.message, stack: err.stack }
+        : { error: err };
+    console.error("[adminLogin] Unexpected error", { ...debug, ...safeErr });
     return { success: false, error: "登录失败，请稍后重试" };
   }
 }

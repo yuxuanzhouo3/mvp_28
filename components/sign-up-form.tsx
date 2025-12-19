@@ -86,11 +86,13 @@ export function SignUpForm({
         window.location.href = "/";
       } else {
         console.info("[SignUpForm] EN signup start", { email });
+        const confirmRedirectTo = new URL("/auth/confirm", window.location.origin);
+        confirmRedirectTo.searchParams.set("next", "/");
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback?next=/`,
+            emailRedirectTo: confirmRedirectTo.toString(),
           },
         });
         if (error) {

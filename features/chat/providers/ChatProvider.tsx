@@ -2697,7 +2697,7 @@ const loadMessagesForConversation = useCallback(
             password: authForm.password,
             options: {
               data: { full_name: authForm.name },
-              emailRedirectTo: `${window.location.origin}/auth/confirm`,
+              emailRedirectTo: `${window.location.origin}/auth/confirm?next=/`,
             },
           });
           if (error) throw error;
@@ -2790,7 +2790,7 @@ const loadMessagesForConversation = useCallback(
                     type: "signup",
                     email: authForm.email,
                     options: {
-                      emailRedirectTo: `${window.location.origin}/auth/confirm`,
+                      emailRedirectTo: `${window.location.origin}/auth/confirm?next=/`,
                     },
                   });
                   setEmailCooldown(authForm.email);
@@ -2833,7 +2833,7 @@ const loadMessagesForConversation = useCallback(
                     type: "signup",
                     email: authForm.email,
                     options: {
-                      emailRedirectTo: `${window.location.origin}/auth/confirm`,
+                      emailRedirectTo: `${window.location.origin}/auth/confirm?next=/`,
                     },
                   });
                   setEmailCooldown(authForm.email);

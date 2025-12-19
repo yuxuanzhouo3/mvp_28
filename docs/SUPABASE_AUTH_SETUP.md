@@ -27,7 +27,25 @@ NEXT_PUBLIC_DEFAULT_LANGUAGE=en  # 国际版使用 en
 1. 登录 [Supabase Dashboard](https://supabase.com/dashboard)
 2. 进入项目 → Authentication → Providers
 3. 确保 Email 认证已启用
-4. 配置邮件模板（可选）
+4. 配置邮件模板（推荐）
+
+#### 1.1 确认注册邮件模板（关键：本地/线上自适应域名）
+
+如果模板里使用 `{{ .SiteURL }}` 拼接链接，那么无论你从 `http://localhost:3000` 还是线上域名发起注册，邮件里的确认链接都会固定为「Supabase Dashboard → URL Configuration → Site URL」对应的域名（这就是你本地注册却收到 `https://mvp28-max.vercel.app/...` 的原因）。
+
+本项目国际版注册/重发邮件时会传 `emailRedirectTo = ${window.location.origin}/auth/confirm?next=...`，因此模板建议改为使用 `{{ .RedirectTo }}`，从而让确认链接自动跟随当前发起注册的域名（localhost / 预发 / 生产）。
+
+在 Authentication → Email Templates → **Confirm sign up** 中，推荐模板如下：
+
+```html
+<h2>Confirm your signup</h2>
+<p>Follow this link to confirm your user:</p>
+<p><a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=signup">Confirm your email</a></p>
+```
+
+说明：
+- 本项目会确保 `{{ .RedirectTo }}` 自带 `?next=...`，所以这里使用 `&token_hash=...` 追加参数即可。
+- 如果你复用旧邮件链接、或邮件服务/安全软件预览过链接，`token_hash` 可能已被消费，会出现 “Email link is invalid or has expired / One-time token not found”。这种情况下用户可能已被标记为已验证，但不会自动建立会话；请点击应用里的“重发验证邮件”，或直接用邮箱密码登录。
 
 ### 2. Google OAuth 配置
 
@@ -45,8 +63,10 @@ NEXT_PUBLIC_DEFAULT_LANGUAGE=en  # 国际版使用 en
 - **Site URL**: `https://your-domain.com`
 - **Redirect URLs** (添加以下 URL):
   - `https://your-domain.com/auth/callback`
+  - `https://your-domain.com/auth/confirm` (邮箱验证服务端落 cookie)
   - `https://your-domain.com/auth/update-password`
   - `http://localhost:3000/auth/callback` (开发环境)
+  - `http://localhost:3000/auth/confirm` (开发环境邮箱验证)
   - `http://localhost:3000/auth/update-password` (开发环境)
 
 ### 4. Google Cloud Console 配置
@@ -76,7 +96,7 @@ NEXT_PUBLIC_DEFAULT_LANGUAGE=en  # 国际版使用 en
 2. 调用 `supabase.auth.signUp()` 创建用户
 3. Supabase 发送确认邮件
 4. 用户点击邮件中的确认链接
-5. 跳转到 `/auth/callback` 处理认证
+5. 跳转到 `/auth/confirm` 服务端验证并写入会话 cookie（兼容不同浏览器/设备打开验证邮件）
 6. 触发器自动创建 profile 和 wallet 记录
 
 ### 邮箱登录流程

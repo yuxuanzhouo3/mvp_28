@@ -19,6 +19,21 @@ export function getSupabaseUrlFromEnv(): string | undefined {
 }
 
 /**
+ * Supabase Anon/Publishable Key
+ *
+ * - 客户端（浏览器）必须使用 `NEXT_PUBLIC_...`
+ * - 服务端可兼容 `SUPABASE_ANON_KEY` / `SUPABASE_PUBLISHABLE_KEY`，便于不同平台注入
+ */
+export function getSupabaseAnonKeyFromEnv(): string | undefined {
+  return firstNonEmpty(
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    process.env.SUPABASE_PUBLISHABLE_KEY,
+    process.env.SUPABASE_ANON_KEY
+  );
+}
+
+/**
  * Supabase Service Role Key（服务端）
  *
  * 兼容多种常见命名，避免不同平台/历史配置导致后台能力不可用。
@@ -31,4 +46,3 @@ export function getSupabaseServiceRoleKeyFromEnv(): string | undefined {
     process.env.SUPABASE_SECRET_KEY
   );
 }
-

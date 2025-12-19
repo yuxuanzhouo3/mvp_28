@@ -154,16 +154,19 @@ export function AuthPage({ mode }: { mode: Mode }) {
             throw new Error(getCooldownMessage(remainingSeconds, isZhText));
           }
 
-          console.info("[AuthPage] INTL signup start", { email: form.email, next });
-          const { data, error } = await supabase.auth.signUp({
-            email: form.email,
-            password: form.password,
-            options: {
-              data: { full_name: form.name },
-              // 使用 PKCE 流程（Supabase 默认），但配合服务端 /auth/confirm 端点处理
-              emailRedirectTo: `${window.location.origin}/auth/confirm${next && next !== "/" ? `?next=${encodeURIComponent(next)}` : ""}`,
-            },
-          });
+           console.info("[AuthPage] INTL signup start", { email: form.email, next });
+           const confirmRedirectTo = new URL("/auth/confirm", window.location.origin);
+           // 始终带 next 查询参数，便于 Supabase 邮件模板使用 {{ .RedirectTo }} 直接追加 &token_hash=...
+           confirmRedirectTo.searchParams.set("next", next || "/");
+           const { data, error } = await supabase.auth.signUp({
+             email: form.email,
+             password: form.password,
+             options: {
+               data: { full_name: form.name },
+               // 使用 PKCE 流程（Supabase 默认），但配合服务端 /auth/confirm 端点处理
+               emailRedirectTo: confirmRedirectTo.toString(),
+             },
+           });
           if (error) {
             console.error("[AuthPage] INTL signup error:", error.message);
             // 处理常见错误

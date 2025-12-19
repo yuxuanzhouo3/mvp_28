@@ -17,6 +17,7 @@ const EUROPEAN_COUNTRIES = [
 
 /**
  * Simple Edge-compatible geo detection
+ * Returns default values if detection fails to prevent middleware errors
  */
 async function detectGeoSimple(ip: string): Promise<GeoResult> {
   // Skip detection for localhost
@@ -26,22 +27,20 @@ async function detectGeoSimple(ip: string): Promise<GeoResult> {
 
   try {
     // Use ipapi.co for geo detection (Edge compatible)
-    // Note: Edge Runtime doesn't support setTimeout, so we rely on fetch's natural timeout
-    const response = await fetch(`https://ipapi.co/${ip}/json/`, {
-      // Vercel Edge Functions have a default timeout, so we don't need to set one manually
-    });
+    // Vercel Edge Functions have built-in timeout protection
+    const response = await fetch(`https://ipapi.co/${ip}/json/`);
     
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      return { region: "OTHER", countryCode: "XX", currency: "USD" };
     }
     
-    const data = await response.json();
+    const data = await response.json().catch(() => null);
     
-    if (data.error) {
-      throw new Error(data.reason || "API error");
+    if (!data || data.error) {
+      return { region: "OTHER", countryCode: "XX", currency: "USD" };
     }
     
-    const countryCode = data.country_code || "XX";
+    const countryCode = (data.country_code || "XX").toUpperCase();
     
     // Determine region
     let region: RegionType = "OTHER";
@@ -61,8 +60,7 @@ async function detectGeoSimple(ip: string): Promise<GeoResult> {
     
     return { region, countryCode, currency };
   } catch (error) {
-    console.error("Geo detection failed:", error);
-    // Return default on error
+    // Silently return default on any error to prevent middleware failure
     return { region: "OTHER", countryCode: "XX", currency: "USD" };
   }
 }
@@ -79,11 +77,17 @@ function verifyAdminSessionToken(token: string): boolean {
     const [encoded, sig] = token.split(".");
     if (!encoded || !sig) return false;
 
-    // 验证签名 - Edge Runtime 兼容版本（使用 TextEncoder/TextDecoder）
+    // 验证签名 - Edge Runtime 兼容版本
+    // Use a simpler approach that doesn't require spreading large arrays
     const encoder = new TextEncoder();
     const data = encoder.encode(`${encoded}.${ADMIN_SESSION_SECRET}`);
-    // 简单的 base64 编码（Edge 兼容）
-    const expectedSig = btoa(String.fromCharCode(...data)).slice(0, 16);
+    
+    // Convert Uint8Array to string for btoa (Edge compatible)
+    let binaryString = '';
+    for (let i = 0; i < data.length; i++) {
+      binaryString += String.fromCharCode(data[i]);
+    }
+    const expectedSig = btoa(binaryString).slice(0, 16);
 
     if (sig !== expectedSig) return false;
 
@@ -258,28 +262,33 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith("/api/") && !isDevelopment) {
       const referer = request.headers.get("referer");
       if (referer) {
-        const refererUrl = new URL(referer);
-        const refererDebug = refererUrl.searchParams.get("debug");
+        try {
+          const refererUrl = new URL(referer);
+          const refererDebug = refererUrl.searchParams.get("debug");
 
-        // 生产环境禁用来自referer的调试模式
-        if (refererDebug) {
-          console.warn(
-            `🚨 生产环境检测到来自referer的调试模式参数，已禁止访问: ${refererDebug}`
-          );
-          return new NextResponse(
-            JSON.stringify({
-              error: "Access Denied",
-              message: "Debug mode is not allowed in production.",
-              code: "DEBUG_MODE_BLOCKED",
-            }),
-            {
-              status: 403,
-              headers: {
-                "Content-Type": "application/json",
-                "X-Debug-Blocked": "true",
-              },
-            }
-          );
+          // 生产环境禁用来自referer的调试模式
+          if (refererDebug) {
+            console.warn(
+              `🚨 生产环境检测到来自referer的调试模式参数，已禁止访问: ${refererDebug}`
+            );
+            return new NextResponse(
+              JSON.stringify({
+                error: "Access Denied",
+                message: "Debug mode is not allowed in production.",
+                code: "DEBUG_MODE_BLOCKED",
+              }),
+              {
+                status: 403,
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Debug-Blocked": "true",
+                },
+              }
+            );
+          }
+        } catch (error) {
+          // Ignore URL parsing errors for referer
+          console.warn("Failed to parse referer URL:", error);
         }
       }
     }
@@ -347,7 +356,14 @@ export async function middleware(request: NextRequest) {
       }
 
       // 检测地理位置 - 使用简化的 Edge 兼容版本
-      geoResult = await detectGeoSimple(clientIP);
+      // Wrap in try-catch to ensure middleware never fails
+      try {
+        geoResult = await detectGeoSimple(clientIP);
+      } catch (error) {
+        console.error("Geo detection error:", error);
+        // Use default values if detection fails
+        geoResult = { region: "OTHER", countryCode: "XX", currency: "USD" };
+      }
     }
 
     // 1. 禁止欧洲IP访问（开发环境调试模式除外）

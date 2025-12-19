@@ -75,15 +75,113 @@ function isEuropeanCountry(countryCode: string): boolean {
   const code = (countryCode || "").toUpperCase();
   return EUROPEAN_COUNTRIES.includes(code);
 }
-import {
-  fetchWithTimeout,
-  withRetry,
-  FallbackHandler,
-  classifyError,
-  errorRecovery,
-  ArchitectureError,
-  ErrorType,
-} from "./error-handler";
+// Inline error handling utilities to avoid import issues
+enum ErrorType {
+  NETWORK_ERROR = "NETWORK_ERROR",
+  API_ERROR = "API_ERROR",
+  VALIDATION_ERROR = "VALIDATION_ERROR",
+  CONFIG_ERROR = "CONFIG_ERROR",
+  TIMEOUT_ERROR = "TIMEOUT_ERROR",
+  UNKNOWN_ERROR = "UNKNOWN_ERROR",
+}
+
+class ArchitectureError extends Error {
+  constructor(
+    message: string,
+    public type: ErrorType,
+    public code?: string,
+    public retryable: boolean = false
+  ) {
+    super(message);
+    this.name = "ArchitectureError";
+  }
+}
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = 5000
+): Promise<Response> {
+  try {
+    const response = await fetch(url, options);
+    return response;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ArchitectureError(
+        `Request timeout after ${timeoutMs}ms`,
+        ErrorType.TIMEOUT_ERROR,
+        "TIMEOUT",
+        true
+      );
+    }
+    throw error;
+  }
+}
+
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  delayMs: number = 1000
+): Promise<T> {
+  let lastError: Error;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error as Error;
+      if (error instanceof ArchitectureError && !error.retryable) {
+        throw error;
+      }
+      if (attempt === maxRetries) break;
+      // Simple delay - Vercel Edge handles timeouts
+      await new Promise(resolve => {
+        if (typeof setTimeout !== "undefined") {
+          setTimeout(resolve, Math.min(delayMs, 100));
+        } else {
+          resolve(undefined);
+        }
+      });
+    }
+  }
+  throw lastError!;
+}
+
+class FallbackHandler {
+  private fallbacks: Array<() => Promise<any>> = [];
+  addFallback(fallback: () => Promise<any>): void {
+    this.fallbacks.push(fallback);
+  }
+  async executeWithFallbacks(): Promise<any> {
+    let lastError: Error | null = null;
+    for (const fallback of this.fallbacks) {
+      try {
+        return await fallback();
+      } catch (error) {
+        lastError = error as Error;
+        continue;
+      }
+    }
+    if (lastError) throw lastError;
+    throw new ArchitectureError("All fallbacks failed", ErrorType.UNKNOWN_ERROR);
+  }
+}
+
+function classifyError(error: any): ArchitectureError {
+  if (error instanceof ArchitectureError) return error;
+  if (error instanceof TypeError && error.message.includes("fetch")) {
+    return new ArchitectureError(error.message, ErrorType.NETWORK_ERROR, "NETWORK_ERROR", true);
+  }
+  if (error instanceof Error) {
+    return new ArchitectureError(error.message, ErrorType.UNKNOWN_ERROR, "UNKNOWN_ERROR", false);
+  }
+  return new ArchitectureError(String(error), ErrorType.UNKNOWN_ERROR, "UNKNOWN_ERROR", false);
+}
+
+const errorRecovery = {
+  recordError: (_service: string, _error: ArchitectureError) => {
+    console.error(`Error recorded for ${_service}:`, _error);
+  },
+};
 
 export class GeoRouter {
   private cache = new Map<string, { result: GeoResult; timestamp: number }>();

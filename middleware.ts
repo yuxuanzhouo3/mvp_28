@@ -1,12 +1,75 @@
 import { NextRequest, NextResponse } from "next/server";
-// Use dynamic imports for Edge runtime compatibility
-// These modules may have transitive dependencies on Node.js APIs
+
+// Edge Runtime compatible types and functions
 type RegionType = "CHINA" | "USA" | "EUROPE" | "OTHER";
 type GeoResult = {
   region: RegionType;
   countryCode: string;
   currency: string;
 };
+
+// European countries list (Edge compatible)
+const EUROPEAN_COUNTRIES = [
+  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",
+  "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK",
+  "SI", "ES", "SE", "IS", "LI", "NO", "GB", "EU", "CH"
+];
+
+/**
+ * Simple Edge-compatible geo detection
+ */
+async function detectGeoSimple(ip: string): Promise<GeoResult> {
+  // Skip detection for localhost
+  if (!ip || ip === "::1" || ip === "127.0.0.1") {
+    return { region: "OTHER", countryCode: "XX", currency: "USD" };
+  }
+
+  try {
+    // Use ipapi.co for geo detection (Edge compatible)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch(`https://ipapi.co/${ip}/json/`, {
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      throw new Error(data.reason || "API error");
+    }
+    
+    const countryCode = data.country_code || "XX";
+    
+    // Determine region
+    let region: RegionType = "OTHER";
+    if (countryCode === "CN") {
+      region = "CHINA";
+    } else if (countryCode === "US") {
+      region = "USA";
+    } else if (EUROPEAN_COUNTRIES.includes(countryCode)) {
+      region = "EUROPE";
+    }
+    
+    // Determine currency
+    let currency = "USD";
+    if (region === "CHINA") currency = "CNY";
+    else if (region === "EUROPE") currency = "EUR";
+    else if (data.currency) currency = data.currency;
+    
+    return { region, countryCode, currency };
+  } catch (error) {
+    console.error("Geo detection failed:", error);
+    // Return default on error
+    return { region: "OTHER", countryCode: "XX", currency: "USD" };
+  }
+}
 
 // Admin session cookie 配置
 const ADMIN_SESSION_COOKIE_NAME = "admin_session";
@@ -259,8 +322,7 @@ export async function middleware(request: NextRequest) {
         default:
           // 无效的debug参数，回退到正常检测
           const clientIP = getClientIP(request);
-          const { geoRouter } = await import("@/lib/architecture-modules/core/geo-router");
-          geoResult = await geoRouter.detect(clientIP || "");
+          geoResult = await detectGeoSimple(clientIP || "");
       }
     } else {
       // 正常地理位置检测
@@ -288,9 +350,8 @@ export async function middleware(request: NextRequest) {
         return res;
       }
 
-      // 检测地理位置 - 使用动态导入以兼容 Edge Runtime
-      const { geoRouter } = await import("@/lib/architecture-modules/core/geo-router");
-      geoResult = await geoRouter.detect(clientIP);
+      // 检测地理位置 - 使用简化的 Edge 兼容版本
+      geoResult = await detectGeoSimple(clientIP);
     }
 
     // 1. 禁止欧洲IP访问（开发环境调试模式除外）
@@ -346,12 +407,13 @@ export async function middleware(request: NextRequest) {
       response.headers.set("X-Debug-Mode", debugParam);
     }
 
-    // 4. CSRF防护 - 对状态改变请求进行CSRF验证（使用动态导入）
-    const { csrfProtection } = await import("@/lib/security/csrf");
-    const csrfResponse = await csrfProtection(request, response);
-    if (csrfResponse.status !== 200) {
-      return csrfResponse;
-    }
+    // 4. CSRF防护 - 暂时跳过（CSRF 模块有 Node.js 依赖）
+    // TODO: 实现 Edge 兼容的 CSRF 验证或移至 API 路由
+    // const { csrfProtection } = await import("@/lib/security/csrf");
+    // const csrfResponse = await csrfProtection(request, response);
+    // if (csrfResponse.status !== 200) {
+    //   return csrfResponse;
+    // }
 
     return response;
   } catch (error) {

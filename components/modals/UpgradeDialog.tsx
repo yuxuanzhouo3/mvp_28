@@ -255,14 +255,7 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
 
     const symbol = useRmb ? "￥" : "$";
     const baseTargetAmount = getPlanAmount(target.name, billingPeriod, useRmb);
-    // 国内版微信 Basic 月付测试价：0.01（测试阶段请勿修改）
-    const targetAmount =
-      isDomesticVersion &&
-      selectedPayment === "wechat" &&
-      billingPeriod === "monthly" &&
-      target.name === "Basic"
-        ? 0.01
-        : baseTargetAmount;
+    const targetAmount = baseTargetAmount;
     const priceLabel = billingPeriod === "annual" ? selectedPlanInDialog.annualPrice || selectedPlanInDialog.price : selectedPlanInDialog.price;
     const trimmed = priceLabel.trim();
 

@@ -139,11 +139,7 @@ export async function POST(request: NextRequest) {
 
       // 基础金额（人民币）
       const baseAmount = extractPlanAmount(resolvedPlan, effectiveBillingPeriod, true);
-
-      // ⚠️ 国内版微信 Basic 月付测试价：0.01（测试阶段请勿修改）
-      const isWechatBasicTest =
-        resolvedPlanName === "Basic" && effectiveBillingPeriod === "monthly";
-      amount = isWechatBasicTest ? 0.01 : baseAmount;
+      amount = baseAmount;
 
       // 升级补差价：(目标套餐日价 - 当前套餐日价) × 剩余天数
       if (userId) {
@@ -221,7 +217,7 @@ export async function POST(request: NextRequest) {
           }
         } catch (error) {
           console.error("[wechat][create] upgrade price calc failed", error);
-          amount = isWechatBasicTest ? 0.01 : baseAmount;
+          amount = baseAmount;
         }
       }
 
@@ -237,8 +233,8 @@ export async function POST(request: NextRequest) {
         paymentType: "onetime",
         billingCycle: effectiveBillingPeriod,
         planName: resolvedPlanName,
-        isUpgrade: amount !== baseAmount && !isWechatBasicTest, // 标记是否为升级订单
-        originalAmount: baseAmount,                              // 原始金额（用于记录）
+        isUpgrade: amount !== baseAmount, // 标记是否为升级订单
+        originalAmount: baseAmount, // 原始金额（用于记录）
       };
 
       console.log("📝 [WeChat Create] Creating subscription payment:", {
@@ -247,7 +243,7 @@ export async function POST(request: NextRequest) {
         billingPeriod: effectiveBillingPeriod,
         amount,
         days,
-        isUpgrade: amount !== baseAmount && !isWechatBasicTest,
+        isUpgrade: amount !== baseAmount,
       });
     }
 

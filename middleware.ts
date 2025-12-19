@@ -1,69 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-
-// Edge Runtime compatible types and functions
-type RegionType = "CHINA" | "USA" | "EUROPE" | "OTHER";
-type GeoResult = {
-  region: RegionType;
-  countryCode: string;
-  currency: string;
-};
-
-// European countries list (Edge compatible)
-const EUROPEAN_COUNTRIES = [
-  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",
-  "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK",
-  "SI", "ES", "SE", "IS", "LI", "NO", "GB", "EU", "CH"
-];
-
-/**
- * Simple Edge-compatible geo detection
- * Returns default values if detection fails to prevent middleware errors
- */
-async function detectGeoSimple(ip: string): Promise<GeoResult> {
-  // Skip detection for localhost
-  if (!ip || ip === "::1" || ip === "127.0.0.1") {
-    return { region: "OTHER", countryCode: "XX", currency: "USD" };
-  }
-
-  try {
-    // Use ipapi.co for geo detection (Edge compatible)
-    // Vercel Edge Functions have built-in timeout protection
-    const response = await fetch(`https://ipapi.co/${ip}/json/`);
-    
-    if (!response.ok) {
-      return { region: "OTHER", countryCode: "XX", currency: "USD" };
-    }
-    
-    const data = await response.json().catch(() => null);
-    
-    if (!data || data.error) {
-      return { region: "OTHER", countryCode: "XX", currency: "USD" };
-    }
-    
-    const countryCode = (data.country_code || "XX").toUpperCase();
-    
-    // Determine region
-    let region: RegionType = "OTHER";
-    if (countryCode === "CN") {
-      region = "CHINA";
-    } else if (countryCode === "US") {
-      region = "USA";
-    } else if (EUROPEAN_COUNTRIES.includes(countryCode)) {
-      region = "EUROPE";
-    }
-    
-    // Determine currency
-    let currency = "USD";
-    if (region === "CHINA") currency = "CNY";
-    else if (region === "EUROPE") currency = "EUR";
-    else if (data.currency) currency = data.currency;
-    
-    return { region, countryCode, currency };
-  } catch (error) {
-    // Silently return default on any error to prevent middleware failure
-    return { region: "OTHER", countryCode: "XX", currency: "USD" };
-  }
-}
+import { geoRouter } from "@/lib/architecture-modules/core/geo-router";
+import { RegionType } from "@/lib/architecture-modules/core/types";
+import { csrfProtection } from "@/lib/security/csrf";
 
 // Admin session cookie 配置
 const ADMIN_SESSION_COOKIE_NAME = "admin_session";
@@ -77,22 +15,15 @@ function verifyAdminSessionToken(token: string): boolean {
     const [encoded, sig] = token.split(".");
     if (!encoded || !sig) return false;
 
-    // 验证签名 - Edge Runtime 兼容版本
-    // Use a simpler approach that doesn't require spreading large arrays
-    const encoder = new TextEncoder();
-    const data = encoder.encode(`${encoded}.${ADMIN_SESSION_SECRET}`);
-    
-    // Convert Uint8Array to string for btoa (Edge compatible)
-    let binaryString = '';
-    for (let i = 0; i < data.length; i++) {
-      binaryString += String.fromCharCode(data[i]);
-    }
-    const expectedSig = btoa(binaryString).slice(0, 16);
+    // 验证签名
+    const expectedSig = Buffer.from(
+      `${encoded}.${ADMIN_SESSION_SECRET}`
+    ).toString("base64").slice(0, 16);
 
     if (sig !== expectedSig) return false;
 
-    // 解析 payload - Edge Runtime 兼容版本
-    const payload = atob(encoded);
+    // 解析 payload
+    const payload = Buffer.from(encoded, "base64").toString("utf-8");
     const session = JSON.parse(payload);
 
     // 检查是否过期
@@ -115,9 +46,7 @@ function verifyAdminSessionToken(token: string): boolean {
  * 注意：不进行任何重定向，用户访问哪个域名就使用哪个系统
  */
 export async function middleware(request: NextRequest) {
-  // Wrap entire middleware in try-catch to prevent any unhandled errors
-  try {
-    const { pathname, searchParams } = request.nextUrl;
+  const { pathname, searchParams } = request.nextUrl;
 
   // =====================
   // 版本隔离：根据 NEXT_PUBLIC_DEFAULT_LANGUAGE 限制可访问的 API 路由
@@ -264,33 +193,28 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith("/api/") && !isDevelopment) {
       const referer = request.headers.get("referer");
       if (referer) {
-        try {
-          const refererUrl = new URL(referer);
-          const refererDebug = refererUrl.searchParams.get("debug");
+        const refererUrl = new URL(referer);
+        const refererDebug = refererUrl.searchParams.get("debug");
 
-          // 生产环境禁用来自referer的调试模式
-          if (refererDebug) {
-            console.warn(
-              `🚨 生产环境检测到来自referer的调试模式参数，已禁止访问: ${refererDebug}`
-            );
-            return new NextResponse(
-              JSON.stringify({
-                error: "Access Denied",
-                message: "Debug mode is not allowed in production.",
-                code: "DEBUG_MODE_BLOCKED",
-              }),
-              {
-                status: 403,
-                headers: {
-                  "Content-Type": "application/json",
-                  "X-Debug-Blocked": "true",
-                },
-              }
-            );
-          }
-        } catch (error) {
-          // Ignore URL parsing errors for referer
-          console.warn("Failed to parse referer URL:", error);
+        // 生产环境禁用来自referer的调试模式
+        if (refererDebug) {
+          console.warn(
+            `🚨 生产环境检测到来自referer的调试模式参数，已禁止访问: ${refererDebug}`
+          );
+          return new NextResponse(
+            JSON.stringify({
+              error: "Access Denied",
+              message: "Debug mode is not allowed in production.",
+              code: "DEBUG_MODE_BLOCKED",
+            }),
+            {
+              status: 403,
+              headers: {
+                "Content-Type": "application/json",
+                "X-Debug-Blocked": "true",
+              },
+            }
+          );
         }
       }
     }
@@ -305,7 +229,7 @@ export async function middleware(request: NextRequest) {
       switch (debugParam.toLowerCase()) {
         case "china":
           geoResult = {
-            region: "CHINA" as RegionType,
+            region: RegionType.CHINA,
             countryCode: "CN",
             currency: "CNY",
           };
@@ -313,7 +237,7 @@ export async function middleware(request: NextRequest) {
         case "usa":
         case "us":
           geoResult = {
-            region: "USA" as RegionType,
+            region: RegionType.USA,
             countryCode: "US",
             currency: "USD",
           };
@@ -321,7 +245,7 @@ export async function middleware(request: NextRequest) {
         case "europe":
         case "eu":
           geoResult = {
-            region: "EUROPE" as RegionType,
+            region: RegionType.EUROPE,
             countryCode: "DE",
             currency: "EUR",
           };
@@ -329,7 +253,7 @@ export async function middleware(request: NextRequest) {
         default:
           // 无效的debug参数，回退到正常检测
           const clientIP = getClientIP(request);
-          geoResult = await detectGeoSimple(clientIP || "");
+          geoResult = await geoRouter.detect(clientIP || "");
       }
     } else {
       // 正常地理位置检测
@@ -357,20 +281,13 @@ export async function middleware(request: NextRequest) {
         return res;
       }
 
-      // 检测地理位置 - 使用简化的 Edge 兼容版本
-      // Wrap in try-catch to ensure middleware never fails
-      try {
-        geoResult = await detectGeoSimple(clientIP);
-      } catch (error) {
-        console.error("Geo detection error:", error);
-        // Use default values if detection fails
-        geoResult = { region: "OTHER", countryCode: "XX", currency: "USD" };
-      }
+      // 检测地理位置
+      geoResult = await geoRouter.detect(clientIP);
     }
 
     // 1. 禁止欧洲IP访问（开发环境调试模式除外）
     if (
-      geoResult.region === "EUROPE" &&
+      geoResult.region === RegionType.EUROPE &&
       !(debugParam && isDevelopment)
     ) {
       console.log(`禁止欧洲IP访问: ${geoResult.countryCode}`);
@@ -421,13 +338,11 @@ export async function middleware(request: NextRequest) {
       response.headers.set("X-Debug-Mode", debugParam);
     }
 
-    // 4. CSRF防护 - 暂时跳过（CSRF 模块有 Node.js 依赖）
-    // TODO: 实现 Edge 兼容的 CSRF 验证或移至 API 路由
-    // const { csrfProtection } = await import("@/lib/security/csrf");
-    // const csrfResponse = await csrfProtection(request, response);
-    // if (csrfResponse.status !== 200) {
-    //   return csrfResponse;
-    // }
+    // 4. CSRF防护 - 对状态改变请求进行CSRF验证
+    const csrfResponse = await csrfProtection(request, response);
+    if (csrfResponse.status !== 200) {
+      return csrfResponse;
+    }
 
     return response;
   } catch (error) {
@@ -452,12 +367,6 @@ export async function middleware(request: NextRequest) {
     response.headers.set("X-Geo-Error", "true");
 
     return response;
-  }
-  } catch (outerError) {
-    // Catch any errors that escape the inner try-catch
-    console.error("Middleware fatal error:", outerError);
-    // Always return a valid response to prevent middleware failure
-    return NextResponse.next();
   }
 }
 
@@ -517,13 +426,8 @@ function getClientIP(request: NextRequest): string | null {
   }
 
   // 4. Next.js 提供的 request.ip（在 Vercel Edge/Node 上可获取真实客户端 IP）
-  // Note: request.ip might not be available in Edge Runtime
-  try {
-    if (request.ip && isValidIP(request.ip)) {
-      return request.ip;
-    }
-  } catch (error) {
-    // request.ip might throw in Edge Runtime, ignore
+  if (request.ip && isValidIP(request.ip)) {
+    return request.ip;
   }
 
   return null;

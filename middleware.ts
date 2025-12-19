@@ -115,7 +115,9 @@ function verifyAdminSessionToken(token: string): boolean {
  * 注意：不进行任何重定向，用户访问哪个域名就使用哪个系统
  */
 export async function middleware(request: NextRequest) {
-  const { pathname, searchParams } = request.nextUrl;
+  // Wrap entire middleware in try-catch to prevent any unhandled errors
+  try {
+    const { pathname, searchParams } = request.nextUrl;
 
   // =====================
   // 版本隔离：根据 NEXT_PUBLIC_DEFAULT_LANGUAGE 限制可访问的 API 路由
@@ -509,8 +511,13 @@ function getClientIP(request: NextRequest): string | null {
   }
 
   // 4. Next.js 提供的 request.ip（在 Vercel Edge/Node 上可获取真实客户端 IP）
-  if (request.ip && isValidIP(request.ip)) {
-    return request.ip;
+  // Note: request.ip might not be available in Edge Runtime
+  try {
+    if (request.ip && isValidIP(request.ip)) {
+      return request.ip;
+    }
+  } catch (error) {
+    // request.ip might throw in Edge Runtime, ignore
   }
 
   return null;

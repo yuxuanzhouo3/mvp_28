@@ -134,6 +134,7 @@ export async function middleware(request: NextRequest) {
   // 跳过静态资源和Next.js内部路由（但保留 API 路由以便设置区域 Header）
   if (
     pathname.startsWith("/_next/") ||
+    pathname === "/favicon.ico" ||
     pathname.startsWith("/favicon.ico") ||
     (pathname.includes(".") && !pathname.startsWith("/api/"))
   ) {

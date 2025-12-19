@@ -25,7 +25,7 @@ export function createClient() {
     auth: {
       autoRefreshToken: true,
       persistSession: true,
-      detectSessionInUrl: false, // 禁用自动检测，避免干扰手动PKCE流程
+      detectSessionInUrl: true, // 启用自动检测，支持 PKCE OAuth 流程
     },
   });
 

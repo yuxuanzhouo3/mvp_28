@@ -48,6 +48,7 @@ import {
   setEmailCooldown,
   getCooldownMessage,
 } from "@/lib/utils/email-rate-limit";
+import { signInWithGoogle } from "@/actions/oauth";
 
 const FREE_DAILY_LIMIT = (() => {
   const raw = process.env.NEXT_PUBLIC_FREE_DAILY_LIMIT || "10";
@@ -2922,16 +2923,13 @@ const loadMessagesForConversation = useCallback(
       return;
     }
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          // Force implicit flow to avoid PKCE verifier issues on callback
-          flowType: "implicit",
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (error) throw error;
+      // 使用 Server Action 启动 OAuth（Supabase 官方推荐方式）
+      await signInWithGoogle();
     } catch (err) {
+      // Server Action 中的 redirect() 会抛出 NEXT_REDIRECT 错误，这是正常行为
+      if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) {
+        return;
+      }
       console.error("Google OAuth error", err);
       alert(
         isZh ? "Google 登录失败，请稍后再试" : "Google sign-in failed. Please try again.",

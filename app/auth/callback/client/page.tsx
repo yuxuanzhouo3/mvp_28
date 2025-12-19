@@ -10,7 +10,6 @@ export const dynamic = "force-dynamic";
 function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  // 优先从 URL 查询参数获取 next（Supabase 会将 redirectTo 中的查询参数保留）
   const next = searchParams.get("next") || "/";
   const stateParam = searchParams.get("state");
   const supabase = createClient();
@@ -20,11 +19,9 @@ function AuthCallbackContent() {
 
   const isZh = currentLanguage === "zh";
 
-  // 尝试从 state 参数中解析 next（作为备用方案）
   const nextFromState = useMemo(() => {
     if (!stateParam) return null;
     try {
-      // Supabase 的 state 参数是 base64 编码的 JSON
       const padded = stateParam.replace(/-/g, "+").replace(/_/g, "/");
       const decodedStr = atob(padded);
       const decoded = JSON.parse(decodedStr) as { next?: string };
@@ -34,7 +31,6 @@ function AuthCallbackContent() {
     }
   }, [stateParam]);
 
-  // 优先使用 URL 查询参数中的 next，如果没有则使用 state 中的
   const nextTarget = useMemo(() => {
     if (next && next !== "/") return next;
     return nextFromState || "/";
@@ -45,7 +41,7 @@ function AuthCallbackContent() {
       // 国内版：处理微信回调
       if (isDomesticVersion) {
         const code = searchParams.get("code");
-        console.info("[AuthCallback] CN version, code=", code, "state=", stateParam);
+        console.info("[AuthCallback/client] CN version, code=", code, "state=", stateParam);
         if (code) {
           try {
             const res = await fetch("/api/auth/wechat", {
@@ -55,14 +51,14 @@ function AuthCallbackContent() {
             });
             if (!res.ok) {
               const errText = await res.text();
-              console.error("[AuthCallback] WeChat login failed", errText);
+              console.error("[AuthCallback/client] WeChat login failed", errText);
               setError(isZh ? "微信登录失败，请重试" : "WeChat login failed, please try again");
               setStatus("error");
               return;
             }
             setStatus("success");
           } catch (err) {
-            console.error("[AuthCallback] WeChat request error", err);
+            console.error("[AuthCallback/client] WeChat request error", err);
             setError(isZh ? "网络错误，请重试" : "Network error, please try again");
             setStatus("error");
             return;
@@ -72,72 +68,58 @@ function AuthCallbackContent() {
         return;
       }
 
-      // 国际版：Supabase 邮箱验证 / OAuth 回调
+      // 国际版：处理 magic link（hash 中带 tokens）
       try {
-        console.info("[AuthCallback] INTL version start, url=", window.location.href);
+        console.info("[AuthCallback/client] INTL version start, url=", window.location.href);
 
-        // 1) 优先处理邮箱验证 / magic link（hash 携带 access_token）
         const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
         const access_token = hashParams.get("access_token");
         const refresh_token = hashParams.get("refresh_token");
-        const codeParam = searchParams.get("code");
         const errorParam = searchParams.get("error");
         const errorDescription = searchParams.get("error_description");
 
         // 处理 OAuth 错误
         if (errorParam) {
-          console.error("[AuthCallback] OAuth error:", errorParam, errorDescription);
+          console.error("[AuthCallback/client] OAuth error:", errorParam, errorDescription);
           setError(errorDescription || errorParam);
           setStatus("error");
           return;
         }
 
         if (access_token && refresh_token) {
-          // Magic link / 邮箱验证回调（implicit flow，hash 中带 tokens）
-          console.info("[AuthCallback] magic link tokens found, setting session");
+          // Magic link / 邮箱验证回调
+          console.info("[AuthCallback/client] magic link tokens found, setting session");
           const { error: sessionError } = await supabase.auth.setSession({
             access_token,
             refresh_token,
           });
           if (sessionError) {
-            console.error("[AuthCallback] setSession error:", sessionError.message);
+            console.error("[AuthCallback/client] setSession error:", sessionError.message);
             setError(sessionError.message);
             setStatus("error");
             return;
           }
-          console.info("[AuthCallback] magic link setSession success");
+          console.info("[AuthCallback/client] magic link setSession success");
           setStatus("success");
-        } else if (codeParam) {
-          // PKCE 流程：收到 code 参数，需要重定向到服务端 /auth/confirm 处理
-          // 因为客户端可能没有 code_verifier（用户在不同浏览器/设备点击邮件链接）
-          console.info("[AuthCallback] PKCE code detected, redirecting to server-side /auth/confirm");
-          const confirmUrl = new URL("/auth/confirm", window.location.origin);
-          confirmUrl.searchParams.set("code", codeParam);
-          if (nextTarget && nextTarget !== "/") {
-            confirmUrl.searchParams.set("next", nextTarget);
-          }
-          window.location.href = confirmUrl.toString();
-          return;
         } else {
-          // 可能是直接访问 callback 页面，尝试获取现有 session
+          // 尝试获取现有 session
           const { data: sessionData } = await supabase.auth.getSession();
           if (sessionData?.session) {
-            console.info("[AuthCallback] Found existing session");
+            console.info("[AuthCallback/client] Found existing session");
             setStatus("success");
           } else {
-            console.warn("[AuthCallback] No access_token/refresh_token or code found in URL");
+            console.warn("[AuthCallback/client] No tokens found in URL");
             setError(isZh ? "无效的认证回调" : "Invalid authentication callback");
             setStatus("error");
             return;
           }
         }
 
-        // 成功后跳转
         setTimeout(() => {
           router.replace(nextTarget);
         }, 500);
       } catch (err) {
-        console.error("[AuthCallback] Unexpected error:", err);
+        console.error("[AuthCallback/client] Unexpected error:", err);
         setError(err instanceof Error ? err.message : (isZh ? "认证失败" : "Authentication failed"));
         setStatus("error");
       }

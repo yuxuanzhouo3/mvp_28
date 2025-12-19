@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useLanguage } from "@/context/LanguageContext";
 import { DEFAULT_LANGUAGE } from "@/config";
+import { signInWithGoogle } from "@/actions/oauth";
 
 export function SignUpForm({
   className,
@@ -39,16 +40,13 @@ export function SignUpForm({
     setIsLoading(true);
     setError(null);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          // Use implicit flow to avoid PKCE verifier issues
-          flowType: "implicit",
-          redirectTo: `${window.location.origin}/auth/callback?next=/`,
-        },
-      });
-      if (error) throw error;
+      // 使用 Server Action 启动 OAuth（Supabase 官方推荐方式）
+      await signInWithGoogle("/");
     } catch (err: unknown) {
+      // Server Action 中的 redirect() 会抛出 NEXT_REDIRECT 错误，这是正常行为
+      if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) {
+        return;
+      }
       setError(err instanceof Error ? err.message : "An error occurred");
       setIsLoading(false);
     }

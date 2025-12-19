@@ -178,6 +178,12 @@ export async function csrfProtection(
     return response;
   }
 
+  // 跳过 Next.js Server Actions（它们使用 next-action header 标识）
+  // Server Actions 有自己的安全机制（同源策略 + action ID 验证）
+  if (request.headers.get("next-action")) {
+    return response;
+  }
+
   // 获取CSRF token和secret
   const token = csrfManager.getTokenFromRequest(request);
   const secret = csrfManager.getSecretFromRequest(request);

@@ -16,6 +16,7 @@ import {
   setEmailCooldown,
   getCooldownMessage,
 } from "@/lib/utils/email-rate-limit";
+import { signInWithGoogle } from "@/actions/oauth";
 
 type Mode = "login" | "signup";
 
@@ -54,26 +55,16 @@ export function AuthPage({ mode }: { mode: Mode }) {
     setIsLoading(true);
     setError(null);
     try {
-      console.info("[AuthPage] Starting Google OAuth login", { next });
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          // Use implicit flow to avoid PKCE code_verifier issues in callback
-          flowType: "implicit",
-          redirectTo: `${window.location.origin}/auth/callback${next && next !== "/" ? `?next=${encodeURIComponent(next)}` : ""}`,
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent",
-          },
-        },
-      });
-      if (error) {
-        console.error("[AuthPage] Google OAuth error:", error);
-        throw error;
-      }
-      console.info("[AuthPage] Google OAuth initiated, redirecting to:", data?.url);
-      // OAuth 会自动重定向，不需要手动处理
+      console.info("[AuthPage] Starting Google OAuth via Server Action", { next });
+      // 使用 Server Action 启动 OAuth（Supabase 官方推荐方式）
+      await signInWithGoogle(next);
     } catch (err) {
+      // Server Action 中的 redirect() 会抛出 NEXT_REDIRECT 错误，这是正常行为
+      // 检查是否是重定向错误，如果是则忽略
+      if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) {
+        // 正常的重定向，不需要处理
+        return;
+      }
       console.error("[AuthPage] Google OAuth exception:", err);
       setError(
         err instanceof Error

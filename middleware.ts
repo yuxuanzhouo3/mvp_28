@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-// Use Edge-compatible versions
-import { geoRouter, RegionType } from "@/lib/edge/geo-router";
-import { csrfProtection } from "@/lib/edge/csrf";
+// Use dynamic imports to avoid static analysis issues
+// These will be loaded at runtime in Edge Runtime
 
 // Admin session cookie 配置
 const ADMIN_SESSION_COOKIE_NAME = "admin_session";
@@ -342,7 +341,8 @@ export async function middleware(request: NextRequest) {
       response.headers.set("X-Debug-Mode", debugParam);
     }
 
-    // 4. CSRF防护 - 对状态改变请求进行CSRF验证
+    // 4. CSRF防护 - 对状态改变请求进行CSRF验证 (dynamic import)
+    const { csrfProtection } = await import("@/lib/edge/csrf");
     const csrfResponse = await csrfProtection(request, response);
     if (csrfResponse.status !== 200) {
       return csrfResponse;

@@ -88,6 +88,7 @@ export async function POST(request: NextRequest) {
     const res = NextResponse.json({
       success: true,
       user: result.user,
+      token: result.session.access_token, // 返回token供回调路由使用
     });
 
     res.cookies.set("auth-token", result.session.access_token, {

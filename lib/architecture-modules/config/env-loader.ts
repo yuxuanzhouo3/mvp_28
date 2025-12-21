@@ -60,10 +60,13 @@ export class EnvironmentLoader {
 
     if (this.region === RegionType.CHINA) {
       // 中国地区：微信支付 + 支付宝
+      // 微信登录使用开放平台 AppID (WECHAT_APP_ID)
+      // 微信支付使用公众号/小程序 AppID (WECHAT_PAY_APP_ID)
       config.WECHAT_APP_ID = process.env.WECHAT_APP_ID;
+      config.WECHAT_PAY_APP_ID = process.env.WECHAT_PAY_APP_ID;
       config.WECHAT_MCH_ID = process.env.WECHAT_PAY_MCH_ID;
       config.WECHAT_API_KEY = process.env.WECHAT_PAY_API_V3_KEY;
-      config.ALIPAY_APP_ID = process.env.NEXT_PUBLIC_ALIPAY_APP_ID;
+      config.ALIPAY_APP_ID = process.env.ALIPAY_APP_ID;
       config.ALIPAY_PRIVATE_KEY = process.env.ALIPAY_PRIVATE_KEY;
     } else if (this.region !== RegionType.EUROPE) {
       // 海外非欧洲地区：Stripe + PayPal

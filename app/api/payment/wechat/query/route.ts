@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     // 初始化微信支付提供商
     const wechatProvider = new WechatProviderV3({
-      appId: process.env.WECHAT_APP_ID!,
+      appId: process.env.WECHAT_PAY_APP_ID!,
       mchId: process.env.WECHAT_PAY_MCH_ID!,
       apiV3Key: process.env.WECHAT_PAY_API_V3_KEY!,
       privateKey: process.env.WECHAT_PAY_PRIVATE_KEY!,

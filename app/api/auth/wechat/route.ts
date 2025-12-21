@@ -20,15 +20,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing code" }, { status: 400 });
     }
 
-    const appId =
-      process.env.WECHAT_APP_ID ||
-      process.env.NEXT_PUBLIC_WECHAT_APP_ID ||
-      process.env.WECHAT_CLOUDBASE_APP_ID;
-    const appSecret =
-      process.env.WECHAT_APP_SECRET ||
-      process.env.NEXT_PUBLIC_WECHAT_APP_SECRET ||
-      process.env.WECHAT_APP_KEY ||
-      process.env.CLOUDBASE_SECRET_KEY;
+    const appId = process.env.WECHAT_APP_ID;
+    const appSecret = process.env.WECHAT_APP_SECRET;
 
     if (!appId || !appSecret) {
       return NextResponse.json(

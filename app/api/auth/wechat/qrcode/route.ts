@@ -13,10 +13,7 @@ export async function GET(request: NextRequest) {
       return new NextResponse(null, { status: 404 });
     }
 
-    const appId =
-      process.env.WECHAT_APP_ID ||
-      process.env.NEXT_PUBLIC_WECHAT_APP_ID ||
-      process.env.WECHAT_CLOUDBASE_APP_ID;
+    const appId = process.env.WECHAT_APP_ID;
 
     // 优先使用环境变量配置的域名；若未配置，则回落到请求头推断
     const envAppUrl = process.env.NEXT_PUBLIC_APP_URL;

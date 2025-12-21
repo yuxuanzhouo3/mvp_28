@@ -35,7 +35,8 @@ export interface EnvironmentConfig {
   STRIPE_SECRET_KEY?: string;
   PAYPAL_CLIENT_ID?: string;
   PAYPAL_CLIENT_SECRET?: string;
-  WECHAT_APP_ID?: string;
+  WECHAT_APP_ID?: string; // 微信开放平台 AppID (用于登录)
+  WECHAT_PAY_APP_ID?: string; // 微信公众号/小程序 AppID (用于支付)
   WECHAT_MCH_ID?: string;
   WECHAT_API_KEY?: string;
   ALIPAY_APP_ID?: string;

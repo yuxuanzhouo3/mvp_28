@@ -48,6 +48,12 @@ import {
   Volume2,
   Upload,
   MapPin,
+  Code,
+  Cpu,
+  Wind,
+  Bot,
+  Image,
+  FileText,
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useCamera } from "@/hooks";
@@ -394,27 +400,87 @@ const InputArea = React.memo(function InputArea({
     ? filteredExternalModels.filter((model) => model.modality !== "multimodal")
     : [];
 
+  // 获取外部模型图标
+  const getExternalModelIcon = (model: any) => {
+    // 多模态模型使用图像图标
+    if (model.modality === "multimodal") {
+      return <Image className="w-3 h-3" />;
+    }
+    // 代码模型
+    if (model.id.toLowerCase().includes("coder") || model.id.toLowerCase().includes("codestral")) {
+      return <Code className="w-3 h-3" />;
+    }
+    // 根据提供商返回图标
+    const provider = model.provider?.toLowerCase();
+    switch (provider) {
+      case "qwen":
+        return <Brain className="w-3 h-3" />;
+      case "deepseek":
+        return <Search className="w-3 h-3" />;
+      case "kimi":
+        return <MessageSquare className="w-3 h-3" />;
+      case "glm":
+        return <Cpu className="w-3 h-3" />;
+      case "mistral":
+        return <Wind className="w-3 h-3" />;
+      default:
+        return <Bot className="w-3 h-3" />;
+    }
+  };
+
+  // 获取外部模型图标背景色
+  const getExternalModelIconColor = (model: any) => {
+    if (model.modality === "multimodal") {
+      return "bg-purple-500";
+    }
+    if (model.id.toLowerCase().includes("coder") || model.id.toLowerCase().includes("codestral")) {
+      return "bg-emerald-500";
+    }
+    const provider = model.provider?.toLowerCase();
+    switch (provider) {
+      case "qwen":
+        return "bg-blue-500";
+      case "deepseek":
+        return "bg-indigo-500";
+      case "kimi":
+        return "bg-cyan-500";
+      case "glm":
+        return "bg-orange-500";
+      case "mistral":
+        return "bg-teal-500";
+      default:
+        return "bg-gray-500";
+    }
+  };
+
   const renderExternalModelButton = (model: any) => (
     <button
       key={model.id}
       onClick={() =>
         handleModelSelect("external", undefined, model.id)
       }
-      className="w-full text-left px-2 py-1 rounded hover:bg-white dark:hover:bg-[#3a3b44] transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-600"
+      className="w-full text-left px-2 py-1.5 rounded hover:bg-white dark:hover:bg-[#3a3b44] transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-600"
     >
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium text-gray-900 dark:text-[#ececf1]">
-          {model.name}
-        </span>
-        <span className="text-[10px] text-gray-500 dark:text-gray-400">
-          {model.provider}
-        </span>
+      <div className="flex items-center gap-2">
+        <div className={`p-1 rounded ${getExternalModelIconColor(model)} text-white shadow-sm flex-shrink-0`}>
+          {getExternalModelIcon(model)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-gray-900 dark:text-[#ececf1]">
+              {model.name}
+            </span>
+            <span className="text-[10px] text-gray-500 dark:text-gray-400">
+              {model.provider}
+            </span>
+          </div>
+          {model.description && (
+            <p className="text-[9px] text-gray-500 dark:text-gray-400 truncate">
+              {model.description}
+            </p>
+          )}
+        </div>
       </div>
-      {model.description && (
-        <p className="text-[9px] text-gray-500 dark:text-gray-400 truncate">
-          {model.description}
-        </p>
-      )}
     </button>
   );
   
@@ -1206,7 +1272,7 @@ const InputArea = React.memo(function InputArea({
                           <TabsContent value="morngpt" className="p-2">
                             <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
                               {mornGPTCategories.map((category) => {
-                                const IconComponent = category.icon;
+                                const IconComponent = category.icon || Bot;
                                 return (
                                   <div
                                     key={category.id}
@@ -1222,9 +1288,9 @@ const InputArea = React.memo(function InputArea({
                                     <div className="flex flex-col space-y-1">
                                       <div className="flex items-center space-x-1.5">
                                         <div
-                                          className={`p-0.5 rounded ${category.color} text-white shadow-sm`}
+                                          className={`p-1 rounded ${category.color} text-white shadow-sm flex items-center justify-center`}
                                         >
-                                          <IconComponent className="w-2 h-2" />
+                                          <IconComponent className="w-3 h-3" />
                                         </div>
                                         <div className="flex-1 min-w-0">
                                           <div className="flex items-center justify-between">

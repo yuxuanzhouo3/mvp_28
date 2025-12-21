@@ -14,14 +14,14 @@ export const externalAPIs: ExternalApi[] = [
     id: "qwen",
     name: "Qwen",
     description: "阿里通义系列大模型（含 DeepSeek/Kimi/GLM 接入）",
-    icon: "??",
+    icon: "brain", // 图标在组件中动态渲染
     models: 12,
   },
   {
     id: "mistral",
     name: "Mistral",
     description: "Mistral / Codestral 系列",
-    icon: "???",
+    icon: "wind", // 图标在组件中动态渲染
     models: 3,
   },
 ];

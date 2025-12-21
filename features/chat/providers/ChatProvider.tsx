@@ -267,6 +267,10 @@ import {
   MicOff,
   Clock,
   Camera,
+  Cpu,
+  Wind,
+  Image,
+  FileText,
   Video,
   VideoOff,
   Square,
@@ -2374,7 +2378,38 @@ const loadMessagesForConversation = useCallback(
       const IconComponent = category?.icon || MessageSquare;
       return <IconComponent className="w-3 h-3" />;
     }
-    if (selectedModelType === "external") {
+    if (selectedModelType === "external" && selectedModel) {
+      // 查找选中的外部模型
+      const model = externalModels.find(
+        (m) => m.id.toLowerCase() === selectedModel.toLowerCase() ||
+               m.name.toLowerCase() === selectedModel.toLowerCase()
+      );
+      if (model) {
+        // 多模态模型使用图像图标
+        if (model.modality === "multimodal") {
+          return <Image className="w-3 h-3" />;
+        }
+        // 代码模型
+        if (model.id.toLowerCase().includes("coder") || model.id.toLowerCase().includes("codestral")) {
+          return <Code className="w-3 h-3" />;
+        }
+        // 根据提供商返回图标
+        const provider = model.provider?.toLowerCase();
+        switch (provider) {
+          case "qwen":
+            return <Brain className="w-3 h-3" />;
+          case "deepseek":
+            return <Search className="w-3 h-3" />;
+          case "kimi":
+            return <MessageSquare className="w-3 h-3" />;
+          case "glm":
+            return <Cpu className="w-3 h-3" />;
+          case "mistral":
+            return <Wind className="w-3 h-3" />;
+          default:
+            return <Bot className="w-3 h-3" />;
+        }
+      }
       return <Globe className="w-3 h-3" />;
     }
     return <MessageSquare className="w-3 h-3" />;

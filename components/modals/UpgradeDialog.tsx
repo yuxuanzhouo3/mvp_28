@@ -333,7 +333,7 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
               <div className="p-1.5 md:p-2 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-lg md:rounded-xl shadow-lg shadow-orange-500/25">
                 <Crown className="w-4 h-4 md:w-6 md:h-6 text-white" />
               </div>
-              <span className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 dark:from-white dark:via-gray-100 dark:to-white bg-clip-text text-transparent">
+              <span className="text-gray-900 dark:text-white font-bold">
               {selectedPaidModel
                 ? tr(`Upgrade to Access ${selectedPaidModel.name}`, `升级以解锁 ${selectedPaidModel.name}`)
                 : tr("Choose Your MornGPT Plan", "选择你的 MornGPT 套餐")}
@@ -481,7 +481,7 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
                           {/* 价格区域 */}
                           <div className="mb-4 md:mb-5 py-3 md:py-4 border-y border-gray-200/50 dark:border-white/10">
                             <div className="flex items-baseline gap-1">
-                              <span className={`text-2xl md:text-3xl font-extrabold bg-gradient-to-r ${theme.gradient} bg-clip-text text-transparent`}>
+                              <span className={`text-2xl md:text-3xl font-extrabold ${theme.text}`}>
                           {billingPeriod === "annual" ? plan.annualPrice : plan.price}
                         </span>
                               <span className="text-gray-500 dark:text-gray-400 text-xs md:text-sm">

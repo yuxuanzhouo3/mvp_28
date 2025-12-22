@@ -371,10 +371,10 @@ function ChatInterface({
 
             {/* Compact Tips */}
             <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-2 sm:p-3 max-w-4xl mx-auto">
-              <div className="flex items-center justify-center space-x-2 sm:space-x-6 text-[10px] sm:text-xs text-blue-800 dark:text-blue-200">
-                <span className="whitespace-nowrap">🧭 {getLocalizedText("beSpecific")}</span>
-                <span className="whitespace-nowrap">🚀 {getLocalizedText("chooseSpecialized")}</span>
-                <span className="whitespace-nowrap">📎 {getLocalizedText("uploadFilesWith")}</span>
+              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 sm:gap-x-5 text-[10px] sm:text-xs text-blue-800 dark:text-blue-200">
+                <span>🧭 {getLocalizedText("beSpecific")}</span>
+                <span>🚀 {getLocalizedText("chooseSpecialized")}</span>
+                <span>📎 {getLocalizedText("uploadFilesWith")}</span>
               </div>
             </div>
           </div>

@@ -233,7 +233,7 @@ export function AddonPackageTab({
 
                 {/* 价格 */}
                 <div className="text-center mb-3">
-                  <span className="text-2xl font-extrabold bg-gradient-to-r from-amber-600 to-orange-600 dark:from-amber-400 dark:to-orange-400 bg-clip-text text-transparent">
+                  <span className="text-2xl font-extrabold text-amber-600 dark:text-amber-400">
                     {formatPrice(pkg)}
                   </span>
                 </div>

@@ -246,12 +246,7 @@ export default function Sidebar({
                   <AdBanner
                     position="sidebar"
                     isDomestic={isDomestic}
-                    showCloseButton={canCloseAdsForUpsell}
-                    onClose={() => {
-                      if (canCloseAdsForUpsell) {
-                        setShowUpgradeDialog?.(true);
-                      }
-                    }}
+                    showCloseButton={false}
                     className="h-[200px]"
                   />
                 </div>

@@ -226,7 +226,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // 国际版：升级补差价 (目标套餐日价 - 当前套餐日价) × 剩余天数
+      // 国际版：升级补差价逻辑（与国内版一致）
+      // 1. 如果剩余价值 >= 目标套餐价格：免费升级，剩余价值折算成目标套餐天数
+      // 2. 如果剩余价值 < 目标套餐价格：补差价，获得目标套餐天数
+      let days = 0;
+      let isUpgradeOrder = false;
+
       if (!IS_DOMESTIC_VERSION && userId && supabaseAdmin) {
         try {
           const { data: walletRow } = await supabaseAdmin
@@ -244,6 +249,7 @@ export async function POST(request: NextRequest) {
           const isUpgrade = currentActive && purchaseRank > currentRank && currentRank > 0;
 
           if (isUpgrade && currentPlanKey) {
+            isUpgradeOrder = true;
             const remainingDays = Math.max(
               0,
               Math.ceil(((currentPlanExp?.getTime() || 0) - now.getTime()) / (1000 * 60 * 60 * 24))
@@ -252,21 +258,45 @@ export async function POST(request: NextRequest) {
             // 使用月度价格计算日价（美元）
             const currentPlanMonthlyPrice = extractPlanAmount(currentPlanDef, "monthly", false);
             const targetPlanMonthlyPrice = extractPlanAmount(resolvedPlan, "monthly", false);
+            // 目标套餐价格：根据用户选择的计费周期（月费或年费总价）
+            const targetPrice = extractPlanAmount(resolvedPlan, effectiveBillingPeriod, false);
+            const currentDailyPrice = currentPlanMonthlyPrice / 30;
+            const targetDailyPrice = targetPlanMonthlyPrice / 30;
 
-            // 计算升级差价：按日价差乘以剩余天数
-            amount = calculateSupabaseUpgradePrice(
-              currentPlanMonthlyPrice / 30,  // 当前套餐日价
-              targetPlanMonthlyPrice / 30,   // 目标套餐日价
-              remainingDays                   // 剩余天数
-            );
+            // 计算当前套餐剩余价值
+            const remainingValue = remainingDays * currentDailyPrice;
+
+            // 目标套餐天数
+            const targetDays = effectiveBillingPeriod === "annual" ? 365 : 30;
+
+            // 升级逻辑：
+            // 1. 如果剩余价值 >= 目标套餐价格：免费升级，折算天数
+            // 2. 如果剩余价值 < 目标套餐价格：补差价，获得目标套餐天数
+            const freeUpgrade = remainingValue >= targetPrice;
+
+            if (freeUpgrade) {
+              // 免费升级：剩余价值全部折算成目标套餐天数
+              amount = 0.01; // 最低支付金额
+              days = Math.floor(remainingValue / targetDailyPrice);
+            } else {
+              // 补差价：支付差额，获得目标套餐天数
+              amount = Math.max(0.01, targetPrice - remainingValue);
+              days = targetDays;
+            }
+
+            amount = Math.round(amount * 100) / 100;
 
             console.log("📝 [Stripe Create] International upgrade calculation:", {
               currentPlan: currentPlanKey,
               targetPlan: resolvedPlanName,
+              billingPeriod: effectiveBillingPeriod,
               currentPlanMonthlyPrice,
-              targetPlanMonthlyPrice,
+              targetPrice,
               remainingDays,
+              remainingValue: Math.round(remainingValue * 100) / 100,
+              freeUpgrade,
               upgradeAmount: amount,
+              newPlanDays: days,
             });
           }
         } catch (error) {
@@ -275,9 +305,14 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // 只有在非升级情况下才设置默认天数
+      if (days === 0) {
+        days = effectiveBillingPeriod === "annual" ? 365 : 30;
+      }
+
       customId = [userId || "anon", resolvedPlan.name, effectiveBillingPeriod].join("|");
       description = `${resolvedPlan.name} - ${effectiveBillingPeriod === "annual" ? "Annual" : "Monthly"}`;
-      
+
       metadata = {
         userId: userId || "",
         customId,
@@ -285,7 +320,9 @@ export async function POST(request: NextRequest) {
         paymentType: "onetime",
         billingCycle: effectiveBillingPeriod,
         planName: resolvedPlan.name, // 始终使用英文 key，避免中文命中失败
-        days: effectiveBillingPeriod === "annual" ? "365" : "30",
+        days: String(days),
+        isUpgrade: isUpgradeOrder ? "true" : "false",
+        originalAmount: String(baseAmount),
       };
     }
 

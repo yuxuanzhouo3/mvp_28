@@ -248,15 +248,24 @@ export async function GET(req: NextRequest) {
   const userId = userData.user.id;
   const today = getTodayString();
   const currentMonth = getCurrentYearMonth();
-  
-  // 从 user_metadata 获取用户套餐信息
+
+  // 先从 user_wallets 表获取钱包数据（权威数据源，避免 user_metadata 缓存问题）
+  const { data: walletRowPre, error: walletErrPre } = await supabase
+    .from("user_wallets")
+    .select("*")
+    .eq("user_id", userId)
+    .single();
+
+  // 从 user_wallets 获取套餐信息（优先），user_metadata 作为回退
   const userMeta = userData.user.user_metadata as any;
-  const rawPlan = userMeta?.plan || userMeta?.subscriptionTier || "";
+  const rawPlan = walletRowPre?.plan || walletRowPre?.subscription_tier || userMeta?.plan || userMeta?.subscriptionTier || "";
   const rawPlanLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
-  const planExp = userMeta?.plan_exp ? new Date(userMeta.plan_exp) : null;
+  const planExp = walletRowPre?.plan_exp
+    ? new Date(walletRowPre.plan_exp)
+    : (userMeta?.plan_exp ? new Date(userMeta.plan_exp) : null);
   const planActive = planExp ? planExp > new Date() : true;
   const effectivePlanLower = planActive ? rawPlanLower : "free";
-  
+
   const isBasic = effectivePlanLower === "basic";
   const isProPlan = effectivePlanLower === "pro";
   const isEnterprise = effectivePlanLower === "enterprise";
@@ -300,16 +309,9 @@ export async function GET(req: NextRequest) {
     }
   })();
 
-  // 从 user_wallets 表获取钱包数据
-  const { data: walletRow, error: walletErr } = await supabase
-    .from("user_wallets")
-    .select("*")
-      .eq("user_id", userId)
-    .single();
-
-  // 如果钱包不存在，创建默认钱包
-  let wallet = walletRow;
-  if (walletErr && walletErr.code === "PGRST116") {
+  // 复用前面已获取的 wallet 数据（避免重复查询）
+  let wallet = walletRowPre;
+  if (walletErrPre && walletErrPre.code === "PGRST116") {
     // 钱包不存在，使用 supabaseAdmin 创建（因为 RLS 限制）
     if (supabaseAdmin) {
       const { data: newWallet, error: createErr } = await supabaseAdmin
@@ -330,13 +332,13 @@ export async function GET(req: NextRequest) {
         })
         .select()
       .single();
-      
+
       if (!createErr && newWallet) {
         wallet = newWallet;
       }
     }
-  } else if (walletErr) {
-    console.error("Wallet fetch error", walletErr);
+  } else if (walletErrPre) {
+    console.error("Wallet fetch error", walletErrPre);
   }
 
   // 构建钱包统计数据
@@ -386,10 +388,14 @@ export async function GET(req: NextRequest) {
     remaining: dailyRemaining,
   };
 
+  // 订阅到期时间（用于前端显示）
+  const planExpIso = planExp ? planExp.toISOString() : null;
+
   // 根据模型类型返回不同的配额信息
       if (modelCategory === "general") {
         return Response.json({
       plan: limits.label,
+      planExp: planExpIso,
           quotaType: "unlimited",
           modelCategory: "general",
       contextMsgLimit: limits.contextLimit,
@@ -400,6 +406,7 @@ export async function GET(req: NextRequest) {
       if (modelCategory === "external") {
         return Response.json({
       plan: limits.label,
+      planExp: planExpIso,
           period: today,
       used: daily.used,
       limit: daily.limit,
@@ -415,6 +422,7 @@ export async function GET(req: NextRequest) {
       if (modelCategory === "advanced_multimodal") {
         return Response.json({
       plan: limits.label,
+      planExp: planExpIso,
           period: currentMonth,
           quotaType: "monthly_media",
           modelCategory: "advanced_multimodal",
@@ -435,6 +443,7 @@ export async function GET(req: NextRequest) {
   // 默认返回全部配额信息
   return Response.json({
     plan: limits.label,
+    planExp: planExpIso,
     daily,
     monthlyMedia,
     contextMsgLimit: limits.contextLimit,

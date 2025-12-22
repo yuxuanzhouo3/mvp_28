@@ -45,6 +45,14 @@ function StripeSuccessContent() {
             expiresAt: data.expiresAt,
           });
           setStatus("success");
+
+          // 设置标记，让首页知道需要刷新用户数据
+          sessionStorage.setItem("payment_completed", "true");
+
+          // 清除 quota-fetcher 的缓存，确保下次请求获取最新数据
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new Event("quota:refresh"));
+          }
         } else {
           setError(data.error || (isZh ? "支付确认失败" : "Payment confirmation failed"));
           setStatus("error");
@@ -132,7 +140,10 @@ function StripeSuccessContent() {
             )}
 
             <Button
-              onClick={() => router.push("/")}
+              onClick={() => {
+                // 使用 window.location.href 强制页面刷新，确保用户数据重新获取
+                window.location.href = "/";
+              }}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white"
             >
               {isZh ? "开始使用" : "Start Using"}

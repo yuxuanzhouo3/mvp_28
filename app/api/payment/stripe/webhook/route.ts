@@ -273,6 +273,10 @@ export async function POST(req: Request) {
     const period: "monthly" | "annual" =
       periodStr === "annual" || periodStr === "yearly" ? "annual" : "monthly";
 
+    // 从 metadata 读取升级信息
+    const metaDays = parseInt(metadata.days || "0", 10);
+    const isUpgradeOrder = metadata.isUpgrade === "true";
+
     try {
       const now = new Date();
       const nowIso = now.toISOString();
@@ -302,8 +306,17 @@ export async function POST(req: Request) {
           ? getBeijingYMD(new Date(walletRow.monthly_reset_at)).day
           : getBeijingYMD(now).day);
 
-      const baseDate = isSameActive && currentPlanExp ? currentPlanExp : now;
-      const purchaseExpiresAt = addCalendarMonths(baseDate, monthsToAdd, anchorDay);
+      // 计算到期日期：升级订单使用 metadata.days（天数折算），否则使用月度计算
+      let purchaseExpiresAt: Date;
+      if (isUpgradeOrder && metaDays > 0) {
+        // 升级订单：使用天数折算
+        purchaseExpiresAt = new Date(now.getTime() + metaDays * 24 * 60 * 60 * 1000);
+        console.log(`[Stripe][SUBSCRIPTION] upgrade with days: ${metaDays}, expires: ${purchaseExpiresAt.toISOString()}`);
+      } else {
+        // 普通订单：使用月度计算
+        const baseDate = isSameActive && currentPlanExp ? currentPlanExp : now;
+        purchaseExpiresAt = addCalendarMonths(baseDate, monthsToAdd, anchorDay);
+      }
 
       if (!existingPayment) {
         await supabaseAdmin.from("payments").insert({

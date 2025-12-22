@@ -1025,8 +1025,35 @@ const loadMessagesForConversation = useCallback(
         const user = data.session.user;
         // 获取用户元数据中的订阅信息
         const userMeta = user.user_metadata as any;
-        const planExp = userMeta?.plan_exp || null;
-        const planLower = (userMeta?.plan || "").toLowerCase();
+
+        // 检测支付完成标记，如果存在则从 /api/auth/me 获取最新数据
+        const paymentCompleted = typeof window !== "undefined" && sessionStorage.getItem("payment_completed");
+        let walletPlan: string | null = null;
+        let walletPlanExp: string | null = null;
+
+        if (paymentCompleted) {
+          console.log("[syncSession] Payment completed detected, fetching latest user data...");
+          sessionStorage.removeItem("payment_completed");
+          try {
+            const meRes = await fetch("/api/auth/me", { credentials: "include" });
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              const wallet = meData.wallet;
+              if (wallet) {
+                walletPlan = wallet.plan || wallet.subscription_tier || null;
+                walletPlanExp = wallet.plan_exp || null;
+                console.log("[syncSession] Got wallet data:", { walletPlan, walletPlanExp });
+              }
+            }
+          } catch (e) {
+            console.error("[syncSession] Failed to fetch /api/auth/me:", e);
+          }
+        }
+
+        // 优先使用 wallet 数据（支付后最新），否则回退到 userMeta
+        const planExp = walletPlanExp || userMeta?.plan_exp || null;
+        const plan = walletPlan || userMeta?.plan || null;
+        const planLower = (plan || "").toLowerCase();
         // 检查用户是否有付费订阅（Basic/Pro/Enterprise）
         const isPaid = planLower === "basic" || planLower === "pro" || planLower === "enterprise";
         const isPro = isPaid && planLower !== "basic";
@@ -1075,8 +1102,8 @@ const loadMessagesForConversation = useCallback(
             "User",
           isPro: effectiveIsPro,
           isPaid: serverHasActiveSubscription, // 使用服务器返回的订阅状态（更准确）
-          plan: userMeta?.plan,
-          planExp: planExp,
+          plan: plan || undefined,
+          planExp: planExp || undefined,
           settings: {
             theme: "light",
             language: "en",
@@ -1090,13 +1117,11 @@ const loadMessagesForConversation = useCallback(
         setAppUser(mappedUser);
         setIsLoggedIn(true);
         setShowAuthDialog(false);
-        const planMeta = userMeta?.plan;
-        if (planMeta) {
-          setCurrentPlan(planMeta as "Basic" | "Pro" | "Enterprise");
-          localStorage.setItem("morngpt_current_plan", planMeta);
-          const expMeta = userMeta?.plan_exp;
-          if (expMeta) {
-            localStorage.setItem("morngpt_current_plan_exp", expMeta);
+        if (plan) {
+          setCurrentPlan(plan as "Basic" | "Pro" | "Enterprise");
+          localStorage.setItem("morngpt_current_plan", plan);
+          if (planExp) {
+            localStorage.setItem("morngpt_current_plan_exp", planExp);
           }
         } else if (mappedUser.isPro) {
           setCurrentPlan("Pro");

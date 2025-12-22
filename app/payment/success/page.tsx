@@ -71,6 +71,14 @@ function PaymentSuccessContent() {
             message: data.message,
           });
           setStatus("success");
+
+          // 设置标记，让首页知道需要刷新用户数据
+          sessionStorage.setItem("payment_completed", "true");
+
+          // 清除 quota-fetcher 的缓存
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new Event("quota:refresh"));
+          }
         } else {
           // 如果是"支付未完成"，说明用户可能取消了支付
           if (data.error === "Payment not completed" || data.status === "WAIT_BUYER_PAY" || data.status === "NOTPAY") {
@@ -163,7 +171,10 @@ function PaymentSuccessContent() {
             </p>
 
             <Button
-              onClick={() => router.push("/")}
+              onClick={() => {
+                // 使用 window.location.href 强制页面刷新，确保用户数据重新获取
+                window.location.href = "/";
+              }}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white"
             >
               {isZh ? "开始使用" : "Start Using"}
@@ -195,7 +206,9 @@ function PaymentSuccessContent() {
                 {isZh ? "重试" : "Retry"}
               </Button>
               <Button
-                onClick={() => router.push("/")}
+                onClick={() => {
+                  window.location.href = "/";
+                }}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white"
               >
                 {isZh ? "返回首页" : "Back to Home"}

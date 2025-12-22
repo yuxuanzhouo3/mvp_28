@@ -43,6 +43,11 @@ export async function GET(req: Request) {
         .eq("user_id", user.id)
         .single();
 
+      // 优先从 wallet 获取订阅信息（避免 user_metadata 缓存问题）
+      const plan = wallet?.plan || wallet?.subscription_tier || user.user_metadata?.plan || "Free";
+      const planExp = wallet?.plan_exp || user.user_metadata?.plan_exp || null;
+      const isPro = wallet?.pro ?? user.user_metadata?.pro ?? false;
+
       return NextResponse.json({
         user: {
           id: user.id,
@@ -52,7 +57,11 @@ export async function GET(req: Request) {
           region: profile?.region || "US",
           created_at: profile?.created_at || user.created_at,
           email_confirmed: !!user.email_confirmed_at,
-          hide_ads: profile?.hide_ads ?? false, // 新增：返回 hide_ads 设置
+          hide_ads: profile?.hide_ads ?? false,
+          // 订阅信息（从 wallet 获取，确保数据准确）
+          plan,
+          plan_exp: planExp,
+          pro: isPro,
         },
         wallet: wallet || null,
       });

@@ -69,6 +69,14 @@ export default function PayPalSuccessPage() {
 
         setStatus("success");
         setMessage("Payment completed. Your plan is upgraded.");
+
+        // 设置标记，让首页知道需要刷新用户数据
+        sessionStorage.setItem("payment_completed", "true");
+
+        // 清除 quota-fetcher 的缓存
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("quota:refresh"));
+        }
       } catch (err: any) {
         setStatus("error");
         setMessage(err?.message || "Failed to capture PayPal order.");
@@ -78,7 +86,10 @@ export default function PayPalSuccessPage() {
     confirm();
   }, [searchParams]);
 
-  const goHome = () => router.push("/");
+  // 使用 window.location.href 强制页面刷新
+  const goHome = () => {
+    window.location.href = "/";
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4">

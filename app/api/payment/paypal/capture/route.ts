@@ -34,9 +34,10 @@ const normalizePlanName = (p?: string) => {
 
 /**
  * 解析 customId，判断是订阅还是加油包
- * 
+ *
  * customId 格式:
- * - 订阅: userId|planName|billingPeriod|expectedAmount(可选)
+ * - 订阅(旧格式): userId|planName|billingPeriod|expectedAmount(可选)
+ * - 订阅(新格式): userId|planName|billingPeriod|amount|days|isUpgrade
  * - 加油包: userId|ADDON|packageId|imageCredits|videoCredits|expectedAmount(可选)
  */
 interface ParsedCustomId {
@@ -46,6 +47,8 @@ interface ParsedCustomId {
   plan?: string;
   period?: "monthly" | "annual";
   expectedAmount?: number;
+  days?: number; // 升级天数折算
+  isUpgradeOrder?: boolean; // 是否为升级订单
   // 加油包专用
   addonPackageId?: string;
   imageCredits?: number;
@@ -88,14 +91,26 @@ function parseCustomId(customId?: string | null, description?: string | null): P
       if (!Number.isNaN(expected)) result.expectedAmount = expected;
     }
   } else if (parts.length >= 3) {
-    // 订阅格式: userId|planName|billingPeriod
+    // 订阅格式:
+    // 旧格式: userId|planName|billingPeriod|expectedAmount
+    // 新格式: userId|planName|billingPeriod|amount|days|isUpgrade
     result.productType = "SUBSCRIPTION";
     result.plan = parts[1] || "Pro";
     const p = (parts[2] || "").toLowerCase();
     result.period = p === "annual" || p === "yearly" ? "annual" : "monthly";
+
     if (parts[3]) {
       const expected = parseFloat(parts[3]);
       if (!Number.isNaN(expected)) result.expectedAmount = expected;
+    }
+
+    // 新格式：解析 days 和 isUpgrade
+    if (parts[4]) {
+      const days = parseInt(parts[4], 10);
+      if (!Number.isNaN(days) && days > 0) result.days = days;
+    }
+    if (parts[5]) {
+      result.isUpgradeOrder = parts[5] === "1";
     }
   }
 
@@ -417,8 +432,18 @@ export async function POST(request: NextRequest) {
       (walletRow?.monthly_reset_at
         ? getBeijingYMD(new Date(walletRow.monthly_reset_at)).day
         : getBeijingYMD(now).day);
-    const baseDate = isSameActive && currentPlanExp ? currentPlanExp : now;
-    let purchaseExpiresAt = addCalendarMonths(baseDate, monthsToAdd, anchorDay);
+
+    // 计算到期日期：升级订单使用天数折算，否则使用月度计算
+    let purchaseExpiresAt: Date;
+    if (parsed.isUpgradeOrder && parsed.days && parsed.days > 0) {
+      // 升级订单：使用天数折算
+      purchaseExpiresAt = new Date(now.getTime() + parsed.days * 24 * 60 * 60 * 1000);
+      console.log(`[PayPal Capture] upgrade with days: ${parsed.days}, expires: ${purchaseExpiresAt.toISOString()}`);
+    } else {
+      // 普通订单：使用月度计算
+      const baseDate = isSameActive && currentPlanExp ? currentPlanExp : now;
+      purchaseExpiresAt = addCalendarMonths(baseDate, monthsToAdd, anchorDay);
+    }
     let pendingDowngrade: string | null = null;
 
     // 记录支付

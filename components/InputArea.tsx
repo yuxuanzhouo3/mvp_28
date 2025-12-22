@@ -485,10 +485,10 @@ const InputArea = React.memo(function InputArea({
   );
   
   return (
-    <div className="flex-shrink-0">
-      <div className="max-w-4xl mx-auto">
+    <div className="flex-shrink-0 overflow-x-hidden max-w-full">
+      <div className="max-w-4xl mx-auto overflow-x-hidden">
         {/* Input Container Box with Modern Styling */}
-        <div className="border border-gray-200 dark:border-[#565869] rounded-2xl p-4 bg-white dark:bg-[#40414f] shadow-lg relative">
+        <div className="border border-gray-200 dark:border-[#565869] rounded-2xl p-2 sm:p-3 md:p-4 bg-white dark:bg-[#40414f] shadow-lg relative overflow-x-hidden max-w-full">
           <div className="flex flex-col space-y-4">
             {/* Main Input Field */}
             <div className="relative">
@@ -590,14 +590,14 @@ const InputArea = React.memo(function InputArea({
             <div className="flex flex-col space-y-4">
               {/* Input Controls Row */}
               <div className="flex items-center justify-between">
-                {/* Left Side - Quick Action Buttons */}
-                <div className="flex items-center space-x-0.5 w-1/3">
+                {/* Left Side - Quick Action Buttons - 仅在lg及以上显示 */}
+                <div className="hidden lg:flex items-center space-x-0.5 w-1/3">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => handleQuickAction("deep-thinking")}
-                    className="h-7 flex items-center justify-center space-x-0.5 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-[#565869] hover:text-gray-900 dark:hover:text-[#ececf1] bg-white dark:bg-[#40414f] hover:bg-gray-50 dark:hover:bg-[#565869] rounded px-1 transition-all duration-200"
+                    className="h-7 lg:flex items-center justify-center space-x-0.5 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-[#565869] hover:text-gray-900 dark:hover:text-[#ececf1] bg-white dark:bg-[#40414f] hover:bg-gray-50 dark:hover:bg-[#565869] rounded px-1 transition-all duration-200"
                   >
                     <Brain className="w-3 h-3" />
                     <span className="text-xs font-medium">
@@ -609,7 +609,7 @@ const InputArea = React.memo(function InputArea({
                     variant="outline"
                     size="sm"
                     onClick={() => handleQuickAction("creative")}
-                    className="h-7 flex items-center justify-center space-x-0.5 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-[#565869] hover:text-gray-900 dark:hover:text-[#ececf1] bg-white dark:bg-[#40414f] hover:bg-gray-50 dark:hover:bg-[#565869] rounded px-1 transition-all duration-200"
+                    className="h-7 xl:flex items-center justify-center space-x-0.5 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-[#565869] hover:text-gray-900 dark:hover:text-[#ececf1] bg-white dark:bg-[#40414f] hover:bg-gray-50 dark:hover:bg-[#565869] rounded px-1 transition-all duration-200"
                   >
                     <Lightbulb className="w-3 h-3" />
                     <span className="text-xs font-medium">
@@ -642,8 +642,8 @@ const InputArea = React.memo(function InputArea({
                   </Button>
                 </div>
 
-                {/* Right Side - Input Controls */}
-                <div className="flex items-center space-x-1 w-1/2 justify-end">
+                {/* Right Side - Input Controls - 移动端全宽，桌面端占一半 */}
+                <div className="flex items-center space-x-0.5 sm:space-x-1 w-full lg:w-1/2 justify-end">
                   {/* File Upload */}
                   <input
                     type="file"

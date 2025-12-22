@@ -148,11 +148,11 @@ export default function AdBanner({
   const currentAd = ads[currentAdIndex];
   console.log(`[AdBanner] Rendering position="${position}" with ad:`, currentAd);
 
-  // 顶部广告样式 - 固定高度，填满宽度，圆角
+  // 顶部广告样式 - 固定高度，填满宽度，圆角，仅桌面端显示
   const topAdStyles = `
     flex items-center justify-center
     h-[36px] w-full overflow-hidden
-    hidden md:flex
+    hidden lg:flex
     rounded-lg
   `;
 

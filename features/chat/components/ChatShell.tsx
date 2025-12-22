@@ -72,19 +72,30 @@ function ChatShell() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-[#2d2d30] text-gray-900 dark:text-[#ececf1] flex">
-      <Sidebar
-        {...sidebarProps}
-        isDomestic={isDomestic}
-        shouldShowAds={shouldShowAds}
-      />
+    <div className="min-h-screen bg-gray-50 dark:bg-[#2d2d30] text-gray-900 dark:text-[#ececf1] flex relative overflow-x-hidden">
+      {/* 移动端/平板端遮罩层 - 当侧边栏展开时显示 */}
+      {!sidebarCollapsed && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => sidebarProps?.setSidebarCollapsed?.(true)}
+        />
+      )}
 
-      {/* Main Content */}
-      <div
-        className={`flex-1 flex flex-col h-screen ${
-          sidebarCollapsed ? "pl-12" : ""
-        } md:pl-0 transition-[padding] duration-200`}
-      >
+      {/* 侧边栏 - 移动端/平板端使用固定定位覆盖在上层 */}
+      <div className={`
+        lg:relative fixed inset-y-0 left-0 z-50
+        transition-transform duration-300 ease-in-out
+        ${sidebarCollapsed ? '-translate-x-full lg:translate-x-0' : 'translate-x-0'}
+      `}>
+        <Sidebar
+          {...sidebarProps}
+          isDomestic={isDomestic}
+          shouldShowAds={shouldShowAds}
+        />
+      </div>
+
+      {/* Main Content - 移动端/平板端不受侧边栏影响，桌面端正常布局 */}
+      <div className="flex-1 flex flex-col h-screen overflow-x-hidden max-w-full">
         {/* Header - Fixed height */}
         <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#40414f] flex-shrink-0 transition-colors">
           <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
@@ -97,11 +108,11 @@ function ChatShell() {
         <ChatInterfaceComponent {...chatInterfaceProps} />
 
         {/* Input Area with optional Left/Right Ads - 底部栏统一背景 */}
-        <div className="flex-shrink-0 bg-white dark:bg-[#40414f] border-t border-gray-200 dark:border-[#565869]">
+        <div className="flex-shrink-0 bg-white dark:bg-[#40414f] border-t border-gray-200 dark:border-[#565869] overflow-x-hidden max-w-full">
           {/* 左右广告 + 输入框的横向布局 */}
-          <div className="flex items-center px-4 py-3 gap-4">
-            {/* 左侧广告位 - 从侧边栏到输入框，弹性填充（保留占位以保持输入框位置） */}
-            <div className="flex-1 flex items-center min-w-0">
+          <div className="flex items-center px-1 sm:px-2 md:px-4 py-1.5 sm:py-2 md:py-3 gap-1 sm:gap-2 md:gap-4 overflow-x-hidden max-w-full">
+            {/* 左侧广告位 - 仅桌面端显示 */}
+            <div className="hidden lg:flex flex-1 items-center min-w-0">
               {displayAds && (
                 <AdBanner
                   position="left"
@@ -113,13 +124,13 @@ function ChatShell() {
               )}
             </div>
 
-            {/* Input Area - 中央主体，固定最大宽度 */}
-            <div className="w-full max-w-4xl flex-shrink-0">
+            {/* Input Area - 中央主体 */}
+            <div className="w-full lg:max-w-4xl flex-1 lg:flex-shrink-0">
               <InputAreaComponent {...inputAreaProps} />
             </div>
 
-            {/* 右侧广告位 - 从输入框到页面右侧，弹性填充（保留占位以保持输入框位置） */}
-            <div className="flex-1 flex items-center min-w-0">
+            {/* 右侧广告位 - 仅桌面端显示 */}
+            <div className="hidden lg:flex flex-1 items-center min-w-0">
               {displayAds && (
                 <AdBanner
                   position="right"
@@ -132,10 +143,10 @@ function ChatShell() {
             </div>
           </div>
 
-          {/* 底部广告行 - 底部左侧广告 + 底部广告 + 底部右侧广告 */}
+          {/* 底部广告行 - 仅桌面端显示 */}
           {displayAds && (
-            <div className="flex items-center px-4 pb-3 gap-4">
-              {/* 底部左侧广告位 - 与左侧广告对齐 */}
+            <div className="hidden lg:flex items-center px-4 pb-3 gap-4">
+              {/* 底部左侧广告位 */}
               <div className="flex-1 flex items-center min-w-0">
                 <AdBanner
                   position="bottom-left"
@@ -157,7 +168,7 @@ function ChatShell() {
                 />
               </div>
 
-              {/* 底部右侧广告位 - 与右侧广告对齐 */}
+              {/* 底部右侧广告位 */}
               <div className="flex-1 flex items-center min-w-0">
                 <AdBanner
                   position="bottom-right"

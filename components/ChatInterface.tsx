@@ -378,6 +378,16 @@ function ChatInterface({
                 <span>⏎ {getLocalizedText("useCtrlEnter")}</span>
               </div>
             </div>
+
+            {/* 底部提示文字 */}
+            <div className="mt-8 space-y-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                本页面含AI生成的内容，请仔细辨别
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                粤ICP备2024281756号-3
+              </p>
+            </div>
           </div>
         </div>
       ) : (

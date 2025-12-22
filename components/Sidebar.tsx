@@ -184,7 +184,7 @@ export default function Sidebar({
 
   return (
     <>
-      {/* Collapsed Sidebar Toggle - Fixed to absolute far left */}
+      {/* Collapsed Sidebar Toggle - 所有设备都显示 */}
       {sidebarCollapsed && (
         <div
           className="fixed left-0 top-0 z-50 w-12 h-full bg-white dark:bg-[#40414f] border-r border-gray-200 dark:border-[#565869] flex flex-col"
@@ -345,14 +345,14 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* Left Sidebar - Chat History */}
+      {/* Left Sidebar - Chat History - 移动端/平板端全屏显示，桌面端正常显示 */}
       <div
         className={`${
-          sidebarCollapsed ? "w-0 opacity-0 pointer-events-none" : ""
+          sidebarCollapsed ? "w-0 opacity-0 pointer-events-none" : "w-full lg:w-auto"
         } bg-white dark:bg-[#40414f] border-r border-gray-200 dark:border-[#565869] flex flex-col transition-all duration-300 ${
-          sidebarCollapsed ? "ml-12" : ""
-        } relative h-screen md:block hidden`}
-        style={{ width: sidebarCollapsed ? 0 : sidebarWidth }}
+          sidebarCollapsed ? "lg:ml-12" : ""
+        } relative h-screen max-w-full`}
+        style={{ width: !sidebarCollapsed ? (sidebarWidth > 0 ? `${sidebarWidth}px` : '280px') : 0 }}
       >
         {/* Resize handle */}
         {!sidebarCollapsed && (

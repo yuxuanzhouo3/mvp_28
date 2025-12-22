@@ -30,7 +30,7 @@ export function PrivacyDialog({
   const tr = (en: string, zh: string) => (isZh ? zh : en);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm-max-w-lg sm:max-w-lg bg-gradient-to-br from-white to-gray-50 dark:from-[#40414f] dark:to-[#2d2d30] border-gray-200 dark:border-[#565869] shadow-2xl data-[state=open]:animate-none data-[state=closed]:animate-none transition-none">
+      <DialogContent className="w-[95vw] sm:max-w-lg bg-gradient-to-br from-white to-gray-50 dark:from-[#40414f] dark:to-[#2d2d30] border-gray-200 dark:border-[#565869] shadow-2xl rounded-2xl sm:rounded-3xl data-[state=open]:animate-none data-[state=closed]:animate-none transition-none">
         <DialogHeader className="pb-3 border-b border-gray-100 dark:border-[#565869]">
           <DialogTitle className="flex items-center space-x-2 text-lg font-bold text-gray-900 dark:text-[#ececf1]">
             <div className="p-1.5 bg-red-100 dark:bg-red-900/30 rounded-lg">

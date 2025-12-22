@@ -60,7 +60,7 @@ export const useChatState = () => {
   const [uploadError, setUploadError] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
   const [editingTitle, setEditingTitle] = useState<string>("");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(224);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [startX, setStartX] = useState(0);

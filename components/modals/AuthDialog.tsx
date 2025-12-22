@@ -54,7 +54,7 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-[#0f1015] dark:via-[#14151a] dark:to-[#0f1015] border-0 p-0 overflow-hidden shadow-2xl">
+      <DialogContent className="w-[95vw] sm:max-w-md bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-[#0f1015] dark:via-[#14151a] dark:to-[#0f1015] border-0 p-0 overflow-hidden shadow-2xl rounded-2xl sm:rounded-3xl">
         {/* 装饰性背景 */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-20 -right-20 w-64 h-64 bg-gradient-to-br from-blue-400/10 to-purple-500/10 rounded-full blur-3xl" />

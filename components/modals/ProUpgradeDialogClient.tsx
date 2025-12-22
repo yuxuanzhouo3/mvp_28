@@ -51,7 +51,7 @@ const ProUpgradeDialogClient: React.FC<ProUpgradeDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[80vh] bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] shadow-md data-[state=open]:animate-none data-[state=closed]:animate-none transition-none">
+      <DialogContent className="w-[95vw] sm:max-w-lg bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] rounded-2xl sm:rounded-3xl shadow-md data-[state=open]:animate-none data-[state=closed]:animate-none transition-none">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2 text-gray-900 dark:text-[#ececf1]">
             <Crown className="w-5 h-5 text-purple-500" />

@@ -171,8 +171,15 @@ export function AddonPackageTab({
         )}
       </div>
 
-      {/* 加油包卡片 - 紧凑横向布局 */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* 移动端滑动提示 */}
+      <div className="md:hidden flex items-center justify-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+        <span>←</span>
+        <span>{isZh ? "左右滑动查看加油包" : "Swipe to view packs"}</span>
+        <span>→</span>
+      </div>
+
+      {/* 加油包卡片 - 响应式横向布局 */}
+      <div className="flex md:grid md:grid-cols-3 gap-3 overflow-x-auto md:overflow-visible snap-x snap-mandatory md:snap-none scrollbar-hide py-2 pb-4 px-2 -mx-2">
         {ADDON_PACKAGES.map((pkg) => {
           const isSelected = selectedPackage?.id === pkg.id;
           const colors = getPackageColors(pkg.tier);
@@ -181,13 +188,13 @@ export function AddonPackageTab({
             <div
               key={pkg.id}
               onClick={() => setSelectedPackage(pkg)}
-              className={`relative cursor-pointer transition-all duration-300 ${
+              className={`relative cursor-pointer transition-all duration-300 flex-shrink-0 w-[260px] md:w-auto snap-center ${
                 isSelected ? "scale-[1.02]" : "hover:scale-[1.01]"
               }`}
             >
               {/* 选中发光效果 */}
               {isSelected && (
-                <div className={`absolute inset-0 bg-gradient-to-r ${colors.bg} opacity-10 blur-xl rounded-xl`} />
+                <div className={`absolute inset-0 bg-gradient-to-r ${colors.bg} opacity-10 blur-xl rounded-xl -z-10`} />
               )}
               
               <div className={`relative p-4 rounded-xl border-2 transition-all h-full ${
@@ -326,8 +333,9 @@ export function AddonPackageTab({
             </div>
 
             {/* 支付按钮 */}
-            <div className="flex items-center gap-3 flex-wrap justify-end">
-              <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-300 max-w-md">
+            <div className="flex flex-col gap-3">
+              {/* 隐私与订阅确认 - 独立一行 */}
+              <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-300">
                 <input
                   type="checkbox"
                   checked={agreeRules}
@@ -346,27 +354,30 @@ export function AddonPackageTab({
                 </span>
               </label>
 
-              <Button
-                disabled={isProcessing || !selectedPackage || !agreeRules}
-                onClick={handlePurchase}
-                className="h-10 px-6 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-amber-500/20 transition-all hover:shadow-xl"
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    {isZh ? "处理中..." : "Processing..."}
-                  </>
-                ) : (
-                  <>
-                    <Rocket className="w-4 h-4 mr-2" />
-                    {selectedPackage
-                      ? `${isZh ? "购买" : "Buy"} ${formatPrice(selectedPackage)}`
-                      : isZh
-                        ? "选择加油包"
-                        : "Select pack"}
-                  </>
-                )}
-              </Button>
+              {/* 支付按钮 - 独立一行 */}
+              <div className="flex justify-end">
+                <Button
+                  disabled={isProcessing || !selectedPackage || !agreeRules}
+                  onClick={handlePurchase}
+                  className="h-10 px-6 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-amber-500/20 transition-all hover:shadow-xl"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      {isZh ? "处理中..." : "Processing..."}
+                    </>
+                  ) : (
+                    <>
+                      <Rocket className="w-4 h-4 mr-2" />
+                      {selectedPackage
+                        ? `${isZh ? "购买" : "Buy"} ${formatPrice(selectedPackage)}`
+                        : isZh
+                          ? "选择加油包"
+                          : "Select pack"}
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -375,11 +386,11 @@ export function AddonPackageTab({
 
     {/* 隐私条款弹窗 */}
     <Dialog open={showPrivacy} onOpenChange={setShowPrivacy}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{isZh ? "隐私条款" : "Privacy Policy"}</DialogTitle>
+      <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl p-4 sm:p-6">
+        <DialogHeader className="pb-3 border-b border-gray-200 dark:border-gray-700">
+          <DialogTitle className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">{isZh ? "隐私条款" : "Privacy Policy"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 text-sm text-gray-700 dark:text-gray-200">
+        <div className="space-y-3 sm:space-y-4 text-xs sm:text-sm text-gray-700 dark:text-gray-200 pt-3">
           <p className="font-semibold">{isZh ? "🔒 隐私政策 (Privacy Policy)" : "🔒 Privacy Policy"}</p>
           <p>{isZh ? "生效日期：2025年12月01日" : "Effective: 2025-12-01"}</p>
           <p>{isZh ? "尊重并保护您的隐私是 MornGPT 的核心原则。" : "We respect and protect your privacy as a core principle of MornGPT."}</p>
@@ -425,11 +436,11 @@ export function AddonPackageTab({
 
     {/* 订阅规则弹窗 */}
     <Dialog open={showTerms} onOpenChange={setShowTerms}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{isZh ? "订阅规则" : "Subscription Terms"}</DialogTitle>
+      <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl p-4 sm:p-6">
+        <DialogHeader className="pb-3 border-b border-gray-200 dark:border-gray-700">
+          <DialogTitle className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">{isZh ? "订阅规则" : "Subscription Terms"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 text-sm text-gray-700 dark:text-gray-200">
+        <div className="space-y-3 sm:space-y-4 text-xs sm:text-sm text-gray-700 dark:text-gray-200 pt-3">
           <p className="font-semibold">📜 订阅会员与加油包使用规则</p>
 
           <div className="space-y-2">

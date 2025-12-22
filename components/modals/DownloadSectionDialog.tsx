@@ -65,7 +65,7 @@ export default function DownloadSectionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-screen overflow-y-auto bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] data-[state=open]:animate-none data-[state=closed]:animate-none transition-none">
+      <DialogContent className="w-[95vw] sm:max-w-2xl bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] rounded-2xl sm:rounded-3xl data-[state=open]:animate-none data-[state=closed]:animate-none transition-none">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2 text-gray-900 dark:text-[#ececf1]">
             <Download className="w-5 h-5 text-blue-600" />
@@ -263,7 +263,7 @@ export default function DownloadSectionDialog({
               </div>
 
               {/* Windows */}
-              <div className="p-2 bg-gray-50 dark:bg-[#565869] rounded-lg min-w-[340px]">
+              <div className="p-2 bg-gray-50 dark:bg-[#565869] rounded-lg">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center space-x-2">
                     <Laptop className="w-4 h-4 text-blue-600" />

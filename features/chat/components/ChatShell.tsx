@@ -81,11 +81,10 @@ function ChatShell() {
         />
       )}
 
-      {/* 侧边栏 - 移动端/平板端使用固定定位覆盖在上层 */}
+      {/* 侧边栏 - 收缩时常驻显示，展开时移动端覆盖 */}
       <div className={`
-        lg:relative fixed inset-y-0 left-0 z-50
-        transition-transform duration-300 ease-in-out
-        ${sidebarCollapsed ? '-translate-x-full lg:translate-x-0' : 'translate-x-0'}
+        ${sidebarCollapsed ? 'relative' : 'lg:relative fixed inset-y-0 left-0 z-50 lg:z-auto'}
+        transition-all duration-300 ease-in-out
       `}>
         <Sidebar
           {...sidebarProps}
@@ -95,13 +94,10 @@ function ChatShell() {
       </div>
 
       {/* Main Content - 移动端/平板端不受侧边栏影响，桌面端正常布局 */}
-      <div className="flex-1 flex flex-col h-screen overflow-x-hidden max-w-full">
+      <div className="flex-1 flex flex-col h-screen overflow-x-hidden max-w-full transition-all duration-300">
         {/* Header - Fixed height */}
         <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#40414f] flex-shrink-0 transition-colors">
-          <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
-            {/* 覆盖 showGlobalAds，使用基于订阅状态计算的 displayAds */}
-            <Header {...headerProps} showGlobalAds={displayAds} />
-          </div>
+          <Header {...headerProps} showGlobalAds={displayAds} />
         </header>
 
         {/* Chat Messages - Flexible height with scroll */}
@@ -180,6 +176,22 @@ function ChatShell() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* 固定底部备案信息 - 紧凑显示 */}
+        <div className="flex-shrink-0 bg-white dark:bg-[#40414f] border-t border-gray-200 dark:border-[#565869]">
+          <div className="flex items-center justify-center gap-3 py-1 px-2 text-[10px] text-gray-500 dark:text-gray-400">
+            <span>本页面含AI生成的内容，请仔细辨别</span>
+            <span className="text-gray-300 dark:text-gray-600">|</span>
+            <a
+              href="https://beian.miit.gov.cn/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              粤ICP备2024281756号-3
+            </a>
+          </div>
         </div>
       </div>
 

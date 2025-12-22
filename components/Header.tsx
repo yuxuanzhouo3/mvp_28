@@ -417,14 +417,15 @@ export default function Header({
 
   return (
     <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#40414f] shadow-sm transition-colors overflow-x-hidden">
-      <div className="max-w-full mx-auto px-1 sm:px-2 lg:px-4 overflow-x-hidden">
-        <div className="flex justify-between items-center h-12 sm:h-14 md:h-16 overflow-x-hidden gap-1 sm:gap-2">
-          <div className="flex items-center space-x-1 sm:space-x-2 md:space-x-4 min-w-0 flex-shrink overflow-x-hidden max-w-[35%] sm:max-w-[40%] lg:max-w-none">
-            <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-[#ececf1] truncate">
+      <div className="max-w-full mx-auto px-2 sm:px-3 lg:px-4 overflow-x-hidden">
+        <div className="flex justify-between items-center h-11 sm:h-14 md:h-16 overflow-x-hidden gap-1.5 sm:gap-2">
+          {/* 左侧：Logo + 身份牌 - 不截断 */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-[#ececf1] whitespace-nowrap leading-none">
               {getLocalizedText("mornGPT")}
             </h1>
             {/* 移动端使用 Popover 点击展示，桌面端使用 Tooltip 悬浮显示 */}
-            <div className="hidden md:block">
+            <div className="hidden md:flex items-center">
               <TooltipProvider delayDuration={150}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -540,12 +541,12 @@ export default function Header({
               </TooltipProvider>
             </div>
             {/* 移动端使用 Popover */}
-            <div className="block md:hidden">
+            <div className="flex md:hidden items-center self-center">
               <Popover>
                 <PopoverTrigger asChild>
                   <Badge
                     variant="outline"
-                    className={`text-xs px-2 py-0.5 border-0 cursor-pointer ${
+                    className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 border-0 cursor-pointer leading-tight ${
                       appUser
                         ? tierClass
                         : "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
@@ -678,7 +679,7 @@ export default function Header({
           )}
           {!showGlobalAds && <div className="flex-1 hidden lg:block" />}
 
-          <div className="flex items-center space-x-0.5 sm:space-x-1 md:space-x-2 lg:space-x-4 flex-shrink-0">
+          <div className="flex items-center space-x-1 sm:space-x-1.5 md:space-x-2 lg:space-x-3 flex-shrink-0">
             {/* Share Link Button - 中屏及以上显示 */}
             <Button
               variant="ghost"
@@ -696,7 +697,7 @@ export default function Header({
                   : guestChatSessions.find((c) => c.id === currentChatId)
                       ?.messages.length === 0)
               }
-              className="hidden md:flex text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed h-7 sm:h-8 w-7 sm:w-8 p-0"
+              className="hidden md:flex text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed h-7 w-7 p-0"
               title={
                 !appUser
                   ? getLocalizedText("signUpToShare")
@@ -713,20 +714,20 @@ export default function Header({
               }
             >
               {isGeneratingLink ? (
-                <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                <div className="w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <Upload className="w-3 h-3 sm:w-4 sm:h-4" />
+                <Upload className="w-3.5 h-3.5" />
               )}
             </Button>
 
-            {/* Language Selector - 减小尺寸 */}
+            {/* Language Selector - 增大尺寸 */}
             <div className="flex items-center">
               <Select
                 value={selectedLanguage}
                 onValueChange={setSelectedLanguage}
               >
-                <SelectTrigger className="h-7 w-12 sm:w-14 text-[10px] sm:text-xs bg-white dark:bg-[#40414f] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869]">
-                  <span className="text-[10px] sm:text-xs">{selectedLanguage === "en" ? "EN" : "中"}</span>
+                <SelectTrigger className="h-8 sm:h-9 w-14 sm:w-16 md:w-20 text-xs sm:text-sm bg-white dark:bg-[#40414f] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869]">
+                  <span className="text-xs sm:text-sm">{selectedLanguage === "en" ? "EN" : "中"}</span>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="en">English</SelectItem>

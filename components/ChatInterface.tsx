@@ -370,23 +370,12 @@ function ChatInterface({
             </p>
 
             {/* Compact Tips */}
-            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 max-w-4xl mx-auto">
-              <div className="flex items-center justify-center space-x-6 text-xs text-blue-800 dark:text-blue-200">
-                <span>🧭 {getLocalizedText("beSpecific")}</span>
-                <span>🚀 {getLocalizedText("chooseSpecialized")}</span>
-                <span>📎 {getLocalizedText("uploadFilesWith")} ⌘U</span>
-                <span>⏎ {getLocalizedText("useCtrlEnter")}</span>
+            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-2 sm:p-3 max-w-4xl mx-auto">
+              <div className="flex items-center justify-center space-x-2 sm:space-x-6 text-[10px] sm:text-xs text-blue-800 dark:text-blue-200">
+                <span className="whitespace-nowrap">🧭 {getLocalizedText("beSpecific")}</span>
+                <span className="whitespace-nowrap">🚀 {getLocalizedText("chooseSpecialized")}</span>
+                <span className="whitespace-nowrap">📎 {getLocalizedText("uploadFilesWith")}</span>
               </div>
-            </div>
-
-            {/* 底部提示文字 */}
-            <div className="mt-8 space-y-1">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                本页面含AI生成的内容，请仔细辨别
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                粤ICP备2024281756号-3
-              </p>
             </div>
           </div>
         </div>
@@ -600,41 +589,41 @@ function ChatInterface({
                           </div>
                         )}
                         {!isUser && (
-                          <div className="flex items-center flex-wrap gap-2 mt-3 pt-3 border-t border-gray-200/70 dark:border-[#4a4c5c]">
+                          <div className="flex items-center flex-wrap gap-1 sm:gap-2 mt-3 pt-3 border-t border-gray-200/70 dark:border-[#4a4c5c]">
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-7 px-2 text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                              className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
                               onClick={() => copyToClipboard(message.content)}
                               title={getLocalizedText("copyResponse")}
                             >
-                              <Copy className="w-3 h-3 mr-1" />
-                              {getLocalizedText("copy")}
+                              <Copy className="w-3 h-3 sm:mr-1" />
+                              <span className="hidden sm:inline">{getLocalizedText("copy")}</span>
                             </Button>
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-7 px-2 text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                              className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
                               onClick={() => shareMessage(message.content)}
                               title={getLocalizedText("shareResponse")}
                             >
-                              <Share className="w-3 h-3 mr-1" />
-                              {getLocalizedText("share")}
+                              <Share className="w-3 h-3 sm:mr-1" />
+                              <span className="hidden sm:inline">{getLocalizedText("share")}</span>
                             </Button>
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-7 px-2 text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                              className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
                               onClick={() => downloadMessage(message.content, message.id)}
                               title={getLocalizedText("downloadResponse")}
                             >
-                              <Download className="w-3 h-3 mr-1" />
-                              {getLocalizedText("download")}
+                              <Download className="w-3 h-3 sm:mr-1" />
+                              <span className="hidden sm:inline">{getLocalizedText("download")}</span>
                             </Button>
                             <Button
                               size="sm"
                               variant="ghost"
-                              className={`h-7 px-2 text-xs ${
+                              className={`h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs ${
                                 isMessageBookmarked(message.id)
                                   ? "text-yellow-600 dark:text-yellow-400"
                                   : "text-gray-700 dark:text-gray-300"
@@ -653,13 +642,15 @@ function ChatInterface({
                               }
                             >
                               <Star
-                                className={`w-3 h-3 mr-1 ${
+                                className={`w-3 h-3 sm:mr-1 ${
                                   isMessageBookmarked(message.id) ? "fill-current" : ""
                                 }`}
                               />
-                              {isMessageBookmarked(message.id)
-                                ? getLocalizedText("bookmarked")
-                                : getLocalizedText("bookmark")}
+                              <span className="hidden sm:inline">
+                                {isMessageBookmarked(message.id)
+                                  ? getLocalizedText("bookmarked")
+                                  : getLocalizedText("bookmark")}
+                              </span>
                             </Button>
                           </div>
                         )}

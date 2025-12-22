@@ -100,11 +100,11 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[80vh] bg-gradient-to-br from-white to-gray-50 dark:from-[#40414f] dark:to-[#2d2d30] border-gray-200 dark:border-[#565869] shadow-2xl data-[state=open]:animate-none data-[state=closed]:animate-none transition-none">
-        <DialogHeader className="pb-4">
+      <DialogContent className="w-[95vw] sm:max-w-lg bg-gradient-to-br from-white to-gray-50 dark:from-[#40414f] dark:to-[#2d2d30] border-gray-200 dark:border-[#565869] shadow-2xl rounded-2xl sm:rounded-3xl data-[state=open]:animate-none data-[state=closed]:animate-none transition-none">
+        <DialogHeader className="pb-3 sm:pb-4">
           <DialogTitle className="sr-only">{t("settingsTitle")}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-1 py-1">
+        <div className="space-y-1 py-1 px-1 sm:px-0">
           {/* Username Section - Moved Up */}
           {isEditingProfile && (
             <div className="bg-white dark:bg-[#40414f] rounded-xl p-4 border border-gray-100 dark:border-[#565869] shadow-sm">

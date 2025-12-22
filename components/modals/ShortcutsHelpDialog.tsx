@@ -189,7 +189,7 @@ export default function ShortcutsHelpDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-7xl max-h-[95vh] bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] data-[state=open]:animate-none data-[state=closed]:animate-none transition-none">
+      <DialogContent className="w-[95vw] sm:max-w-7xl bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] rounded-2xl sm:rounded-3xl data-[state=open]:animate-none data-[state=closed]:animate-none transition-none">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2 text-gray-900 dark:text-[#ececf1]">
             <Keyboard className="w-4 h-4 text-blue-500" />
@@ -205,26 +205,26 @@ export default function ShortcutsHelpDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 overflow-y-auto max-h-[80vh]">
+        <div className="space-y-4 overflow-y-auto max-h-[60vh] sm:max-h-[70vh]">
           {/* 全局设置 */}
           <div className="p-3 bg-gray-50 dark:bg-[#565869] rounded-lg border border-gray-200 dark:border-[#565869]">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div className="flex items-center space-x-2">
-                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500">
+                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 flex-shrink-0">
                   <Settings className="w-3 h-3 text-white" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-[#ececf1]">
                     {tr("Global Settings", "全局设置")}
                   </h3>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                  <p className="text-xs text-gray-600 dark:text-gray-400 hidden sm:block">
                     {tr("Manage shortcuts and preferences", "管理快捷键与偏好")}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <div
-                  className="flex items-center space-x-1 bg-gray-50 dark:bg-gray-700 rounded-lg px-2 py-1 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer h-7"
+                  className="flex items-center space-x-1 bg-gray-50 dark:bg-gray-700 rounded-lg px-1.5 sm:px-2 py-1 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer h-7"
                   onClick={() =>
                     onShowResetConfirmation(
                       tr("Reset All Hotkeys", "重置全部快捷键"),
@@ -237,25 +237,25 @@ export default function ShortcutsHelpDialog({
                   }
                 >
                   <RefreshCw className="w-3 h-3 text-gray-600 dark:text-gray-400" />
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                    {tr("Reset All", "全部重置")}
+                  <span className="text-[10px] sm:text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {tr("Reset", "重置")}
                   </span>
                 </div>
                 <div
-                  className="flex items-center space-x-1 bg-gray-50 dark:bg-gray-700 rounded-lg px-2 py-1 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer h-7"
+                  className="flex items-center space-x-1 bg-gray-50 dark:bg-gray-700 rounded-lg px-1.5 sm:px-2 py-1 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer h-7"
                   onClick={onImportHotkeys}
                 >
                   <Upload className="w-3 h-3 text-gray-600 dark:text-gray-400" />
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  <span className="text-[10px] sm:text-xs font-medium text-gray-700 dark:text-gray-300">
                     {tr("Import", "导入")}
                   </span>
                 </div>
                 <div
-                  className="flex items-center space-x-1 bg-gray-50 dark:bg-gray-700 rounded-lg px-2 py-1 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer h-7"
+                  className="flex items-center space-x-1 bg-gray-50 dark:bg-gray-700 rounded-lg px-1.5 sm:px-2 py-1 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer h-7"
                   onClick={onExportHotkeys}
                 >
                   <Download className="w-3 h-3 text-gray-600 dark:text-gray-400" />
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  <span className="text-[10px] sm:text-xs font-medium text-gray-700 dark:text-gray-300">
                     {tr("Export", "导出")}
                   </span>
                 </div>

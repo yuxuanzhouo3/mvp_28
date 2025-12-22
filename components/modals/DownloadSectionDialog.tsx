@@ -65,23 +65,23 @@ export default function DownloadSectionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] sm:max-w-2xl bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] rounded-2xl sm:rounded-3xl data-[state=open]:animate-none data-[state=closed]:animate-none transition-none">
-        <DialogHeader>
+      <DialogContent className="w-[90vw] sm:max-w-lg max-h-[85vh] bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] rounded-2xl sm:rounded-3xl data-[state=open]:animate-none data-[state=closed]:animate-none transition-none flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center space-x-2 text-gray-900 dark:text-[#ececf1]">
-            <Download className="w-5 h-5 text-blue-600" />
-            <span>{tr("Download MornGPT", "下载 MornGPT")}</span>
+            <Download className="w-4 h-4 text-blue-600" />
+            <span className="text-base">{tr("Download MornGPT", "下载 MornGPT")}</span>
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-3 overflow-y-auto flex-1 pr-1">
           {/* 平台选择 */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
+          <div className="space-y-2">
+            <h3 className="text-xs font-medium text-gray-900 dark:text-[#ececf1]">
               {tr("Select Your Platform", "选择你的平台")}
             </h3>
 
             {selectedPlatform && (
-              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
@@ -107,7 +107,7 @@ export default function DownloadSectionDialog({
             )}
 
             {/* 移动端 */}
-            <div className="space-y-2">
+            <div className="space-y-1">
               <h4 className="text-xs font-medium text-gray-700 dark:text-gray-300">
                 {tr("Mobile Apps", "移动端")}
               </h4>
@@ -115,7 +115,7 @@ export default function DownloadSectionDialog({
               <div className="p-2 bg-gray-50 dark:bg-[#565869] rounded-lg">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center space-x-2">
-                    <Smartphone className="w-4 h-4 text-purple-600" />
+                    <Smartphone className="w-3.5 h-3.5 text-purple-600" />
                     <div>
                       <p className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
                         {tr("Mobile", "移动端")}
@@ -188,7 +188,7 @@ export default function DownloadSectionDialog({
             </div>
 
             {/* 桌面端 */}
-            <div className="space-y-2">
+            <div className="space-y-1">
               <h4 className="text-xs font-medium text-gray-700 dark:text-gray-300">
                 {tr("Desktop Apps", "桌面端")}
               </h4>
@@ -197,7 +197,7 @@ export default function DownloadSectionDialog({
               <div className="p-2 bg-gray-50 dark:bg-[#565869] rounded-lg">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center space-x-2">
-                    <Monitor className="w-4 h-4 text-gray-600" />
+                    <Monitor className="w-3.5 h-3.5 text-gray-600" />
                     <div>
                       <p className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
                         macOS
@@ -266,7 +266,7 @@ export default function DownloadSectionDialog({
               <div className="p-2 bg-gray-50 dark:bg-[#565869] rounded-lg">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center space-x-2">
-                    <Laptop className="w-4 h-4 text-blue-600" />
+                    <Laptop className="w-3.5 h-3.5 text-blue-600" />
                     <div>
                       <p className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
                         Windows
@@ -348,7 +348,7 @@ export default function DownloadSectionDialog({
               <div className="p-2 bg-gray-50 dark:bg-[#565869] rounded-lg">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center space-x-2">
-                    <Monitor className="w-4 h-4 text-green-600" />
+                    <Monitor className="w-3.5 h-3.5 text-green-600" />
                     <div>
                       <p className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
                         Linux
@@ -454,7 +454,7 @@ export default function DownloadSectionDialog({
             </div>
 
             {/* 浏览器扩展 */}
-            <div className="space-y-2">
+            <div className="space-y-1">
               <h4 className="text-xs font-medium text-gray-700 dark:text-gray-300">
                 {tr("Browser Extensions", "浏览器扩展")}
               </h4>
@@ -462,7 +462,7 @@ export default function DownloadSectionDialog({
               <div className="p-2 bg-gray-50 dark:bg-[#565869] rounded-lg">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center space-x-2">
-                    <Globe className="w-4 h-4 text-indigo-600" />
+                    <Globe className="w-3.5 h-3.5 text-indigo-600" />
                     <div>
                       <p className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
                         {tr("Browser Extensions", "浏览器扩展")}
@@ -565,10 +565,10 @@ export default function DownloadSectionDialog({
 
           {/* 广告设置 */}
           {appUser && (
-            <div className="space-y-3 pt-4 border-t border-gray-200 dark:border-[#565869]">
+            <div className="space-y-2 pt-3 border-t border-gray-200 dark:border-[#565869]">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
+                  <h3 className="text-xs font-medium text-gray-900 dark:text-[#ececf1]">
                     {tr("Hide Ads", "去除广告")}
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -598,14 +598,14 @@ export default function DownloadSectionDialog({
               </div>
               {/* 非订阅用户提示升级 */}
               {!appUser.isPaid && (
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                  <div className="flex items-start space-x-2 mb-2">
-                    <Crown className="w-4 h-4 text-yellow-600" />
-                    <span className="text-sm font-medium text-gray-900 dark:text-[#ececf1]">
+                <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                  <div className="flex items-start space-x-2 mb-1">
+                    <Crown className="w-3.5 h-3.5 text-yellow-600" />
+                    <span className="text-xs font-medium text-gray-900 dark:text-[#ececf1]">
                       {tr("Upgrade to Remove Ads", "升级以去除广告")}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-1.5">
                     {tr(
                       "Subscribe to unlock ad-free experience and premium features",
                       "订阅以解锁无广告体验和高级功能"
@@ -632,15 +632,16 @@ export default function DownloadSectionDialog({
             </div>
           )}
 
-          <div className="flex space-x-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              className="flex-1 border-gray-300 dark:border-[#565869]"
-            >
-              {tr("Close", "关闭")}
-            </Button>
-          </div>
+        </div>
+
+        <div className="flex space-x-2 pt-2 flex-shrink-0 border-t border-gray-100 dark:border-[#565869]">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="flex-1 border-gray-300 dark:border-[#565869]"
+          >
+            {tr("Close", "关闭")}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

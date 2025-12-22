@@ -178,21 +178,23 @@ function ChatShell() {
           )}
         </div>
 
-        {/* 固定底部备案信息 - 紧凑显示 */}
-        <div className="flex-shrink-0 bg-white dark:bg-[#40414f] border-t border-gray-200 dark:border-[#565869]">
-          <div className="flex items-center justify-center gap-3 py-1 px-2 text-[10px] text-gray-500 dark:text-gray-400">
-            <span>本页面含AI生成的内容，请仔细辨别</span>
-            <span className="text-gray-300 dark:text-gray-600">|</span>
-            <a
-              href="https://beian.miit.gov.cn/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-            >
-              粤ICP备2024281756号-3
-            </a>
+        {/* 固定底部备案信息 - 仅国内版显示 */}
+        {isDomestic && (
+          <div className="flex-shrink-0 bg-white dark:bg-[#40414f] border-t border-gray-200 dark:border-[#565869]">
+            <div className="flex items-center justify-center gap-3 py-1 px-2 text-[10px] text-gray-500 dark:text-gray-400">
+              <span>本页面含AI生成的内容，请仔细辨别</span>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <a
+                href="https://beian.miit.gov.cn/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+              >
+                粤ICP备2024281756号-3
+              </a>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <ModalHub {...modalProps} />

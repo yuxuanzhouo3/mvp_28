@@ -79,7 +79,7 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
                   <Lock className="w-5 h-5 text-white" />
                 )}
               </div>
-              <span className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 dark:from-white dark:via-gray-100 dark:to-white bg-clip-text text-transparent">
+              <span className="text-gray-900 dark:text-white font-bold">
                 {authMode === "login"
                   ? isZh
                     ? "欢迎回来"

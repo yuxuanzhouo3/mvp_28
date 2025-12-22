@@ -29,9 +29,14 @@ DISALLOWED_TERMS = [
     "公安",
     "机关",
     "AI智能",
+    "人工智能",
     "深度学习",
     "大模型",
     "算法",
+]
+
+DISALLOWED_REGEX_PATTERNS: list[tuple[str, str]] = [
+    (r"\bAI\b", "AI"),
 ]
 
 SOFTWARE_NAME_PLACEHOLDER = "[软件全称]"
@@ -138,6 +143,9 @@ def check_disallowed_terms(text: str) -> list[str]:
             continue
         if term in text:
             found.append(term)
+    for pattern, label in DISALLOWED_REGEX_PATTERNS:
+        if re.search(pattern, text):
+            found.append(label)
     return found
 
 
@@ -412,7 +420,7 @@ def add(paras: list[Paragraph], kind: str, text: str = "") -> None:
     paras.append(Paragraph(kind=kind, text=text))
 
 
-def generate_requirements_paragraphs(facts: dict, use_case_count: int) -> list[Paragraph]:
+def generate_requirements_paragraphs_legacy(facts: dict, use_case_count: int) -> list[Paragraph]:
     paras: list[Paragraph] = []
 
     # =========================

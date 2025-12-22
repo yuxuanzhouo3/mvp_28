@@ -21,3 +21,6 @@ pnpm-debug.log*
 
 # mcp
 .spec-workflow
+
+# 其他
+.vscode

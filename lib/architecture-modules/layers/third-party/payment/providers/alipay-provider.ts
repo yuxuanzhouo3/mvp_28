@@ -12,11 +12,12 @@ export class AlipayProvider extends AbstractAlipayProvider {
   private alipaySdk: any;
 
   constructor(config: any) {
-    // 确保 APP_URL 不以斜杠结尾
-    const appUrl = (process.env.APP_URL || "http://localhost:3000").replace(
-      /\/$/,
-      ""
-    );
+    // 确保 APP_URL 不以斜杠结尾（优先使用 NEXT_PUBLIC_APP_URL，与其他支付提供商保持一致）
+    const appUrl = (
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.APP_URL ||
+      "http://localhost:3000"
+    ).replace(/\/$/, "");
 
     const certMode =
       (config.ALIPAY_CERT_MODE || process.env.ALIPAY_CERT_MODE) === "true";

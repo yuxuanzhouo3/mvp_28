@@ -252,31 +252,31 @@ export function PaymentDialog({
                 <Label className="text-gray-900 dark:text-[#ececf1] text-sm">
                   {isZh ? "支付方式" : "Payment Method"}
                 </Label>
-                <div className="grid grid-cols-3 gap-1">
+                <div className="grid grid-cols-2 gap-2">
                   {/* 国内版：支付宝、微信 */}
                   {isDomesticVersion && (
                     <>
                       <button
                         type="button"
                         onClick={() => setSelectedPaymentMethod("alipay")}
-                        className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
+                        className={`px-3 py-2 rounded-lg border-2 text-xs font-medium transition-all ${
                           selectedPaymentMethod === "alipay"
-                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
+                            ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-400 ring-1 ring-blue-400"
+                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#4a4b5a]"
                         }`}
                       >
-                        支付宝
+                        💳 支付宝
                       </button>
                       <button
                         type="button"
                         onClick={() => setSelectedPaymentMethod("wechat")}
-                        className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
+                        className={`px-3 py-2 rounded-lg border-2 text-xs font-medium transition-all ${
                           selectedPaymentMethod === "wechat"
-                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
+                            ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-400 ring-1 ring-green-400"
+                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#4a4b5a]"
                         }`}
                       >
-                        微信支付
+                        💬 微信支付
                       </button>
                     </>
                   )}
@@ -286,35 +286,35 @@ export function PaymentDialog({
                       <button
                         type="button"
                         onClick={() => setSelectedPaymentMethod("stripe")}
-                        className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
+                        className={`px-3 py-2 rounded-lg border-2 text-xs font-medium transition-all ${
                           selectedPaymentMethod === "stripe"
-                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
+                            ? "bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 border-violet-400 ring-1 ring-violet-400"
+                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#4a4b5a]"
                         }`}
                       >
-                        Stripe
+                        💳 Stripe
                       </button>
                       <button
                         type="button"
                         onClick={() => setSelectedPaymentMethod("paypal")}
-                        className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
+                        className={`px-3 py-2 rounded-lg border-2 text-xs font-medium transition-all ${
                           selectedPaymentMethod === "paypal"
-                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
+                            ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-400 ring-1 ring-blue-400"
+                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#4a4b5a]"
                         }`}
                       >
-                        PayPal
+                        🅿️ PayPal
                       </button>
                       <button
                         type="button"
                         onClick={() => setSelectedPaymentMethod("credit-card")}
-                        className={`p-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
+                        className={`px-3 py-2 rounded-lg border-2 text-xs font-medium transition-all col-span-2 ${
                           selectedPaymentMethod === "credit-card"
-                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:border-gray-300"
+                            ? "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-400 ring-1 ring-gray-400"
+                            : "border-gray-200 dark:border-[#565869] bg-white dark:bg-[#565869] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#4a4b5a]"
                         }`}
                       >
-                        Card
+                        💳 Credit/Debit Card
                       </button>
                     </>
                   )}

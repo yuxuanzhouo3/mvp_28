@@ -554,7 +554,7 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
                                     : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
                                 }`}
                               >
-                                💙 支付宝
+                                💳 支付宝
                               </button>
                               <button
                                 type="button"
@@ -565,7 +565,7 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
                                     : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
                                 }`}
                               >
-                                💚 微信支付
+                                💬 微信支付
                               </button>
                             </>
                           )}

@@ -716,57 +716,57 @@ export function PrivacyPolicyContent({ isDomestic }: PrivacyPolicyContentProps) 
   const content = isDomestic ? PRIVACY_POLICY_CN : PRIVACY_POLICY_EN;
 
   return (
-    <div className="privacy-policy-content prose prose-sm dark:prose-invert max-w-none">
+    <div className="privacy-policy-content prose prose-sm dark:prose-invert max-w-none px-1 sm:px-2 lg:px-4">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => (
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-4 pb-2 border-b-2 border-gradient-to-r from-blue-500 to-purple-500">
+            <h1 className="text-base sm:text-lg lg:text-xl font-bold text-gray-900 dark:text-white mb-3 sm:mb-4 lg:mb-5 pb-2 border-b-2 border-gradient-to-r from-blue-500 to-purple-500">
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-6 mb-3 flex items-center">
-              <span className="w-1 h-5 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full mr-2" />
+            <h2 className="text-sm sm:text-base lg:text-lg font-bold text-gray-800 dark:text-gray-100 mt-4 sm:mt-5 lg:mt-6 mb-2 sm:mb-3 flex items-center">
+              <span className="w-0.5 sm:w-1 h-4 sm:h-5 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full mr-1.5 sm:mr-2" />
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 mt-4 mb-2">
+            <h3 className="text-xs sm:text-sm lg:text-base font-semibold text-gray-800 dark:text-gray-200 mt-3 sm:mt-4 mb-1.5 sm:mb-2">
               {children}
             </h3>
           ),
           h4: ({ children }) => (
-            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mt-3 mb-1">
+            <h4 className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mt-2 sm:mt-3 mb-1">
               {children}
             </h4>
           ),
           p: ({ children }) => (
-            <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed mb-3">
+            <p className="text-gray-600 dark:text-gray-300 text-xs sm:text-sm lg:text-base leading-relaxed mb-2 sm:mb-3">
               {children}
             </p>
           ),
           ul: ({ children }) => (
-            <ul className="list-none space-y-2 ml-0 my-3">
+            <ul className="list-none space-y-1.5 sm:space-y-2 ml-0 my-2 sm:my-3">
               {children}
             </ul>
           ),
           li: ({ children }) => (
-            <li className="text-gray-600 dark:text-gray-300 text-sm flex items-start">
-              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full mr-2 mt-1.5 flex-shrink-0" />
-              <span>{children}</span>
+            <li className="text-gray-600 dark:text-gray-300 text-xs sm:text-sm lg:text-base flex items-start">
+              <span className="w-1 sm:w-1.5 h-1 sm:h-1.5 bg-blue-500 rounded-full mr-1.5 sm:mr-2 mt-1.5 flex-shrink-0" />
+              <span className="flex-1">{children}</span>
             </li>
           ),
           blockquote: ({ children }) => (
-            <blockquote className="border-l-4 border-amber-400 bg-amber-50 dark:bg-amber-900/20 pl-4 py-2 my-4 rounded-r-lg">
-              <div className="text-amber-800 dark:text-amber-200 text-sm">
+            <blockquote className="border-l-2 sm:border-l-4 border-amber-400 bg-amber-50 dark:bg-amber-900/20 pl-2 sm:pl-4 py-1.5 sm:py-2 my-3 sm:my-4 rounded-r-lg">
+              <div className="text-amber-800 dark:text-amber-200 text-xs sm:text-sm">
                 {children}
               </div>
             </blockquote>
           ),
           table: ({ children }) => (
-            <div className="overflow-x-auto my-4 rounded-lg border border-gray-200 dark:border-gray-700">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+            <div className="overflow-x-auto my-3 sm:my-4 rounded-lg border border-gray-200 dark:border-gray-700 -mx-2 sm:-mx-1 lg:mx-0">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-[10px] sm:text-xs lg:text-sm">
                 {children}
               </table>
             </div>
@@ -777,12 +777,12 @@ export function PrivacyPolicyContent({ isDomestic }: PrivacyPolicyContentProps) 
             </thead>
           ),
           th: ({ children }) => (
-            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">
+            <th className="px-1.5 sm:px-2 lg:px-3 py-1 sm:py-1.5 lg:py-2 text-left text-[9px] sm:text-[10px] lg:text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border-t border-gray-100 dark:border-gray-700">
+            <td className="px-1.5 sm:px-2 lg:px-3 py-1 sm:py-1.5 lg:py-2 text-[10px] sm:text-xs lg:text-sm text-gray-600 dark:text-gray-300 border-t border-gray-100 dark:border-gray-700">
               {children}
             </td>
           ),
@@ -792,20 +792,20 @@ export function PrivacyPolicyContent({ isDomestic }: PrivacyPolicyContentProps) 
             </strong>
           ),
           hr: () => (
-            <hr className="my-6 border-0 h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent" />
+            <hr className="my-4 sm:my-6 border-0 h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent" />
           ),
           a: ({ href, children }) => (
             <a
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 dark:text-blue-400 hover:underline"
+              className="text-blue-600 dark:text-blue-400 hover:underline text-xs sm:text-sm break-all"
             >
               {children}
             </a>
           ),
           code: ({ children }) => (
-            <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800 dark:text-gray-200">
+            <code className="bg-gray-100 dark:bg-gray-800 px-1 sm:px-1.5 py-0.5 rounded text-xs sm:text-sm font-mono text-gray-800 dark:text-gray-200">
               {children}
             </code>
           ),

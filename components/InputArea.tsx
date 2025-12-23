@@ -498,7 +498,7 @@ const InputArea = React.memo(function InputArea({
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onSelect={handleTextSelection}
-                className="w-full resize-none overflow-hidden text-sm py-3 px-3 text-gray-900 dark:text-[#ececf1] bg-transparent border-0 focus:ring-0 focus:border-0 focus:outline-none outline-none rounded-xl selection:bg-blue-200 dark:selection:bg-blue-800 selection:text-gray-900 dark:selection:text-[#ececf1] min-h-[96px] max-h-[384px] pr-4"
+                className="w-full resize-none overflow-hidden text-sm py-2 sm:py-3 px-2 sm:px-3 text-gray-900 dark:text-[#ececf1] bg-transparent border-0 focus:ring-0 focus:border-0 focus:outline-none outline-none rounded-xl selection:bg-blue-200 dark:selection:bg-blue-800 selection:text-gray-900 dark:selection:text-[#ececf1] min-h-[64px] sm:min-h-[80px] md:min-h-[96px] max-h-[280px] sm:max-h-[384px] pr-4"
                 onKeyDown={(e) => {
                   const currentHotkey =
                     appUser?.settings?.sendHotkey || "enter";

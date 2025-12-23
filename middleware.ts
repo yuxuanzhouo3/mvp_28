@@ -880,3 +880,5 @@ function isValidIP(ip: string): boolean {
 export const config = {
   matcher: ["/((?!_next/|favicon.ico).*)"],
 };
+
+// Force rebuild - v2

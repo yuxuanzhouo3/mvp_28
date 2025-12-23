@@ -466,22 +466,16 @@ const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || "admin-secret-k
  * Base64 编码 (Edge Runtime 兼容)
  */
 function base64Encode(str: string): string {
-  if (typeof btoa !== "undefined") {
-    return btoa(unescape(encodeURIComponent(str)));
-  }
-  // Node.js 环境降级
-  return Buffer.from(str, "utf-8").toString("base64");
+  // Edge Runtime 使用 btoa (Web API)
+  return btoa(unescape(encodeURIComponent(str)));
 }
 
 /**
  * Base64 解码 (Edge Runtime 兼容)
  */
 function base64Decode(str: string): string {
-  if (typeof atob !== "undefined") {
-    return decodeURIComponent(escape(atob(str)));
-  }
-  // Node.js 环境降级
-  return Buffer.from(str, "base64").toString("utf-8");
+  // Edge Runtime 使用 atob (Web API)
+  return decodeURIComponent(escape(atob(str)));
 }
 
 /**

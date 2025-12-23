@@ -1,7 +1,462 @@
 import { NextRequest, NextResponse } from "next/server";
-import { geoRouter } from "@/lib/architecture-modules/core/geo-router";
-import { RegionType } from "@/lib/architecture-modules/core/types";
-import { csrfProtection } from "@/lib/security/csrf";
+
+// ============================================================================
+// 内联类型定义 (原 @/lib/architecture-modules/core/types)
+// ============================================================================
+
+enum RegionType {
+  CHINA = "china",
+  USA = "usa",
+  EUROPE = "europe",
+  INDIA = "india",
+  SINGAPORE = "singapore",
+  OTHER = "other",
+}
+
+interface GeoResult {
+  region: RegionType;
+  countryCode: string;
+  currency: string;
+}
+
+// ============================================================================
+// 内联 IP 检测工具 (原 @/lib/architecture-modules/utils/ip-detection)
+// ============================================================================
+
+// 欧洲国家代码列表（EU + EEA + UK + CH）
+const EUROPEAN_COUNTRIES = [
+  // EU 成员国 (27个)
+  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
+  "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
+  "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+  // EEA 非 EU 成员
+  "IS", "LI", "NO",
+  // 英国（脱欧后仍需遵守部分GDPR）
+  "GB",
+  // 欧盟未知时返回 EU 代码的兼容
+  "EU",
+  // 瑞士（虽非EU但数据保护法类似）
+  "CH",
+];
+
+// 主流市场国家
+const TARGET_MARKETS = {
+  CHINA: "CN",
+  USA: "US",
+  INDIA: "IN",
+  SINGAPORE: "SG",
+};
+
+function getRegionFromCountryCode(countryCode: string): RegionType {
+  const code = (countryCode || "").toUpperCase();
+  if (code === TARGET_MARKETS.CHINA) return RegionType.CHINA;
+  if (code === TARGET_MARKETS.USA) return RegionType.USA;
+  if (code === TARGET_MARKETS.INDIA) return RegionType.INDIA;
+  if (code === TARGET_MARKETS.SINGAPORE) return RegionType.SINGAPORE;
+  if (EUROPEAN_COUNTRIES.includes(code)) return RegionType.EUROPE;
+  return RegionType.OTHER;
+}
+
+function getCurrencyByRegion(region: RegionType): string {
+  switch (region) {
+    case RegionType.CHINA: return "CNY";
+    case RegionType.USA: return "USD";
+    case RegionType.INDIA: return "INR";
+    case RegionType.SINGAPORE: return "SGD";
+    case RegionType.EUROPE: return "EUR";
+    default: return "USD";
+  }
+}
+
+// ============================================================================
+// 内联 GeoRouter (原 @/lib/architecture-modules/core/geo-router)
+// ============================================================================
+
+class GeoRouter {
+  private cache = new Map<string, { result: GeoResult; timestamp: number }>();
+  private pendingRequests = new Map<string, Promise<GeoResult>>();
+  private readonly CACHE_TTL = 1000 * 60 * 60; // 1小时缓存
+  private readonly REQUEST_TIMEOUT = 5000; // 5秒超时
+  private readonly MAX_RETRIES = 2;
+  private readonly FAIL_CLOSED =
+    (process.env.GEO_FAIL_CLOSED || "true").toLowerCase() === "true";
+
+  async detect(ip: string): Promise<GeoResult> {
+    // 检查缓存
+    const cached = this.cache.get(ip);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      return cached.result;
+    }
+
+    // 检查是否有正在进行的请求
+    const pending = this.pendingRequests.get(ip);
+    if (pending) {
+      return pending;
+    }
+
+    // 创建新的请求
+    const requestPromise = this.performDetection(ip);
+    this.pendingRequests.set(ip, requestPromise);
+
+    try {
+      const result = await requestPromise;
+      this.cache.set(ip, { result, timestamp: Date.now() });
+      return result;
+    } catch (error) {
+      console.error("Geo detection failed:", error);
+
+      if (this.FAIL_CLOSED) {
+        throw new Error("Geo detection failed (fail-closed)");
+      }
+
+      const defaultResult = this.getDefaultGeoResult();
+      this.cache.set(ip, { result: defaultResult, timestamp: Date.now() });
+      return defaultResult;
+    } finally {
+      this.pendingRequests.delete(ip);
+    }
+  }
+
+  private async performDetection(ip: string): Promise<GeoResult> {
+    // 尝试多个服务
+    const services = [
+      () => this.detectWithPrimaryService(ip),
+      () => this.detectWithFallbackService(ip),
+      () => this.detectWithThirdFallback(ip),
+    ];
+
+    for (const service of services) {
+      try {
+        return await this.withRetry(service, this.MAX_RETRIES);
+      } catch (error) {
+        console.warn("Service failed, trying next:", error);
+      }
+    }
+
+    // 所有服务都失败，使用本地检测
+    return this.detectLocally(ip);
+  }
+
+  private async withRetry<T>(
+    operation: () => Promise<T>,
+    maxRetries: number
+  ): Promise<T> {
+    let lastError: Error = new Error("Unknown error");
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error as Error;
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+        }
+      }
+    }
+
+    throw lastError;
+  }
+
+  private async fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
+  }
+
+  private buildIpapiUrl(ip?: string): string {
+    const base = process.env.IP_API_URL || "https://ipapi.co";
+    const trimmed = base.replace(/\/json\/?$/, "").replace(/\/$/, "");
+    if (ip) {
+      return `${trimmed}/${ip}/json/`;
+    }
+    return `${trimmed}/json/`;
+  }
+
+  private async detectWithPrimaryService(ip: string): Promise<GeoResult> {
+    if (!ip || ip === "" || ip === "::1" || ip === "127.0.0.1") {
+      return this.detectLocally(ip);
+    }
+
+    const url = this.buildIpapiUrl(ip);
+    const response = await this.fetchWithTimeout(url, this.REQUEST_TIMEOUT);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(`IP detection failed: ${data.reason || data.error}`);
+    }
+
+    if (!data.country_code) {
+      throw new Error("Invalid response: missing country_code");
+    }
+
+    return this.buildGeoResult(data.country_code);
+  }
+
+  private async detectWithFallbackService(ip: string): Promise<GeoResult> {
+    if (!ip || ip === "" || ip === "::1" || ip === "127.0.0.1") {
+      return this.detectLocally(ip);
+    }
+
+    const response = await this.fetchWithTimeout(
+      `http://ip-api.com/json/${ip}`,
+      this.REQUEST_TIMEOUT
+    );
+
+    if (!response.ok) {
+      throw new Error(`Fallback service HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.status === "fail") {
+      throw new Error(`Fallback IP detection failed: ${data.message}`);
+    }
+
+    if (!data.countryCode) {
+      throw new Error("Invalid fallback response: missing countryCode");
+    }
+
+    return this.buildGeoResult(data.countryCode);
+  }
+
+  private async detectWithThirdFallback(ip: string): Promise<GeoResult> {
+    if (!ip || ip === "" || ip === "::1" || ip === "127.0.0.1") {
+      return this.detectLocally(ip);
+    }
+
+    const response = await this.fetchWithTimeout(
+      `https://ipinfo.io/${ip}/json`,
+      this.REQUEST_TIMEOUT
+    );
+
+    if (!response.ok) {
+      throw new Error(`Third fallback service HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const countryCode = data.country;
+
+    if (!countryCode) {
+      throw new Error("Invalid third fallback response: missing country");
+    }
+
+    return this.buildGeoResult(countryCode);
+  }
+
+  private detectLocally(ip: string): GeoResult {
+    if (this.isPrivateIP(ip)) {
+      return this.buildGeoResult("CN");
+    }
+    return this.buildGeoResult("US");
+  }
+
+  private buildGeoResult(countryCode: string): GeoResult {
+    const region = getRegionFromCountryCode(countryCode);
+    return {
+      region,
+      countryCode: countryCode.toUpperCase(),
+      currency: getCurrencyByRegion(region),
+    };
+  }
+
+  private isPrivateIP(ip: string): boolean {
+    const parts = ip.split(".").map(Number);
+    if (parts.length !== 4) return false;
+
+    return (
+      parts[0] === 10 ||
+      (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+      (parts[0] === 192 && parts[1] === 168)
+    );
+  }
+
+  private getDefaultGeoResult(): GeoResult {
+    return {
+      region: RegionType.USA,
+      countryCode: "US",
+      currency: "USD",
+    };
+  }
+}
+
+const geoRouter = new GeoRouter();
+
+// ============================================================================
+// 内联 CSRF 保护 (原 @/lib/security/csrf)
+// ============================================================================
+
+class CSRFManager {
+  generateToken(secret?: string): string {
+    const tokenSecret = secret || this.generateSecret();
+    const timestamp = Date.now().toString();
+    const random = this.generateRandomString(16);
+    const message = `${timestamp}.${random}`;
+    const hmac = this.simpleHMAC(message, tokenSecret);
+    return `${message}.${hmac}`;
+  }
+
+  verifyToken(token: string, secret: string): boolean {
+    try {
+      const parts = token.split(".");
+      if (parts.length !== 3) return false;
+
+      const [timestamp, random, providedHmac] = parts;
+      const message = `${timestamp}.${random}`;
+
+      const tokenTime = parseInt(timestamp);
+      const now = Date.now();
+      const maxAge = 5 * 60 * 1000; // 5分钟
+
+      if (now - tokenTime > maxAge) {
+        return false;
+      }
+
+      const expectedHmac = this.simpleHMAC(message, secret);
+      return providedHmac === expectedHmac;
+    } catch {
+      return false;
+    }
+  }
+
+  generateSecret(): string {
+    if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+      const array = new Uint8Array(32);
+      crypto.getRandomValues(array);
+      return Array.from(array, (byte) =>
+        byte.toString(16).padStart(2, "0")
+      ).join("");
+    }
+
+    let result = "";
+    for (let i = 0; i < 64; i++) {
+      result += Math.floor(Math.random() * 16).toString(16);
+    }
+    return result;
+  }
+
+  private generateRandomString(length: number): string {
+    if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+      const array = new Uint8Array(length);
+      crypto.getRandomValues(array);
+      return Array.from(array, (byte) =>
+        byte.toString(16).padStart(2, "0")
+      ).join("");
+    }
+
+    let result = "";
+    for (let i = 0; i < length; i++) {
+      result += Math.floor(Math.random() * 16).toString(16);
+    }
+    return result;
+  }
+
+  private simpleHMAC(message: string, secret: string): string {
+    const combined = secret + message + secret;
+    let hash = 0;
+
+    for (let i = 0; i < combined.length; i++) {
+      const char = combined.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash;
+    }
+
+    return Math.abs(hash).toString(16);
+  }
+
+  getTokenFromRequest(request: NextRequest): string | null {
+    const headerToken = request.headers.get("x-csrf-token");
+    if (headerToken) return headerToken;
+
+    const url = new URL(request.url);
+    const queryToken = url.searchParams.get("csrf-token");
+    if (queryToken) return queryToken;
+
+    return null;
+  }
+
+  getSecretFromRequest(request: NextRequest): string | null {
+    const sessionSecret = request.cookies.get("csrf-secret")?.value;
+    return sessionSecret || null;
+  }
+}
+
+const csrfManager = new CSRFManager();
+
+async function csrfProtection(
+  request: NextRequest,
+  response: NextResponse
+): Promise<NextResponse> {
+  const { pathname } = request.nextUrl;
+  const method = request.method;
+
+  const stateChangingMethods = ["POST", "PUT", "DELETE", "PATCH"];
+  if (!stateChangingMethods.includes(method)) {
+    return response;
+  }
+
+  // 跳过API路由（API使用其他认证机制）
+  if (pathname.startsWith("/api/")) {
+    return response;
+  }
+
+  // 跳过 Admin 后台路由（使用自定义 session 认证）
+  if (pathname.startsWith("/admin")) {
+    return response;
+  }
+
+  // 跳过 Next.js Server Actions
+  if (request.headers.get("next-action")) {
+    return response;
+  }
+
+  const token = csrfManager.getTokenFromRequest(request);
+  const secret = csrfManager.getSecretFromRequest(request);
+
+  if (!token || !secret) {
+    return new NextResponse(
+      JSON.stringify({
+        error: "CSRF token missing",
+        message: "Security token is required for this request",
+      }),
+      {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  if (!csrfManager.verifyToken(token, secret)) {
+    return new NextResponse(
+      JSON.stringify({
+        error: "CSRF token invalid",
+        message: "Security token verification failed",
+      }),
+      {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  return response;
+}
+
+// ============================================================================
+// Middleware 主逻辑
+// ============================================================================
 
 // Admin session cookie 配置
 const ADMIN_SESSION_COOKIE_NAME = "admin_session";
@@ -37,21 +492,12 @@ function verifyAdminSessionToken(token: string): boolean {
 
 /**
  * IP检测和访问控制中间件
- * 实现以下功能：
- * 1. 检测用户IP地理位置
- * 2. 完全禁止欧洲IP访问（符合GDPR合规要求）
- * 3. 为响应添加地理信息头供前端使用
- * 4. 保护 /admin 路由（需要登录）
- *
- * 注意：不进行任何重定向，用户访问哪个域名就使用哪个系统
  */
 export async function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
 
   // =====================
-  // 版本隔离：根据 NEXT_PUBLIC_DEFAULT_LANGUAGE 限制可访问的 API 路由
-  // - 国内版(zh)：禁止访问 /api/international 及 Stripe/PayPal
-  // - 国际版(en)：禁止访问 /api/domestic 及 微信/支付宝/国内 webhook
+  // 版本隔离
   // =====================
   const envDefaultLang = (process.env.NEXT_PUBLIC_DEFAULT_LANGUAGE || "zh").toLowerCase();
   const isDomesticVersion = envDefaultLang !== "en";
@@ -75,7 +521,6 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith("/api/payment/webhook/alipay") ||
       pathname.startsWith("/api/webhooks/domestic-renew") ||
       pathname === "/api/auth/check-email" ||
-      // 国内版（CloudBase）认证接口：国际版不允许访问，保证数据库/存储绝对隔离
       pathname === "/api/auth/login" ||
       pathname === "/api/auth/register" ||
       pathname === "/api/auth/logout" ||
@@ -93,17 +538,16 @@ export async function middleware(request: NextRequest) {
     const sessionToken = request.cookies.get(ADMIN_SESSION_COOKIE_NAME)?.value;
 
     if (!sessionToken || !verifyAdminSessionToken(sessionToken)) {
-      // 未登录或会话无效，重定向到登录页
       const loginUrl = new URL("/admin/login", request.url);
       return NextResponse.redirect(loginUrl);
     }
   }
+
   const FAIL_CLOSED =
     (process.env.GEO_FAIL_CLOSED || "true").toLowerCase() === "true";
 
   // =====================
-  // CORS 预检统一处理（仅 API 路由）
-  // 允许基于环境变量 ALLOWED_ORIGINS 的白名单反射 Origin
+  // CORS 预检统一处理
   // =====================
   if (pathname.startsWith("/api/")) {
     const origin = request.headers.get("origin") || "";
@@ -113,7 +557,6 @@ export async function middleware(request: NextRequest) {
       .filter(Boolean);
     const isAllowedOrigin = origin && allowedOrigins.includes(origin);
 
-    // 预检请求快速返回
     if (request.method === "OPTIONS") {
       if (isAllowedOrigin) {
         return new NextResponse(null, {
@@ -126,17 +569,14 @@ export async function middleware(request: NextRequest) {
           },
         });
       }
-      // 非白名单直接拒绝
       return new NextResponse(null, {
         status: 403,
-        headers: {
-          "Access-Control-Allow-Origin": "null",
-        },
+        headers: { "Access-Control-Allow-Origin": "null" },
       });
     }
   }
 
-  // 跳过静态资源和Next.js内部路由（但保留 API 路由以便设置区域 Header）
+  // 跳过静态资源
   if (
     pathname.startsWith("/_next/") ||
     pathname.startsWith("/favicon.ico") ||
@@ -145,7 +585,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 请求体大小限制 (10MB) - 仅API路由
+  // 请求体大小限制
   if (pathname.startsWith("/api/") && request.method === "POST") {
     const contentLength = request.headers.get("content-length");
     if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
@@ -162,15 +602,11 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // 注意：认证重定向由前端处理，middleware只处理地理路由
-  // 这样可以避免与前端useEffect产生重定向循环
-
   try {
-    // 检查URL参数中的debug模式（仅开发环境支持）
     const debugParam = searchParams.get("debug");
     const isDevelopment = process.env.NODE_ENV === "development";
 
-    // 🚨 生产环境安全检查：禁止调试模式访问
+    // 生产环境禁止调试模式
     if (debugParam && !isDevelopment) {
       console.warn(`🚨 生产环境检测到调试模式参数，已禁止访问: ${debugParam}`);
       return new NextResponse(
@@ -189,77 +625,61 @@ export async function middleware(request: NextRequest) {
       );
     }
 
-    // 如果是 API 请求，也检查 Referer 中的 debug 参数
+    // API 请求检查 Referer
     if (pathname.startsWith("/api/") && !isDevelopment) {
       const referer = request.headers.get("referer");
       if (referer) {
-        const refererUrl = new URL(referer);
-        const refererDebug = refererUrl.searchParams.get("debug");
-
-        // 生产环境禁用来自referer的调试模式
-        if (refererDebug) {
-          console.warn(
-            `🚨 生产环境检测到来自referer的调试模式参数，已禁止访问: ${refererDebug}`
-          );
-          return new NextResponse(
-            JSON.stringify({
-              error: "Access Denied",
-              message: "Debug mode is not allowed in production.",
-              code: "DEBUG_MODE_BLOCKED",
-            }),
-            {
-              status: 403,
-              headers: {
-                "Content-Type": "application/json",
-                "X-Debug-Blocked": "true",
-              },
-            }
-          );
+        try {
+          const refererUrl = new URL(referer);
+          const refererDebug = refererUrl.searchParams.get("debug");
+          if (refererDebug) {
+            console.warn(`🚨 生产环境检测到来自referer的调试模式参数: ${refererDebug}`);
+            return new NextResponse(
+              JSON.stringify({
+                error: "Access Denied",
+                message: "Debug mode is not allowed in production.",
+                code: "DEBUG_MODE_BLOCKED",
+              }),
+              {
+                status: 403,
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Debug-Blocked": "true",
+                },
+              }
+            );
+          }
+        } catch {
+          // 忽略无效的 referer URL
         }
       }
     }
 
-    let geoResult;
+    let geoResult: GeoResult;
 
-    // 开发环境支持调试模式
+    // 开发环境调试模式
     if (debugParam && isDevelopment) {
-      console.log(`� 调试模式启用: ${debugParam}`);
+      console.log(`🔧 调试模式启用: ${debugParam}`);
 
-      // 根据debug参数设置模拟的地理位置
       switch (debugParam.toLowerCase()) {
         case "china":
-          geoResult = {
-            region: RegionType.CHINA,
-            countryCode: "CN",
-            currency: "CNY",
-          };
+          geoResult = { region: RegionType.CHINA, countryCode: "CN", currency: "CNY" };
           break;
         case "usa":
         case "us":
-          geoResult = {
-            region: RegionType.USA,
-            countryCode: "US",
-            currency: "USD",
-          };
+          geoResult = { region: RegionType.USA, countryCode: "US", currency: "USD" };
           break;
         case "europe":
         case "eu":
-          geoResult = {
-            region: RegionType.EUROPE,
-            countryCode: "DE",
-            currency: "EUR",
-          };
+          geoResult = { region: RegionType.EUROPE, countryCode: "DE", currency: "EUR" };
           break;
         default:
-          // 无效的debug参数，回退到正常检测
           const clientIP = getClientIP(request);
           geoResult = await geoRouter.detect(clientIP || "");
       }
     } else {
       // 正常地理位置检测
-      // 获取客户端真实IP并检测地理位置
       const clientIP = getClientIP(request);
-      // console.log("[GeoDetect] clientIP:", clientIP || "null", "xff:", request.headers.get("x-forwarded-for") || "none");
 
       if (!clientIP) {
         console.warn("无法获取客户端IP，标记为未知风险");
@@ -281,11 +701,10 @@ export async function middleware(request: NextRequest) {
         return res;
       }
 
-      // 检测地理位置
       geoResult = await geoRouter.detect(clientIP);
     }
 
-    // 1. 禁止欧洲IP访问（开发环境调试模式除外）
+    // 禁止欧洲IP访问
     if (
       geoResult.region === RegionType.EUROPE &&
       !(debugParam && isDevelopment)
@@ -294,22 +713,19 @@ export async function middleware(request: NextRequest) {
       return new NextResponse(
         JSON.stringify({
           error: "Access Denied",
-          message:
-            "This service is not available in your region due to regulatory requirements.",
+          message: "This service is not available in your region due to regulatory requirements.",
           code: "REGION_BLOCKED",
         }),
         {
           status: 403,
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
         }
       );
     }
 
-    // 2. 为响应添加地理信息头（用于前端判断区域）
+    // 添加地理信息头
     const response = NextResponse.next();
-    // 为 API 路由添加 CORS 响应头（基于白名单反射）
+
     if (pathname.startsWith("/api/")) {
       const origin = request.headers.get("origin") || "";
       const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
@@ -318,27 +734,21 @@ export async function middleware(request: NextRequest) {
         .filter(Boolean);
       if (origin && allowedOrigins.includes(origin)) {
         response.headers.set("Access-Control-Allow-Origin", origin);
-        response.headers.set(
-          "Access-Control-Allow-Methods",
-          "GET, POST, PUT, DELETE, OPTIONS"
-        );
-        response.headers.set(
-          "Access-Control-Allow-Headers",
-          "Content-Type, Authorization"
-        );
+        response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
         response.headers.set("Access-Control-Allow-Credentials", "true");
       }
     }
+
     response.headers.set("X-User-Region", geoResult.region);
     response.headers.set("X-User-Country", geoResult.countryCode);
     response.headers.set("X-User-Currency", geoResult.currency);
 
-    // 开发环境添加调试模式标识
     if (debugParam && isDevelopment) {
       response.headers.set("X-Debug-Mode", debugParam);
     }
 
-    // 4. CSRF防护 - 对状态改变请求进行CSRF验证
+    // CSRF 防护
     const csrfResponse = await csrfProtection(request, response);
     if (csrfResponse.status !== 200) {
       return csrfResponse;
@@ -362,22 +772,18 @@ export async function middleware(request: NextRequest) {
       );
     }
 
-    // 出错时使用降级策略：允许访问但记录错误
     const response = NextResponse.next();
     response.headers.set("X-Geo-Error", "true");
-
     return response;
   }
 }
 
 /**
  * 获取客户端真实IP地址
- * 处理各种代理和CDN的情况
  */
 function getClientIP(request: NextRequest): string | null {
   const isDev = process.env.NODE_ENV !== "production";
 
-  // 开发/本地环境支持调试注入 IP，便于测试 geo 逻辑
   if (isDev) {
     const debugIp =
       request.headers.get("x-debug-ip") ||
@@ -388,18 +794,15 @@ function getClientIP(request: NextRequest): string | null {
     }
   }
 
-  // 优先级：X-Real-IP > X-Forwarded-For > request.ip
-
-  // 1. 检查 X-Real-IP（Nginx等代理设置）
+  // 1. X-Real-IP
   const realIP = request.headers.get("x-real-ip");
   if (realIP && isValidIP(realIP)) {
     return realIP;
   }
 
-  // 2. 检查 X-Forwarded-For（多个代理的情况）
+  // 2. X-Forwarded-For
   const forwardedFor = request.headers.get("x-forwarded-for");
   if (forwardedFor) {
-    // X-Forwarded-For 可能包含多个IP，取第一个（最原始的客户端IP）
     const ips = forwardedFor.split(",").map((ip) => ip.trim());
     for (const ip of ips) {
       if (isValidIP(ip)) {
@@ -408,14 +811,14 @@ function getClientIP(request: NextRequest): string | null {
     }
   }
 
-  // 3. 检查其他可能的头
+  // 3. 其他头
   const possibleHeaders = [
     "x-client-ip",
     "x-forwarded",
     "forwarded-for",
     "forwarded",
-    "cf-connecting-ip", // Cloudflare
-    "true-client-ip", // Akamai
+    "cf-connecting-ip",
+    "true-client-ip",
   ];
 
   for (const header of possibleHeaders) {
@@ -425,8 +828,7 @@ function getClientIP(request: NextRequest): string | null {
     }
   }
 
-  // 4. Next.js 提供的 request.ip（在 Vercel Edge/Node 上可获取真实客户端 IP）
-  // 注意：request.ip 是 Vercel 平台扩展，标准类型定义中没有，需要使用类型断言
+  // 4. Vercel 平台扩展
   const vercelIp = (request as unknown as { ip?: string }).ip;
   if (vercelIp && isValidIP(vercelIp)) {
     return vercelIp;
@@ -439,23 +841,20 @@ function getClientIP(request: NextRequest): string | null {
  * 验证IP地址格式
  */
 function isValidIP(ip: string): boolean {
-  // IPv4 验证
+  // IPv4
   const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
   if (ipv4Regex.test(ip)) {
     const parts = ip.split(".").map(Number);
     return parts.every((part) => part >= 0 && part <= 255);
   }
 
-  // IPv6 宽松验证：允许压缩格式，限定字符集，并过滤保留/私网/回环
+  // IPv6
   if (ip.includes(":")) {
     const ipv6Loose = /^[0-9a-fA-F:]+$/;
     if (!ipv6Loose.test(ip)) return false;
     const lower = ip.toLowerCase();
-    // 回环
     if (lower === "::1") return false;
-    // 链路本地 fe80::/10，unique local fc00::/7，文档前缀 2001:db8::/32
-    if (lower.startsWith("fe8") || lower.startsWith("fe9") || lower.startsWith("fea") || lower.startsWith("feb"))
-      return false;
+    if (lower.startsWith("fe8") || lower.startsWith("fe9") || lower.startsWith("fea") || lower.startsWith("feb")) return false;
     if (lower.startsWith("fc") || lower.startsWith("fd")) return false;
     if (lower.startsWith("2001:db8")) return false;
     return true;
@@ -465,13 +864,5 @@ function isValidIP(ip: string): boolean {
 }
 
 export const config = {
-  matcher: [
-    /*
-     * 匹配所有路径，包括 API 路由（需要设置区域 Header）
-     * 排除：
-     * - Next.js 内部路由 (/_next/...)
-     * - 静态文件 (favicon.ico 等)
-     */
-    "/((?!_next/|favicon.ico).*)",
-  ],
+  matcher: ["/((?!_next/|favicon.ico).*)"],
 };

@@ -463,6 +463,28 @@ const ADMIN_SESSION_COOKIE_NAME = "admin_session";
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || "admin-secret-key-change-in-production";
 
 /**
+ * Base64 编码 (Edge Runtime 兼容)
+ */
+function base64Encode(str: string): string {
+  if (typeof btoa !== "undefined") {
+    return btoa(unescape(encodeURIComponent(str)));
+  }
+  // Node.js 环境降级
+  return Buffer.from(str, "utf-8").toString("base64");
+}
+
+/**
+ * Base64 解码 (Edge Runtime 兼容)
+ */
+function base64Decode(str: string): string {
+  if (typeof atob !== "undefined") {
+    return decodeURIComponent(escape(atob(str)));
+  }
+  // Node.js 环境降级
+  return Buffer.from(str, "base64").toString("utf-8");
+}
+
+/**
  * 验证 Admin Session Token（Edge Runtime 兼容版本）
  */
 function verifyAdminSessionToken(token: string): boolean {
@@ -470,15 +492,13 @@ function verifyAdminSessionToken(token: string): boolean {
     const [encoded, sig] = token.split(".");
     if (!encoded || !sig) return false;
 
-    // 验证签名
-    const expectedSig = Buffer.from(
-      `${encoded}.${ADMIN_SESSION_SECRET}`
-    ).toString("base64").slice(0, 16);
+    // 验证签名 (使用 Edge 兼容的 base64)
+    const expectedSig = base64Encode(`${encoded}.${ADMIN_SESSION_SECRET}`).slice(0, 16);
 
     if (sig !== expectedSig) return false;
 
     // 解析 payload
-    const payload = Buffer.from(encoded, "base64").toString("utf-8");
+    const payload = base64Decode(encoded);
     const session = JSON.parse(payload);
 
     // 检查是否过期

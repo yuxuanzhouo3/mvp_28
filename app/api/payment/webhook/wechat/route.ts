@@ -1,5 +1,6 @@
 // app/api/payment/webhook/wechat/route.ts
 // 微信支付 Webhook 回调处理 (API v3)
+export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from "next/server";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider";
@@ -16,9 +17,6 @@ import {
   seedWalletForPlan,
   upgradeMonthlyQuota,
 } from "@/services/wallet";
-
-// WeChat Webhook 依赖 Node.js 运行时
-export const runtime = "nodejs";
 
 const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
 

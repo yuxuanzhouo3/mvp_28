@@ -1,5 +1,6 @@
 // app/api/payment/alipay/confirm/route.ts
 // 支付宝支付确认 API - 用于同步回调时主动确认支付状态并处理业务逻辑
+export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from "next/server";
 import { IS_DOMESTIC_VERSION } from "@/config";
@@ -15,8 +16,6 @@ import {
   upgradeMonthlyQuota,
 } from "@/services/wallet";
 import { isAfter } from "date-fns";
-
-export const runtime = "nodejs";
 
 const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
 

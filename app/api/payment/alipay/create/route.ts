@@ -1,4 +1,6 @@
 // app/api/payment/alipay/create/route.ts - 支付宝支付创建API（国内版专用）
+export const runtime = 'nodejs';
+
 import { NextRequest, NextResponse } from "next/server";
 import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
 import { pricingPlans, type PricingPlan } from "@/constants/pricing";

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 import { NextRequest, NextResponse } from "next/server";
 import { createPayPalOrder, paypalErrorResponse } from "@/lib/paypal";
 import { pricingPlans, type PricingPlan } from "@/constants/pricing";

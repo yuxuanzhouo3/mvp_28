@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 import { NextRequest, NextResponse } from "next/server";
 import { retrieveStripeSession, stripeErrorResponse } from "@/lib/stripe";
 import { addDays, isAfter } from "date-fns";

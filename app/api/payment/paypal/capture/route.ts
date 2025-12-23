@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 import { NextRequest, NextResponse } from "next/server";
 import { addDays, isAfter } from "date-fns";
 import { capturePayPalOrder, paypalErrorResponse } from "@/lib/paypal";

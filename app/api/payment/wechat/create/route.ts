@@ -1,5 +1,6 @@
 // app/api/payment/wechat/create/route.ts
 // 微信支付创建 API - 支持订阅和加油包（国内版专用）
+export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from "next/server";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider";
@@ -13,8 +14,6 @@ import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import { cookies } from "next/headers";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
 import { isAfter } from "date-fns";
-
-export const runtime = "nodejs";
 
 const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
 

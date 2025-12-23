@@ -1,10 +1,9 @@
 // app/api/payment/wechat/query/route.ts
 // 微信支付订单查询 API
+export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from "next/server";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider";
-
-export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   try {

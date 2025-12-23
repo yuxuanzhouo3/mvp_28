@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 import { NextRequest, NextResponse } from "next/server";
 import { createStripeCheckoutSession, stripeErrorResponse } from "@/lib/stripe";
 import { pricingPlans, type PricingPlan } from "@/constants/pricing";

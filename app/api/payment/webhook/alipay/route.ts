@@ -1,4 +1,6 @@
 // app/api/payment/webhook/alipay/route.ts - 支付宝 Webhook 处理
+export const runtime = 'nodejs';
+
 import { NextRequest, NextResponse } from "next/server";
 import * as crypto from "crypto";
 import { IS_DOMESTIC_VERSION } from "@/config";
@@ -13,9 +15,6 @@ import {
   seedWalletForPlan,
   upgradeMonthlyQuota,
 } from "@/services/wallet";
-
-// Alipay Webhook 依赖 Node.js 加密库
-export const runtime = "nodejs";
 
 const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
 

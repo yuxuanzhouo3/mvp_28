@@ -1,4 +1,4 @@
-# Privacy Policy (International Edition)
+# Privacy Policy (Global Edition)
 
 **Applicable Edition**: MornGPT Global Edition
 
@@ -137,118 +137,24 @@ We may request the following permissions to provide specific features. **All per
 
 ---
 
-## 3. Subscription Rules & Virtual Assets
+## 3. Payment & Privacy
 
-### 3.1 Subscription Plans
+### 3.1 Supported Payment Methods
 
-| Plan | Monthly Price | Annual Price (per month) | Daily External Model Calls | Monthly Image Quota | Monthly Video/Audio Quota |
-|:---:|:-------------:|:------------------------:|:--------------------------:|:-------------------:|:-------------------------:|
-| Free | Free | - | 10 | 30 | 5 |
-| Basic | $9.98 | $6.99 | 50 | 100 | 20 |
-| Pro | $39.98 | $27.99 | 200 | 500 | 100 |
-| Enterprise | $99.98 | $69.99 | 2000 | 1500 | 200 |
-
-> **Note**: The General Model (international edition uses `mistral-small-latest`) is unlimited for all users and does not consume daily call quota.
-
-### 3.2 Subscription Calculation Rules
-
-#### 3.2.1 Same-tier Renewal (Extending the same plan)
-
-When you renew the same subscription plan, the system automatically extends your expiration date:
-
-- **Monthly Renewal**: Extends by 1 calendar month from current expiration date
-- **Annual Renewal**: Extends by 12 calendar months from current expiration date
-- **Month-end Stickiness Rule**: If your billing date is the 31st, the system handles month differences intelligently
-  - Example: Jan 31 monthly renewal → expires Feb 28 (or 29)
-  - March renewal → expiration auto-adjusts back to Mar 31
-  - We guarantee your billing date won't permanently shift earlier due to month-length differences
-
-#### 3.2.2 Upgrading Subscription (Lower to Higher tier)
-
-When upgrading from a lower-tier to a higher-tier plan:
-
-1. **Calculate Remaining Value**: The system calculates remaining days of your current plan and prorates the value
-   - Remaining Value = Remaining Days × (Current Plan Monthly Price ÷ 30)
-2. **Value Conversion**: Remaining value is converted to days on the new plan
-   - Converted Days = Remaining Value ÷ (New Plan Monthly Price ÷ 30)
-3. **New Expiration Calculation**: New plan expires = Today + Converted Days + Purchased Period Days
-4. **Effective Time**: Upgrade takes effect immediately
-5. **Quota Handling**:
-   - You immediately receive the new plan's monthly quota limits
-   - Addon pack credits remain unaffected
-
-#### 3.2.3 Downgrading Subscription (Higher to Lower tier)
-
-When downgrading from a higher-tier to a lower-tier plan:
-
-1. **Delayed Effect**: Downgrade does NOT take effect immediately; it activates the day after your current plan expires
-2. **Continue Enjoying**: You continue enjoying all higher-tier benefits until current plan expiration
-3. **Quota Reset**: When downgrade activates, monthly quota resets to the new plan's limits
-4. **Pending Status**: The system records your downgrade intent and auto-executes upon expiration
-
-### 3.3 Quota Refresh Mechanism
-
-#### 3.3.1 Daily External Model Calls
-
-- **Refresh Time**: Automatically refreshes daily at 00:00 Beijing Time (UTC+8)
-- **Refresh Rule**: Daily used count resets to 0
-- **Applies To**: All external model calls (excludes the unlimited General Model)
-
-#### 3.3.2 Monthly Multimodal Quota (Image/Video/Audio)
-
-- **Refresh Time**: Refreshes on your personal billing anchor day (the date of your first subscription)
-- **Month-end Stickiness**: If your billing date is the 31st, the system handles it intelligently
-  - February billing date auto-adjusts to 28/29
-  - March billing date auto-adjusts back to 31
-- **Refresh Rule**: Monthly quota resets to your current plan's quota limits
-
-### 3.4 Quota Gas Packs (Additional Credits)
-
-| Tier | Price | Image Credits | Video/Audio Credits | Validity |
-|:---:|:-----:|:-------------:|:-------------------:|:--------:|
-| Starter | $3.98 | 30 | 5 | Permanent |
-| Standard | $9.98 | 100 | 20 | Permanent |
-| Premium | $29.98 | 300 | 60 | Permanent |
-
-**Deduction Policy**: FEFO (First Expiring, First Out)
-
-To maximize your benefits, the system strictly follows the "consume expiring credits first" principle:
-
-1. **First Priority: Monthly Subscription Quota** 🟢
-   - System prioritizes deducting from your plan's monthly quota
-   - Monthly quota is valid only for the current period and cannot carry over
-   - Unused monthly quota resets on your billing date
-
-2. **Second Priority: Addon Pack Credits** 🔵
-   - Only when monthly quota is exhausted (or you have no active subscription) will addon credits be used
-   - Addon pack credits are permanent and never expire
-
-**Addon Pack Special Rules**:
-- **Permanent Validity**: Unused credits remain in your account indefinitely
-- **Independent Usage**: Even if your subscription expires or is cancelled, you can still use addon credits
-- **Stacking Rule**: Multiple addon pack purchases accumulate directly
-- **Non-refundable**: Addon packs are digital products and cannot be refunded once purchased
-
----
-
-## 4. Payment & Privacy
-
-### 4.1 Supported Payment Methods
-
-#### 4.1.1 Stripe
+#### 3.1.1 Stripe
 - **Data Collected**: Order ID, payment time, payment amount
 - **Data NOT Collected**: We do not obtain your credit card number, CVV, or banking credentials
 - **Data Transmission**: Direct communication with Stripe servers via official Stripe SDK
 - **Security**: Stripe is PCI DSS Level 1 certified
 - **Privacy Policy**: See [Stripe Privacy Policy](https://stripe.com/privacy)
 
-#### 4.1.2 PayPal
+#### 3.1.2 PayPal
 - **Data Collected**: Order ID, payment time, payment amount
 - **Data NOT Collected**: We do not obtain your PayPal account credentials or linked payment details
 - **Data Transmission**: Direct communication with PayPal servers via official PayPal SDK
 - **Privacy Policy**: See [PayPal Privacy Policy](https://www.paypal.com/us/legalhub/privacy-full)
 
-### 4.2 Transaction Record Retention
+### 3.2 Transaction Record Retention
 We retain the following transaction information for after-sales service and financial compliance:
 - Unique order identifier
 - Payment provider order ID
@@ -256,30 +162,30 @@ We retain the following transaction information for after-sales service and fina
 - Payment status and completion time
 - Purchased product type (subscription/addon pack)
 
-### 4.3 Currency Handling
+### 3.3 Currency Handling
 - International edition prices are in USD
 - Automatic currency conversion may be applied by your payment provider
 - Exchange rates are determined by the payment provider at the time of transaction
 
 ---
 
-## 5. Advertising & Third-Party Services
+## 4. Advertising & Third-Party Services
 
-### 5.1 Advertising Display Rules
+### 4.1 Advertising Display Rules
 - **Ad Positions**: Top, bottom, left, right, sidebar, bottom-left, bottom-right
 - **Ad Types**: Image ads, video ads
 - **Ad Management**: You can choose whether to display ads in Settings
 
-### 5.2 Ad-Free Benefits for Subscribers
+### 4.2 Ad-Free Benefits for Subscribers
 - Basic/Pro/Enterprise subscribers can enable "Hide Ads" in Settings
 - When enabled, no advertisements will be displayed in the application
 
-### 5.3 Advertising Data Collection
+### 4.3 Advertising Data Collection
 - Our advertising system is managed by our own servers
 - **We do NOT share your personal information with third-party advertisers**
 - Ad display is based on position parameters, NOT on your personal profile
 
-### 5.4 Third-Party Analytics
+### 4.4 Third-Party Analytics
 We may use analytics tools to understand how users interact with our service. These tools may collect:
 - Device type and operating system
 - Browser type and version
@@ -290,17 +196,17 @@ We may use analytics tools to understand how users interact with our service. Th
 
 ---
 
-## 6. Content Guidelines & Compliance
+## 5. Content Guidelines & Compliance
 
-### 6.1 AI-Generated Content Disclaimer
+### 5.1 AI-Generated Content Disclaimer
 > **IMPORTANT**: All AI-generated content (including text, images, code, etc.) is **for reference only** and does not constitute professional medical, legal, financial, or other professional advice. Users bear all responsibility for any consequences arising from the use of AI-generated content.
 
-### 6.2 External Model API Information
+### 5.2 External Model API Information
 - This application integrates multiple third-party AI model APIs (e.g., Mistral AI)
 - Data processing by external APIs follows each provider's privacy policy
 - **In general conversation mode, external API providers do NOT use your conversations for model training** (please refer to each provider's privacy policy for specifics)
 
-### 6.3 Prohibited Content
+### 5.3 Prohibited Content
 Do NOT send to AI or attempt to generate:
 - Illegal content under applicable laws
 - Pornographic, violent, or graphic content
@@ -315,13 +221,13 @@ Do NOT send to AI or attempt to generate:
 
 ---
 
-## 7. Chat History Management
+## 6. Chat History Management
 
-### 7.1 Chat History Storage
+### 6.1 Chat History Storage
 - **Logged-in Users**: Chat history is saved in cloud database, synced across devices
 - **Guest Users**: Chat history is only saved locally in the browser and may be lost when closed
 
-### 7.2 Difference Between Chat History and Expert Model Data
+### 6.2 Difference Between Chat History and Expert Model Data
 
 | Comparison | General Chat History | Expert Model Conversations |
 |:----------:|:--------------------:|:--------------------------:|
@@ -329,7 +235,7 @@ Do NOT send to AI or attempt to generate:
 | Data Usage | Not used for training | May be used for analysis |
 | Deletion Rights | Can delete | Contact support required |
 
-### 7.3 Context Message Limits
+### 6.3 Context Message Limits
 To ensure service quality, context message limits vary by plan:
 - Free: Last 10 messages
 - Basic: Last 50 messages
@@ -340,20 +246,20 @@ To ensure service quality, context message limits vary by plan:
 
 ---
 
-## 8. Client Downloads
+## 7. Client Downloads
 
-### 8.1 Supported Platforms
+### 7.1 Supported Platforms
 - **Android**: Direct APK download and installation
 - **iOS**: Download from App Store
 - **Windows**: EXE installer download
 - **Mac**: DMG installer download
 
-### 8.2 Download Security
+### 7.2 Download Security
 - All download links are provided by official servers
 - Installation packages are digitally signed
 - Do NOT download from unofficial sources to avoid security risks
 
-### 8.3 Application Permissions (Clients)
+### 7.3 Application Permissions (Clients)
 Clients on different platforms may request the following permissions:
 - **Network Access**: For server communication
 - **Storage Permission**: For saving generated files
@@ -363,12 +269,12 @@ Clients on different platforms may request the following permissions:
 
 ---
 
-## 9. Account Deletion
+## 8. Account Deletion
 
-### 9.1 Deletion Entry Point
+### 8.1 Deletion Entry Point
 Settings → Privacy & Security → Danger Zone → Delete Account
 
-### 9.2 Deletion Warning
+### 8.2 Deletion Warning
 > **DANGER WARNING**: Account deletion is an **irreversible** operation. Once deleted, the following data will be **permanently erased and CANNOT be recovered**:
 > - Basic account information (email, name, avatar)
 > - All chat history and conversation records
@@ -378,7 +284,7 @@ Settings → Privacy & Security → Danger Zone → Delete Account
 > - Personal settings and preferences
 > - All uploaded images, videos, and audio files
 
-### 9.3 Deletion Process
+### 8.3 Deletion Process
 1. Navigate to "Privacy & Security" settings
 2. Click "Delete Account" button
 3. System displays confirmation dialog clearly stating irreversibility
@@ -387,27 +293,27 @@ Settings → Privacy & Security → Danger Zone → Delete Account
 
 ---
 
-## 10. Your Rights
+## 9. Your Rights
 
-### 10.1 Right of Access (GDPR Article 15)
+### 9.1 Right of Access (GDPR Article 15)
 You have the right to access the personal information we have collected about you.
 
-### 10.2 Right to Rectification (GDPR Article 16)
+### 9.2 Right to Rectification (GDPR Article 16)
 You have the right to correct your personal information (e.g., name, avatar).
 
-### 10.3 Right to Erasure (GDPR Article 17)
-You have the right to request deletion of your personal information (see Section 9).
+### 9.3 Right to Erasure (GDPR Article 17)
+You have the right to request deletion of your personal information (see Section 8).
 
-### 10.4 Right to Data Portability (GDPR Article 20)
+### 9.4 Right to Data Portability (GDPR Article 20)
 You can export your personal data in the "Privacy & Security" settings.
 
-### 10.5 Right to Withdraw Consent (GDPR Article 7)
+### 9.5 Right to Withdraw Consent (GDPR Article 7)
 You may withdraw consent for non-essential permissions (e.g., location) at any time.
 
-### 10.6 Right to Object (GDPR Article 21)
+### 9.6 Right to Object (GDPR Article 21)
 You have the right to object to certain data processing activities.
 
-### 10.7 CCPA Rights (California Residents)
+### 9.7 CCPA Rights (California Residents)
 If you are a California resident, you have additional rights under the California Consumer Privacy Act (CCPA):
 - Right to know what personal information is collected
 - Right to know whether personal information is sold or disclosed
@@ -418,7 +324,7 @@ If you are a California resident, you have additional rights under the Californi
 
 ---
 
-## 11. International Data Transfers
+## 10. International Data Transfers
 
 Your data may be transferred to and processed in countries outside your country of residence. We ensure appropriate safeguards are in place, including:
 - Standard Contractual Clauses (SCCs) approved by the European Commission
@@ -426,13 +332,13 @@ Your data may be transferred to and processed in countries outside your country 
 
 ---
 
-## 12. Children's Privacy
+## 11. Children's Privacy
 
 Our service is NOT directed to children under the age of 13 (or 16 in the EU). If you are a guardian and discover that your child has provided us with personal information, please contact us for deletion.
 
 ---
 
-## 13. Data Security
+## 12. Data Security
 
 We implement appropriate technical and organizational measures to protect your personal data, including:
 - Encryption of data in transit (TLS/SSL)
@@ -444,7 +350,7 @@ However, no system is completely secure. We cannot guarantee absolute security o
 
 ---
 
-## 14. Data Retention
+## 13. Data Retention
 
 We retain your personal data only for as long as necessary:
 - **Account data**: Until you delete your account
@@ -454,13 +360,13 @@ We retain your personal data only for as long as necessary:
 
 ---
 
-## 15. Privacy Policy Updates
+## 14. Privacy Policy Updates
 
 We may update this Privacy Policy from time to time. Updated policies will be posted on this page. Significant changes will be communicated through in-app notifications or email.
 
 ---
 
-## 16. Contact Us
+## 15. Contact Us
 
 If you have any questions or suggestions about this Privacy Policy, please contact us:
 

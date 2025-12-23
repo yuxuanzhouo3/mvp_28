@@ -14,11 +14,18 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useLanguage } from "@/context/LanguageContext";
 import { DEFAULT_LANGUAGE } from "@/config";
 import { signInWithGoogle } from "@/actions/oauth";
+import { PrivacyPolicyContent } from "@/components/legal";
 
 export function LoginForm({
   className,
@@ -35,6 +42,8 @@ export function LoginForm({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [agreePrivacy, setAgreePrivacy] = useState(false);
+  const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
 
   const supabase = createClient();
 
@@ -143,7 +152,29 @@ export function LoginForm({
                 />
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
+
+              {/* 隐私条款确认 */}
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="agree-privacy"
+                  checked={agreePrivacy}
+                  onChange={(e) => setAgreePrivacy(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="agree-privacy" className="text-sm text-gray-600 dark:text-gray-400">
+                  {isZhText ? "我已阅读并同意" : "I have read and agree to the "}
+                  <button
+                    type="button"
+                    onClick={() => setShowPrivacyDialog(true)}
+                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
+                  >
+                    {isZhText ? "《隐私条款》" : "Privacy Policy"}
+                  </button>
+                </label>
+              </div>
+
+              <Button type="submit" className="w-full" disabled={isLoading || !agreePrivacy}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -160,7 +191,7 @@ export function LoginForm({
                   type="button"
                   variant="outline"
                   className="w-full"
-                  disabled={isLoading}
+                  disabled={isLoading || !agreePrivacy}
                   onClick={handleOAuthLogin}
                 >
                   {isLoading ? (
@@ -196,6 +227,45 @@ export function LoginForm({
           </form>
         </CardContent>
       </Card>
+
+      {/* 隐私条款弹窗 */}
+      <Dialog open={showPrivacyDialog} onOpenChange={setShowPrivacyDialog}>
+        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[85vh] overflow-hidden rounded-2xl p-0 border-0 shadow-2xl">
+          {/* 装饰性背景 */}
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 via-white to-purple-50/50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900" />
+          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-400/10 to-purple-500/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-br from-emerald-400/10 to-teal-500/10 rounded-full blur-3xl" />
+
+          <div className="relative z-10 flex flex-col h-full max-h-[85vh]">
+            <DialogHeader className="px-6 py-4 border-b border-gray-200/80 dark:border-gray-700/80 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm flex-shrink-0">
+              <DialogTitle className="flex items-center gap-3 text-lg font-bold text-gray-900 dark:text-white">
+                <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl shadow-lg shadow-blue-500/25">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                </div>
+                <span>{isZhText ? "隐私条款" : "Privacy Policy"}</span>
+              </DialogTitle>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-12">
+                {isZhText ? "请仔细阅读以下条款" : "Please read the following terms carefully"}
+              </p>
+            </DialogHeader>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4 bg-white/50 dark:bg-slate-800/50">
+              <PrivacyPolicyContent isDomestic={isDomestic} />
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200/80 dark:border-gray-700/80 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm flex-shrink-0">
+              <button
+                onClick={() => setShowPrivacyDialog(false)}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-medium rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-300 hover:-translate-y-0.5"
+              >
+                {isZhText ? "我已阅读" : "I have read"}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

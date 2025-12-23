@@ -11,6 +11,7 @@ import { Crown, Check, Zap, CreditCard, Sparkles, Star, Shield, Rocket, Loader2 
 import { useLanguage } from "@/context/LanguageContext";
 import { pricingPlans as pricingPlansRaw } from "@/constants/pricing";
 import { AddonPackageTab } from "./AddonPackageTab";
+import { SubscriptionTermsContent } from "@/components/legal";
 
 type UpgradeTabType = "subscription" | "addon";
 
@@ -115,7 +116,6 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
   );
   const [isProcessing, setIsProcessing] = useState(false);
   const [agreeRules, setAgreeRules] = useState(false);
-  const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   // 显示层：国内版一律用人民币展示（PayPal 也显示人民币），国际版用美元
   const useRmb = isDomesticVersion;
@@ -609,11 +609,7 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
                             className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:bg-transparent dark:border-gray-600"
                           />
                           <span className="leading-snug flex flex-wrap items-center gap-1">
-                            {tr("I have read and agree to", "我已阅读并同意")}
-                            <button type="button" className="underline hover:text-indigo-600 dark:hover:text-indigo-400" onClick={() => setShowPrivacy(true)}>
-                              {tr("Privacy Policy", "《隐私条款》")}
-                            </button>
-                            {tr("and", "和")}
+                            {tr("I have read and agree to the", "我已阅读并同意")}
                             <button type="button" className="underline hover:text-indigo-600 dark:hover:text-indigo-400" onClick={() => setShowTerms(true)}>
                               {tr("Subscription Terms", "《订阅规则》")}
                             </button>
@@ -672,116 +668,47 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* 隐私条款弹窗 */}
-      <Dialog open={showPrivacy} onOpenChange={setShowPrivacy}>
-        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl p-4 sm:p-6">
-          <DialogHeader className="pb-3 border-b border-gray-200 dark:border-gray-700">
-            <DialogTitle className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">{tr("Privacy Policy", "隐私条款")}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 sm:space-y-4 text-xs sm:text-sm text-gray-700 dark:text-gray-200 pt-3">
-        <p className="font-semibold">🔒 隐私政策 (Privacy Policy)</p>
-        <p>生效日期：2025年12月01日</p>
-        <p>尊重并保护您的隐私是 MornGPT（以下简称"我们"）的核心原则。</p>
-
-        <div className="space-y-1">
-          <p className="font-semibold">中文（摘要）</p>
-          <ul className="list-disc list-inside space-y-1">
-            <li>双轨存储：大陆用户在 CloudBase（境内），国际用户在 Supabase（境外）。</li>
-            <li>支付安全：不存储完整卡号/口令，支付由 Stripe/微信/支付宝/PayPal 处理。</li>
-            <li>AI 交互：提示词/内容仅用于生成，不用于训练公共模型。</li>
-            <li>IP 合规：基于 IP 做区域合规（如受限地区拦截）。</li>
-            <li>数据权利：可随时导出、更正或删除账户数据。</li>
-          </ul>
-        </div>
-
-        <div className="space-y-1">
-          <p className="font-semibold">English (Summary)</p>
-          <ul className="list-disc list-inside space-y-1">
-            <li>Dual storage: CN users on CloudBase (mainland), Intl users on Supabase (abroad).</li>
-            <li>Payment safety: No full card data stored; Stripe/WeChat/Alipay/PayPal process payments.</li>
-            <li>AI usage: Prompts/content go to model providers for generation, not for public model training.</li>
-            <li>IP compliance: Region checks (e.g., restricted/GDPR areas) may block access.</li>
-            <li>Your rights: Export, correct, or delete your data anytime.</li>
-          </ul>
-        </div>
-
-        <div className="space-y-1">
-          <p className="font-semibold">简要说明</p>
-          <ul className="list-disc list-inside space-y-1">
-            <li>收集：账户信息、订阅/支付流水、配额使用、对话/提示词、IP 与设备信息。</li>
-            <li>用途：提供服务、计费续费、合规风控、通知与客服支持。</li>
-            <li>共享：仅在必要时与基础设施（Supabase/CloudBase/Vercel）、支付方、AI 模型方、法律要求的场景共享。</li>
-            <li>存储与删除：账户活跃期间保留；注销后删除账户与历史，对账/税务流水按法规保留。</li>
-            <li>安全：全程 TLS，数据库行级安全与权限控制，防止越权与双花。</li>
-            <li>未成年人：不面向 18 岁以下用户，如误收集将删除。</li>
-            <li>Cookies：用于会话、偏好、匿名统计。</li>
-            <li>更新与联系：重大变更会通知；问题或数据请求请联系 mornscience@gmail.com。</li>
-          </ul>
-        </div>
-      </div>
-    </DialogContent>
-  </Dialog>
-
       {/* 订阅规则弹窗 */}
       <Dialog open={showTerms} onOpenChange={setShowTerms}>
-        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl p-4 sm:p-6">
-          <DialogHeader className="pb-3 border-b border-gray-200 dark:border-gray-700">
-            <DialogTitle className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">{tr("Subscription Terms", "订阅规则")}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 sm:space-y-4 text-xs sm:text-sm text-gray-700 dark:text-gray-200 pt-3">
-        <p className="font-semibold">📜 订阅会员与加油包使用规则</p>
+        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[85vh] overflow-hidden rounded-2xl p-0 border-0 shadow-2xl">
+          {/* 装饰性背景 */}
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900" />
+          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-emerald-400/10 to-teal-500/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-br from-blue-400/10 to-cyan-500/10 rounded-full blur-3xl" />
 
-        <div className="space-y-2">
-          <p className="font-semibold">📅 订阅周期说明 (Subscription Cycle)</p>
-          <p>您的订阅服务按<strong>"自然月"</strong>周期计算，而非简单的 30 天。系统会根据您首次开通的日期锁定您的"专属账单日"。</p>
-          <p>账单日锁定：如果您在 15 号开通，后续每月的 15 号为您的扣费和额度刷新日。</p>
-          <p>月末自动对齐：</p>
-          <p>若您在 1月31日 订阅，因 2 月无 31 日，下个账单日将自动调整为 2月28日（或29日）。</p>
-          <p>再下个月，账单日将自动回调至 3月31日。我们承诺不会因大小月差异导致您的账单日永久提前。</p>
-        </div>
+          <div className="relative z-10 flex flex-col h-full max-h-[85vh]">
+            <DialogHeader className="px-6 py-4 border-b border-gray-200/80 dark:border-gray-700/80 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm flex-shrink-0">
+              <DialogTitle className="flex items-center gap-3 text-lg font-bold text-gray-900 dark:text-white">
+                <div className="p-2 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl shadow-lg shadow-emerald-500/25">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <span>{tr("Subscription Terms", "订阅规则")}</span>
+              </DialogTitle>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-12">
+                {tr("Please read the following subscription terms carefully", "请仔细阅读以下订阅规则")}
+              </p>
+            </DialogHeader>
 
-        <div className="space-y-2">
-          <p className="font-semibold">⚡ 额度扣除顺序 (Deduction Priority)</p>
-          <p>为了最大化保障您的权益，系统严格遵循 "优先消耗限时额度" 的原则：</p>
-          <p>第一优先级：月度订阅额度 🟢</p>
-          <p>系统会优先扣除您套餐内包含的月度额度。</p>
-          <p>注：月度额度当期有效，不可结转至下月。账单日刷新时，未用完的月度额度将重置。</p>
-          <p>第二优先级：加油包额度 🔵</p>
-          <p>仅当您的月度额度全部耗尽（或您当前未订阅任何套餐）时，系统才会开始扣除加油包额度。</p>
-          <p>加油包额度永久有效，直到用完为止，不会随时间过期。</p>
-        </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4 bg-white/50 dark:bg-slate-800/50">
+              <SubscriptionTermsContent isDomestic={isDomesticVersion} />
+            </div>
 
-        <div className="space-y-2">
-          <p className="font-semibold">🔋 加油包特殊规则 (Add-on Rules)</p>
-          <p>加油包是独立于订阅套餐的额外用量补充包。</p>
-          <p>永久有效期：购买后若未使用，额度将永久保留在您的账户中。</p>
-          <p>独立使用：即使您的月度订阅已过期或取消，您依然可以单独使用剩余的加油包额度。</p>
-          <p>叠加规则：多次购买加油包，额度将直接累加。</p>
-          <p>不可退款：加油包属于数字化虚拟商品，一经售出（或开始消耗），不支持退款。</p>
-        </div>
-
-        <div className="space-y-2">
-          <p className="font-semibold">🔄 变更与续费 (Change & Renewal)</p>
-          <p>升级套餐 (Upgrade)：</p>
-          <p>升级立即生效。</p>
-          <p>账单日重置：升级当天将成为您新的账单日。</p>
-          <p>额度处理：您将立即获得新套餐的完整月度额度，旧套餐未用完的月度额度将被覆盖（加油包额度不受影响，继续保留）。</p>
-          <p>续费 (Renewal)：</p>
-          <p>续费成功后，您的账单日保持不变。</p>
-          <p>月度额度将在账单日自动重置为满额。</p>
-          <p>过期/取消 (Expiration)：</p>
-          <p>订阅过期后，未用完的月度额度将失效并清零。</p>
-          <p>账户内的加油包额度依然保留，可继续使用。</p>
-        </div>
-
-        <div className="space-y-2">
-          <p className="font-semibold">🚫 异常与限制</p>
-          <p>扣款失败：若自动续费失败，系统将暂停您的订阅权益（月度额度归零），直到重新支付成功。期间您仍可消耗加油包额度。</p>
-          <p>合规检测：系统会对访问 IP 进行合规检测，若检测到异常区域（如部分受限地区），可能会限制服务的连接。</p>
-        </div>
-      </div>
-    </DialogContent>
-  </Dialog>
+            <div className="px-6 py-4 border-t border-gray-200/80 dark:border-gray-700/80 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm flex-shrink-0">
+              <button
+                onClick={() => {
+                  setShowTerms(false);
+                  setAgreeRules(true);
+                }}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-medium rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 hover:-translate-y-0.5"
+              >
+                {tr("I have read and agree", "我已阅读并同意")}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

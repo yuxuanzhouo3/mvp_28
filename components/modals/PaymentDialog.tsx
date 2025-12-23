@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { CreditCard, MessageSquare, Lock, Loader2 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
+import { SubscriptionTermsContent } from "@/components/legal";
 
 interface PricingPlan {
   name: string;
@@ -67,6 +68,8 @@ export function PaymentDialog({
   const isZh = currentLanguage === "zh";
   const useRmb = isDomesticVersion;
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showTermsDialog, setShowTermsDialog] = useState(false);
+  const [agreeTerms, setAgreeTerms] = useState(false);
   const proBasicLimit = (() => {
     const raw = process.env.NEXT_PUBLIC_PRO_BASIC_SUBSCRIPTION_LIMIT || "1";
     const n = parseInt(raw, 10);
@@ -564,18 +567,26 @@ export function PaymentDialog({
                   </div>
                 )}
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-start gap-2">
                   <input
                     type="checkbox"
                     id="terms"
-                    required
-                    className="rounded"
+                    checked={agreeTerms}
+                    onChange={(e) => setAgreeTerms(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                   <Label
                     htmlFor="terms"
-                    className="text-xs text-gray-700 dark:text-gray-300"
+                    className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed"
                   >
-                    {isZh ? "我同意服务条款和隐私政策" : "I agree to the Terms of Service and Privacy Policy"}
+                    {isZh ? "我已阅读并同意" : "I have read and agree to the "}
+                    <button
+                      type="button"
+                      onClick={() => setShowTermsDialog(true)}
+                      className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline font-medium"
+                    >
+                      {isZh ? "《订阅规则》" : "Subscription Terms"}
+                    </button>
                   </Label>
                 </div>
 
@@ -591,8 +602,8 @@ export function PaymentDialog({
                   </Button>
                   <Button
                     type="submit"
-                    disabled={isProcessing}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                    disabled={isProcessing || !agreeTerms}
+                    className={`flex-1 bg-blue-600 hover:bg-blue-700 text-white transition-all ${!agreeTerms ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {isProcessing ? (
                       <>
@@ -619,6 +630,48 @@ export function PaymentDialog({
           )
         )}
       </DialogContent>
+
+      {/* 订阅规则弹窗 */}
+      <Dialog open={showTermsDialog} onOpenChange={setShowTermsDialog}>
+        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[85vh] overflow-hidden rounded-2xl p-0 border-0 shadow-2xl">
+          {/* 装饰性背景 */}
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900" />
+          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-emerald-400/10 to-teal-500/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-br from-blue-400/10 to-cyan-500/10 rounded-full blur-3xl" />
+
+          <div className="relative z-10 flex flex-col h-full max-h-[85vh]">
+            <DialogHeader className="px-6 py-4 border-b border-gray-200/80 dark:border-gray-700/80 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm flex-shrink-0">
+              <DialogTitle className="flex items-center gap-3 text-lg font-bold text-gray-900 dark:text-white">
+                <div className="p-2 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl shadow-lg shadow-emerald-500/25">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <span>{isZh ? "订阅规则" : "Subscription Terms"}</span>
+              </DialogTitle>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-12">
+                {isZh ? "请仔细阅读以下订阅规则" : "Please read the following subscription terms carefully"}
+              </p>
+            </DialogHeader>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4 bg-white/50 dark:bg-slate-800/50">
+              <SubscriptionTermsContent isDomestic={isDomesticVersion} />
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200/80 dark:border-gray-700/80 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm flex-shrink-0">
+              <button
+                onClick={() => {
+                  setShowTermsDialog(false);
+                  setAgreeTerms(true);
+                }}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-medium rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 hover:-translate-y-0.5"
+              >
+                {isZh ? "我已阅读并同意" : "I have read and agree"}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

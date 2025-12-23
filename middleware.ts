@@ -426,8 +426,10 @@ function getClientIP(request: NextRequest): string | null {
   }
 
   // 4. Next.js 提供的 request.ip（在 Vercel Edge/Node 上可获取真实客户端 IP）
-  if (request.ip && isValidIP(request.ip)) {
-    return request.ip;
+  // 注意：request.ip 是 Vercel 平台扩展，标准类型定义中没有，需要使用类型断言
+  const vercelIp = (request as unknown as { ip?: string }).ip;
+  if (vercelIp && isValidIP(vercelIp)) {
+    return vercelIp;
   }
 
   return null;

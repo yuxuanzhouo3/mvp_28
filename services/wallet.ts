@@ -327,6 +327,16 @@ export async function seedWalletForPlan(
   const updatePayload: Record<string, any> = { updatedAt: nowIso };
   const nextWallet: UserWallet = { ...wallet, billing_cycle_anchor: anchorDay };
 
+  // 检测 plan 变更，如果变更则重置日额度
+  const walletPlanLower = (wallet.daily_external_plan || "").toLowerCase();
+  const isPlanChanged = !!walletPlanLower && walletPlanLower !== effectivePlanLower;
+  if (isPlanChanged || options?.forceReset) {
+    nextWallet.daily_external_used = 0;
+    nextWallet.daily_external_day = getTodayString();
+    nextWallet.daily_external_plan = effectivePlanLower;
+    needUpdate = true;
+  }
+
   if (options?.expired) {
     nextWallet.monthly_image_balance = 0;
     nextWallet.monthly_video_balance = 0;
@@ -356,6 +366,16 @@ export async function seedWalletForPlan(
     updatePayload["wallet.monthly_video_balance"] = nextWallet.monthly_video_balance;
     updatePayload["wallet.monthly_reset_at"] = nextWallet.monthly_reset_at;
     updatePayload["wallet.billing_cycle_anchor"] = nextWallet.billing_cycle_anchor;
+    // 日额度重置（plan 变更或 forceReset 时）
+    if (nextWallet.daily_external_used !== undefined) {
+      updatePayload["wallet.daily_external_used"] = nextWallet.daily_external_used;
+    }
+    if (nextWallet.daily_external_day !== undefined) {
+      updatePayload["wallet.daily_external_day"] = nextWallet.daily_external_day;
+    }
+    if (nextWallet.daily_external_plan !== undefined) {
+      updatePayload["wallet.daily_external_plan"] = nextWallet.daily_external_plan;
+    }
   } else if (nextWallet.billing_cycle_anchor !== wallet.billing_cycle_anchor) {
     // 锚点补录
     updatePayload["wallet.billing_cycle_anchor"] = nextWallet.billing_cycle_anchor;

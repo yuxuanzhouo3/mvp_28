@@ -553,10 +553,18 @@ export async function seedSupabaseWalletForPlan(
       updatePayload.monthly_video_balance = baseLimits.videoLimit;
       updatePayload.monthly_reset_at = nowIso;
       updatePayload.billing_cycle_anchor = wallet.billing_cycle_anchor ?? getBeijingYMD(now).day;
+      // 重置日额度（降级后立即生效新套餐的日额度）
+      updatePayload.daily_external_used = 0;
+      updatePayload.daily_external_day = getTodayString();
+      updatePayload.daily_external_plan = "free";
     } else {
       // 升级/变更 -> 重置为新套餐额度，锚点仅在 forceReset 时改为今天
       updatePayload.monthly_image_balance = baseLimits.imageLimit;
       updatePayload.monthly_video_balance = baseLimits.videoLimit;
+      // 重置日额度（升级后立即生效新套餐的日额度）
+      updatePayload.daily_external_used = 0;
+      updatePayload.daily_external_day = getTodayString();
+      updatePayload.daily_external_plan = effectivePlan;
       if (options?.forceReset) {
         updatePayload.billing_cycle_anchor = getBeijingYMD(now).day;
         updatePayload.monthly_reset_at = nowIso;

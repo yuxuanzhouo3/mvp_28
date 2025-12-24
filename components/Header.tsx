@@ -183,7 +183,8 @@ export default function Header({
     !isProUserLimited &&
     !isEnterpriseUser &&
     (planLower === "" || planLower === "free");
-  const canCloseAdsForUpsell = !appUser?.isPaid;
+  // 所有用户都可以关闭广告，但只有免费用户会看到升级弹窗
+  const shouldShowUpgradeDialogOnAdClose = !appUser?.isPaid;
 
   const quotaText = isUnlimited ? "∞/∞" : null;
   // 实时钱包（用于显示加油包最新额度）
@@ -667,9 +668,9 @@ export default function Header({
               <AdBanner
                 position="top"
                 isDomestic={isDomestic}
-                showCloseButton={canCloseAdsForUpsell}
+                showCloseButton={true}
                 onClose={() => {
-                  if (canCloseAdsForUpsell) {
+                  if (shouldShowUpgradeDialogOnAdClose) {
                     setShowUpgradeDialog(true);
                   }
                 }}

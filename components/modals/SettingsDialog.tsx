@@ -154,20 +154,20 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
           <div className="flex flex-col space-y-2">
             {/* Account Section - Outside */}
             <div className="bg-white dark:bg-[#40414f] rounded-lg p-3 border border-gray-100 dark:border-[#565869] shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-shrink-0 min-w-0 flex-1">
                   <Label className="text-sm text-gray-700 dark:text-gray-300">
                     {t("account")}
                   </Label>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                     {t("profileSubtitle")}
                   </p>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-900 dark:text-[#ececf1]">
+                <div className="flex items-center space-x-2 flex-shrink-0">
+                  <span className="text-sm text-gray-900 dark:text-[#ececf1] truncate max-w-[120px] sm:max-w-[180px]" title={appUser?.email}>
                     {appUser?.email}
                   </span>
-                  <div className="w-4 h-4 bg-gray-200 dark:bg-gray-600 rounded-full flex items-center justify-center">
+                  <div className="w-4 h-4 bg-gray-200 dark:bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
                     <span className="text-sm font-bold text-gray-600 dark:text-gray-300">
                       {appUser?.isPaid
                         ? currentPlan === "Basic"
@@ -183,7 +183,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-6 h-6 p-0 bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700"
+                    className="w-6 h-6 p-0 bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 flex-shrink-0"
                     onClick={() => setShowUpgradeDialog(true)}
                   >
                     <Crown className="w-3 h-3" />

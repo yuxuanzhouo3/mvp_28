@@ -934,6 +934,13 @@ const loadMessagesForConversation = useCallback(
 
       // 优先尝试 CloudBase 会话（国内版或持有 cloud token）
       if (isDomestic || hasCloudToken) {
+        // 检测支付完成标记
+        const paymentCompleted = typeof window !== "undefined" && sessionStorage.getItem("payment_completed");
+        if (paymentCompleted) {
+          console.log("[syncSession] Domestic: Payment completed detected");
+          sessionStorage.removeItem("payment_completed");
+        }
+
         const res = await fetch("/api/auth/me", { credentials: "include" });
         if (!mounted) return;
         if (res.ok) {
@@ -1008,6 +1015,17 @@ const loadMessagesForConversation = useCallback(
               localStorage.setItem("morngpt_current_plan_exp", mappedUser.planExp);
             }
           }
+
+          // 支付完成后，立即触发额度刷新事件，确保所有配额相关组件更新
+          if (paymentCompleted) {
+            console.log("[syncSession] Domestic: Dispatching quota:refresh after payment completion");
+            setTimeout(() => {
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(new Event("quota:refresh"));
+              }
+            }, 100);
+          }
+
           void refreshQuota(mappedUser);
           void loadConversations(mappedUser);
           return;
@@ -1126,6 +1144,18 @@ const loadMessagesForConversation = useCallback(
         } else if (mappedUser.isPro) {
           setCurrentPlan("Pro");
         }
+
+        // 支付完成后，立即触发额度刷新事件，确保所有配额相关组件更新
+        if (paymentCompleted) {
+          console.log("[syncSession] Dispatching quota:refresh after payment completion");
+          // 延迟一小段时间确保状态更新完成后再刷新
+          setTimeout(() => {
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new Event("quota:refresh"));
+            }
+          }, 100);
+        }
+
         void loadConversations(mappedUser);
       } else {
         setAppUser(null);

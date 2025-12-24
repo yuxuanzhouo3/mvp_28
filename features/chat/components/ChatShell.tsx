@@ -22,7 +22,8 @@ function ChatShell() {
 
   // 获取用户信息
   const appUser = sidebarProps?.appUser;
-  const canCloseAdsForUpsell = !appUser?.isPaid;
+  // 所有用户都可以关闭广告，但只有免费用户会看到升级弹窗
+  const shouldShowUpgradeDialogOnAdClose = !appUser?.isPaid;
 
   // 从 sidebarProps 获取全局广告显示状态（仅控制侧边栏以外的广告临时隐藏）
   const showGlobalAds = sidebarProps?.showGlobalAds ?? true;
@@ -64,9 +65,9 @@ function ChatShell() {
   // 最终是否显示广告：shouldShowAds && showGlobalAds（Free用户关闭单个广告时临时隐藏）
   const displayAds = shouldShowAds && showGlobalAds;
 
-  // 广告关闭时显示升级弹窗（仅Free用户）
+  // 广告关闭时显示升级弹窗（仅Free用户会看到升级弹窗，付费用户只是关闭广告）
   const handleAdClose = () => {
-    if (canCloseAdsForUpsell) {
+    if (shouldShowUpgradeDialogOnAdClose) {
       modalProps?.setShowUpgradeDialog?.(true);
     }
   };
@@ -113,7 +114,7 @@ function ChatShell() {
                 <AdBanner
                   position="left"
                   isDomestic={isDomestic}
-                  showCloseButton={canCloseAdsForUpsell}
+                  showCloseButton={true}
                   onClose={handleAdClose}
                   className="rounded-xl overflow-hidden shadow-md w-full"
                 />
@@ -131,7 +132,7 @@ function ChatShell() {
                 <AdBanner
                   position="right"
                   isDomestic={isDomestic}
-                  showCloseButton={canCloseAdsForUpsell}
+                  showCloseButton={true}
                   onClose={handleAdClose}
                   className="rounded-xl overflow-hidden shadow-md w-full"
                 />
@@ -147,7 +148,7 @@ function ChatShell() {
                 <AdBanner
                   position="bottom-left"
                   isDomestic={isDomestic}
-                  showCloseButton={canCloseAdsForUpsell}
+                  showCloseButton={true}
                   onClose={handleAdClose}
                   className="rounded-xl overflow-hidden shadow-md w-full"
                 />
@@ -158,7 +159,7 @@ function ChatShell() {
                 <AdBanner
                   position="bottom"
                   isDomestic={isDomestic}
-                  showCloseButton={canCloseAdsForUpsell}
+                  showCloseButton={true}
                   onClose={handleAdClose}
                   className="rounded-xl overflow-hidden shadow-sm"
                 />
@@ -169,7 +170,7 @@ function ChatShell() {
                 <AdBanner
                   position="bottom-right"
                   isDomestic={isDomestic}
-                  showCloseButton={canCloseAdsForUpsell}
+                  showCloseButton={true}
                   onClose={handleAdClose}
                   className="rounded-xl overflow-hidden shadow-md w-full"
                 />

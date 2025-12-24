@@ -20,8 +20,8 @@ export default async function AdminLayout({
         {/* 侧边栏 */}
         <AdminSidebar username={session.username} />
 
-        {/* 主内容区 */}
-        <main className="flex-1 ml-64 p-8">{children}</main>
+        {/* 主内容区 - 移动端顶部留出导航栏空间，桌面端左侧留出侧边栏空间 */}
+        <main className="flex-1 w-full mt-14 md:mt-0 md:ml-64 p-4 md:p-8">{children}</main>
       </div>
     </div>
   );

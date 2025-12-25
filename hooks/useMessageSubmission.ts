@@ -59,6 +59,7 @@ export const useMessageSubmission = (
   consumeFreeQuota?: () => boolean,
   refreshQuota?: () => void,
   openUpgrade?: () => void,
+  allowGuestSubmit?: boolean, // 允许移动端访客发送消息（跳过登录检查）
 ) => {
   const [forceUpdate, setForceUpdate] = useState(0);
   const supabase = useMemo(() => supabaseClient || createClient(), [supabaseClient]);
@@ -130,18 +131,24 @@ export const useMessageSubmission = (
       return;
     }
 
-    // Require login
-    if (!appUser) {
+    // Require login（如果 allowGuestSubmit 为 true 则跳过登录检查）
+    if (!appUser && !allowGuestSubmit) {
       onRequireAuth?.();
       releaseLock();
       return;
     }
 
+    // 调试日志：移动端访客模式
+    if (allowGuestSubmit) {
+      console.log("[useMessageSubmission] Guest mode enabled, forcing General Model");
+    }
+
     // Determine language for request headers; keep UI language unchanged
     const detectedLanguage = selectedLanguage || detectLanguage(prompt);
     // Effective model (may switch to omni when uploading media)
-    let effectiveModelType = selectedModelType;
-    let effectiveSelectedModel = selectedModel;
+    // 移动端访客模式强制使用 General Model
+    let effectiveModelType = allowGuestSubmit ? "general" : selectedModelType;
+    let effectiveSelectedModel = allowGuestSubmit ? GENERAL_MODEL_ID : selectedModel;
 
     // Prevent duplicate submissions
     if (isLoading) {
@@ -244,9 +251,10 @@ export const useMessageSubmission = (
     const currentChat = chatSessions.find((c) => c.id === currentChatId);
     let conversationId = currentChatId || "";
     const planLower = (appUser?.plan || "").toLowerCase?.() || "";
-    // 以“是否有有效订阅”为准：过期订阅按 Free 处理（与服务端 plan_exp 逻辑一致）
+    // 以"是否有有效订阅"为准：过期订阅按 Free 处理（与服务端 plan_exp 逻辑一致）
     const effectivePlanLower = appUser?.isPaid ? planLower : "free";
-    const isFreeUser = effectivePlanLower === "free";
+    // 移动端访客模式也视为 Free 用户（使用本地对话，不落库）
+    const isFreeUser = effectivePlanLower === "free" || allowGuestSubmit;
 
     // 如果已有对话锁定为文字模型，阻止媒体上传；新建/未锁定则自动切换到 Qwen3-Omni-Flash
     if (hasMediaUpload) {
@@ -732,6 +740,9 @@ export const useMessageSubmission = (
           images: sendImages?.length || 0,
           videos: sendVideos?.length || 0,
           historyCount: historyForSend.length,
+          allowGuestSubmit,
+          isFreeUser,
+          conversationId,
         });
 
         try {
@@ -909,7 +920,9 @@ export const useMessageSubmission = (
               isStreamingComplete = true;
             },
             // signal for aborting
-            controller.signal
+            controller.signal,
+            // isMobileGuest flag for domestic guest mode
+            allowGuestSubmit
           );
 
           // Wait for streaming to complete

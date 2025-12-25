@@ -34,6 +34,7 @@ interface AuthDialogProps {
   handleAuth: (e: React.FormEvent) => void;
   handleGoogleAuth: () => void;
   handleWechatAuth?: () => void;
+  isMobile?: boolean; // 移动端标识，用于隐藏微信登录按钮
 }
 
 export const AuthDialog: React.FC<AuthDialogProps> = ({
@@ -48,10 +49,14 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
   handleAuth,
   handleGoogleAuth,
   handleWechatAuth,
+  isMobile = false,
 }) => {
   const { currentLanguage, isDomesticVersion } = useLanguage();
   const isZh = currentLanguage === "zh";
   const isDomestic = isDomesticVersion;
+
+  // 国内版移动端隐藏微信登录按钮
+  const shouldShowWechatLogin = isDomestic && !isMobile;
 
   // 隐私条款确认状态
   const [agreePrivacy, setAgreePrivacy] = useState(false);
@@ -136,7 +141,7 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
 
           {authMode !== "reset" && (
             <>
-              {isDomestic ? (
+              {shouldShowWechatLogin ? (
                 <Button
                   onClick={handleWechatAuth}
                   disabled={!agreePrivacy}
@@ -150,7 +155,7 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
                   </svg>
                   <span className="font-medium">{isZh ? "使用微信登录" : "Continue with WeChat"}</span>
                 </Button>
-              ) : (
+              ) : !isDomestic ? (
                 <Button
                   onClick={handleGoogleAuth}
                   variant="outline"
@@ -177,7 +182,7 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
                   </svg>
                   <span className="font-medium">Continue with Google</span>
                 </Button>
-              )}
+              ) : null}
             </>
           )}
 

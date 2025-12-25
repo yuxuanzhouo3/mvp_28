@@ -91,6 +91,7 @@ import {
   useMessageSubmission,
   useVoiceRecording,
   useCamera,
+  useMobileGuestTrial,
 } from "@/hooks";
 
 // Import components
@@ -282,6 +283,7 @@ export default function ChatProvider({
   children: React.ReactNode;
 }) {
   const supabase = useMemo(() => createSupabaseClient(), []);
+
   // Use custom hooks for state management
   const chatState = useChatState();
   const uiState = useUIState();
@@ -554,6 +556,27 @@ export default function ChatProvider({
     isLoadingReleases,
     setIsLoadingReleases,
   } = uiState;
+
+  // 移动端检测
+  useEffect(() => {
+    const MOBILE_BREAKPOINT = 768;
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    };
+
+    // 初始检测
+    checkMobile();
+
+    // 监听窗口大小变化
+    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    const onChange = () => checkMobile();
+    mql.addEventListener("change", onChange);
+
+    return () => mql.removeEventListener("change", onChange);
+  }, [setIsMobile]);
+
+  // 移动端访客试用 Hook（仅在国内版移动端生效）
+  const mobileGuestTrial = useMobileGuestTrial(isMobile);
 
   // Listen for quota exceeded/warning events and show toast notifications
   useEffect(() => {
@@ -1163,7 +1186,11 @@ const loadMessagesForConversation = useCallback(
         setChatSessions([]);
         setMessages([]);
         setCurrentChatId("");
-        setShowAuthDialog(true);
+        // 国内版移动端不自动弹出登录弹窗，允许访客试用
+        const isMobileDevice = typeof window !== "undefined" && window.innerWidth < 768;
+        if (!(isDomestic && isMobileDevice)) {
+          setShowAuthDialog(true);
+        }
         setCurrentPlan(null);
         hasLoadedConversationsRef.current = false;
         loadConversationsPendingRef.current = false;
@@ -2136,6 +2163,7 @@ const loadMessagesForConversation = useCallback(
       consumeFreeQuota,
       refreshQuota,
       () => setShowUpgradeDialog(true),
+      mobileGuestTrial.isEnabled, // 移动端访客试用：允许跳过登录检查
     );
 
   // Guest session timeout management
@@ -4050,8 +4078,9 @@ const loadMessagesForConversation = useCallback(
     }
 
     // Virtualized list fallback: approximate scroll to the item position
+    // 移动端访客模式也使用 messages（与 chatSessions 一致）
     const list =
-      appUser && currentChatId
+      (appUser || mobileGuestTrial.isEnabled) && currentChatId
         ? messages
         : guestChatSessions.find((c) => c.id === currentChatId)?.messages || [];
     const targetIndex = list.findIndex((m) => m.id === messageId);
@@ -4457,15 +4486,77 @@ const loadMessagesForConversation = useCallback(
 
   // Handle message submission
   const handleSubmit = useCallback(async () => {
+    // 调试日志
+    console.log("[ChatProvider.handleSubmit] called", {
+      hasAppUser: !!appUser,
+      mobileGuestEnabled: mobileGuestTrial.isEnabled,
+      hasTrialRemaining: mobileGuestTrial.hasTrialRemaining(),
+      remainingTrials: mobileGuestTrial.getRemainingTrials(),
+      selectedModelType,
+      prompt: prompt?.substring(0, 50),
+    });
+
+    // 移动端访客试用逻辑（仅国内版移动端生效）
+    if (!appUser && mobileGuestTrial.isEnabled) {
+      // 检查是否还有试用次数
+      if (mobileGuestTrial.hasTrialRemaining()) {
+        console.log("[ChatProvider.handleSubmit] Guest mode: proceeding with trial");
+        // 强制使用 General Model
+        if (selectedModelType !== "general") {
+          setSelectedModelType("general");
+        }
+        // 消耗一次试用次数
+        mobileGuestTrial.consumeTrial();
+        // 继续发送消息
+        await handleMessageSubmit();
+
+        // 检查是否用完试用次数，提示用户
+        const remaining = mobileGuestTrial.getRemainingTrials();
+        if (remaining <= 0) {
+          // 试用次数用完，延迟弹出登录弹窗
+          setTimeout(() => {
+            toast.info(
+              isZh
+                ? "体验次数已用完，请登录以继续使用"
+                : "Trial ended. Please sign in to continue.",
+              { duration: 5000 }
+            );
+            setShowAuthDialog(true);
+          }, 1500);
+        } else if (remaining <= 3) {
+          // 剩余3次时提示
+          toast.info(
+            isZh
+              ? `剩余 ${remaining} 次免费体验`
+              : `${remaining} free trials remaining`,
+            { duration: 3000 }
+          );
+        }
+        return;
+      } else {
+        // 没有试用次数了，弹出登录弹窗
+        toast.info(
+          isZh
+            ? "体验次数已用完，请登录以继续使用"
+            : "Trial ended. Please sign in to continue.",
+          { duration: 5000 }
+        );
+        setShowAuthDialog(true);
+        return;
+      }
+    }
+
+    // 非移动端或已登录用户的原有逻辑
     if (!appUser) {
       setShowAuthDialog(true);
       return;
     }
     await handleMessageSubmit();
-  }, [appUser, handleMessageSubmit, setShowAuthDialog]);
+  }, [appUser, handleMessageSubmit, setShowAuthDialog, mobileGuestTrial, selectedModelType, setSelectedModelType, isZh, prompt]);
 
+  // 移动端访客模式也使用 chatSessions（与 useMessageSubmission 一致）
   const activeChat =
-    appUser && currentChatId
+    (appUser || mobileGuestTrial.isEnabled) && currentChatId
       ? chatSessions.find((c) => c.id === currentChatId)
       : guestChatSessions.find((c) => c.id === currentChatId);
   const activeChatId = activeChat?.id;
@@ -4476,15 +4567,28 @@ const loadMessagesForConversation = useCallback(
 
       // Guest or local unsynced chat：仅本地删除，不调接口
       const isLocalChat = activeChatId.startsWith("local-");
-      if (!appUser || isLocalChat) {
+      // 移动端访客模式使用 chatSessions，非移动端访客使用 guestChatSessions
+      const isGuestWithoutMobileTrial = !appUser && !mobileGuestTrial.isEnabled;
+      if (isGuestWithoutMobileTrial || isLocalChat) {
         setMessages((prev) => prev.filter((m) => m.id !== messageId));
-        setGuestChatSessions((prev) =>
-          prev.map((c) =>
-            c.id === activeChatId
-              ? { ...c, messages: (c.messages || []).filter((m: any) => m.id !== messageId) }
-              : c,
-          ),
-        );
+        if (isGuestWithoutMobileTrial) {
+          setGuestChatSessions((prev) =>
+            prev.map((c) =>
+              c.id === activeChatId
+                ? { ...c, messages: (c.messages || []).filter((m: any) => m.id !== messageId) }
+                : c,
+            ),
+          );
+        } else {
+          // 移动端访客或登录用户的本地对话
+          setChatSessions((prev) =>
+            prev.map((c) =>
+              c.id === activeChatId
+                ? { ...c, messages: (c.messages || []).filter((m: any) => m.id !== messageId) }
+                : c,
+            ),
+          );
+        }
         return;
       }
 
@@ -4521,7 +4625,7 @@ const loadMessagesForConversation = useCallback(
         );
       }
     },
-    [activeChatId, appUser, selectedLanguage, setMessages, setChatSessions, setGuestChatSessions],
+    [activeChatId, appUser, selectedLanguage, setMessages, setChatSessions, setGuestChatSessions, mobileGuestTrial.isEnabled],
   );
 
   const sidebarProps = {
@@ -4623,6 +4727,10 @@ const loadMessagesForConversation = useCallback(
     enterpriseVideoAudioLimit,
     enterpriseContextLimit,
     showGlobalAds,
+    // 移动端访客试用信息
+    mobileGuestTrialEnabled: mobileGuestTrial.isEnabled,
+    mobileGuestTrialRemaining: mobileGuestTrial.getRemainingTrials(),
+    mobileGuestTrialMax: mobileGuestTrial.maxRounds,
   };
 
   const planLowerForContextRaw = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";
@@ -4782,6 +4890,7 @@ const loadMessagesForConversation = useCallback(
     handleAuth,
     handleGoogleAuth,
     handleWechatAuth,
+    isMobile, // 传递移动端标识给 AuthDialog，用于隐藏微信登录按钮
     showSettingsDialog,
     setShowSettingsDialog,
     isEditingProfile,

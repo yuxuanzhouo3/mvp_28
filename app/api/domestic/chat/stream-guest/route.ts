@@ -23,6 +23,9 @@ export const dynamic = "force-dynamic";
 const PROVIDER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const DOMESTIC_GENERAL_MODEL_ID = "qwen-turbo";
 
+// 移动端游客试用配置
+const MOBILE_GUEST_MAX_CONTEXT = 10; // 移动端游客最大上下文消息数
+
 /**
  * 获取用户计划信息
  */
@@ -114,6 +117,15 @@ const buildOpenAIMessages = (
 
 export async function POST(req: Request) {
   try {
+    // 调试日志
+    const debugHeaders = {
+      userAgent: req.headers.get("user-agent")?.substring(0, 50),
+      hasCookie: !!req.headers.get("cookie"),
+      hasAuthToken: !!(req.headers.get("cookie")?.match(/auth-token=([^;]+)/)?.[1]),
+      mobileGuestHeader: req.headers.get("x-mobile-guest"),
+    };
+    console.log("[stream-guest] Request received", debugHeaders);
+
     type IncomingMessage = { role: string; content: string; images?: string[]; videos?: string[]; audios?: string[] };
     const {
       model,
@@ -143,13 +155,22 @@ export async function POST(req: Request) {
         ? getExpertModelDefinition(expertModelId)
         : null;
 
+    // 检查是否有媒体上传（需要提前判断）
+    const hasMediaPayload =
+      (Array.isArray(images) && images.length > 0) ||
+      (Array.isArray(videos) && videos.length > 0) ||
+      (Array.isArray(audios) && audios.length > 0) ||
+      (Array.isArray(messages) &&
+        messages.some((m) => (m?.images || m?.videos || m?.audios || []).length > 0));
+
     // ============================================================
-    // Free 用户上下文截断 + 配额校验（要求登录，确保额度入库）
+    // Free 用户上下文截断 + 配额校验
+    // 移动端游客模式：无 auth-token 时允许使用 General Model，不落库不扣费
     // ============================================================
     let contextTruncated = false;
     let processedMessages = [...messages];
-    
-    // 需要 auth-token 才允许调用，保证额度可计入数据库
+
+    // 检查 auth-token
     const rawTokenCookie = req.headers.get("cookie")?.match(/auth-token=([^;]+)/)?.[1];
     const headerToken =
       req.headers.get("x-auth-token") ||
@@ -160,52 +181,92 @@ export async function POST(req: Request) {
       : headerToken
         ? decodeURIComponent(headerToken)
         : null;
-    if (!authToken) {
-      console.warn("[quota][stream] missing auth-token cookie");
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized: auth-token required" }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
-      );
-    }
+
+    // 检查是否是移动端游客请求（通过 User-Agent 或自定义 header）
+    const userAgent = req.headers.get("user-agent") || "";
+    const isMobileUA = /Mobile|Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+    const isMobileGuestHeader = req.headers.get("x-mobile-guest") === "true";
+    const isMobileGuest = !authToken && (isMobileUA || isMobileGuestHeader);
 
     let user: any = null;
     let plan = getPlanInfo({});
-    try {
-      const auth = new CloudBaseAuthService();
-      user = await auth.validateToken(authToken);
-      if (!user) {
-        console.warn("[quota][stream] auth-token invalid");
+    let isGuestMode = false;
+
+    if (!authToken) {
+      if (isMobileGuest) {
+        // 移动端游客模式：允许无 token 访问，但有限制
+        console.log("[quota][stream-guest] mobile guest mode enabled", {
+          isMobileUA,
+          isMobileGuestHeader,
+          hasMediaPayload,
+        });
+        isGuestMode = true;
+        // 强制使用 General Model，禁止媒体上传
+        if (hasMediaPayload) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: language === "zh"
+                ? "游客模式不支持上传图片/视频/音频，请登录后使用。"
+                : "Guest mode does not support media uploads. Please sign in.",
+            }),
+            { status: 400, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        // 游客模式只能使用 General Model
+        if (expertDef) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: language === "zh"
+                ? "游客模式仅支持通用模型，请登录后使用专家模型。"
+                : "Guest mode only supports General Model. Please sign in for expert models.",
+            }),
+            { status: 400, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        // 截断游客消息上下文
+        if (processedMessages.length > MOBILE_GUEST_MAX_CONTEXT) {
+          processedMessages = truncateContextMessages(processedMessages, MOBILE_GUEST_MAX_CONTEXT);
+          contextTruncated = true;
+        }
+      } else {
+        console.warn("[quota][stream] missing auth-token cookie");
+        return new Response(
+          JSON.stringify({ success: false, error: "Unauthorized: auth-token required" }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        );
+      }
+    } else {
+      // 有 token，验证用户
+      try {
+        const auth = new CloudBaseAuthService();
+        user = await auth.validateToken(authToken);
+        if (!user) {
+          console.warn("[quota][stream] auth-token invalid");
+          return new Response(
+            JSON.stringify({ success: false, error: "Unauthorized" }),
+            { status: 401, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        plan = getPlanInfo(user.metadata);
+      } catch {
+        console.warn("[quota][stream] auth validate failed");
         return new Response(
           JSON.stringify({ success: false, error: "Unauthorized" }),
           { status: 401, headers: { "Content-Type": "application/json" } },
         );
       }
-      plan = getPlanInfo(user.metadata);
-      // console.log("[quota][stream] user", user.id, "plan", plan.planLower);
-    } catch {
-      console.warn("[quota][stream] auth validate failed");
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized" }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
-      );
-    }
 
-    // Free 用户：截断上下文消息
-    if (plan.isFree && processedMessages.length > 0) {
-      const contextLimit = getFreeContextMsgLimit();
-      if (processedMessages.length > contextLimit) {
-        processedMessages = truncateContextMessages(processedMessages, contextLimit);
-        contextTruncated = true;
-        // context truncated for free user
+      // Free 用户：截断上下文消息
+      if (plan.isFree && processedMessages.length > 0) {
+        const contextLimit = getFreeContextMsgLimit();
+        if (processedMessages.length > contextLimit) {
+          processedMessages = truncateContextMessages(processedMessages, contextLimit);
+          contextTruncated = true;
+        }
       }
     }
-
-    const hasMediaPayload =
-      (Array.isArray(images) && images.length > 0) ||
-      (Array.isArray(videos) && videos.length > 0) ||
-      (Array.isArray(audios) && audios.length > 0) ||
-      (Array.isArray(messages) &&
-        messages.some((m) => (m?.images || m?.videos || m?.audios || []).length > 0));
 
     // Expert models are text-only and must always use the same underlying model as General Model.
     if (expertDef && hasMediaPayload) {
@@ -221,12 +282,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const modelName = expertDef
+    // 游客模式强制使用 General Model
+    const modelName = isGuestMode
       ? DOMESTIC_GENERAL_MODEL_ID
-      : hasMediaPayload
-        ? "qwen3-omni-flash"
-        : model || modelId || "qwen3-omni-flash";
-    const finalModelId = expertDef ? modelName : modelId || modelName;
+      : expertDef
+        ? DOMESTIC_GENERAL_MODEL_ID
+        : hasMediaPayload
+          ? "qwen3-omni-flash"
+          : model || modelId || "qwen3-omni-flash";
+    const finalModelId = isGuestMode ? DOMESTIC_GENERAL_MODEL_ID : (expertDef ? modelName : modelId || modelName);
     const provider = getDashScopeProvider(modelName);
     if (!provider) {
       return new Response(JSON.stringify({ success: false, error: "Unsupported model or missing API key" }), {
@@ -237,24 +301,19 @@ export async function POST(req: Request) {
 
     // ============================================================
     // 媒体额度 & 外部模型日额度校验（仅检查，扣减在响应成功后）
+    // 游客模式跳过配额校验（使用 General Model，不扣费）
     // ============================================================
     const category = getModelCategory(finalModelId);
     const imageCount = getImageCount({ images });
     const videoAudioCount = getVideoAudioCount({ videos, audios });
     const requiresMediaQuota =
-      category === "advanced_multimodal" && (imageCount > 0 || videoAudioCount > 0);
+      !isGuestMode && category === "advanced_multimodal" && (imageCount > 0 || videoAudioCount > 0);
     const shouldDeductMediaQuota = requiresMediaQuota;
-    // 外部模型或多模态模型的纯文本对话都需要扣减每日外部模型额度
-    const shouldDeductDailyExternal = category === "external" || 
-      (category === "advanced_multimodal" && imageCount === 0 && videoAudioCount === 0);
-    // console.log("[quota][stream] model", finalModelId, "category", category, {
-    //   imageCount,
-    //   videoAudioCount,
-    //   requiresMediaQuota,
-    //   shouldDeductDailyExternal,
-    // });
+    // 外部模型或多模态模型的纯文本对话都需要扣减每日外部模型额度（游客模式跳过）
+    const shouldDeductDailyExternal = !isGuestMode && (category === "external" ||
+      (category === "advanced_multimodal" && imageCount === 0 && videoAudioCount === 0));
 
-    if (requiresMediaQuota) {
+    if (requiresMediaQuota && user) {
       if (!plan.planActive) {
         plan.planLower = "free";
       }
@@ -280,7 +339,7 @@ export async function POST(req: Request) {
         );
       }
     }
-    if (shouldDeductDailyExternal) {
+    if (shouldDeductDailyExternal && user) {
       const effectivePlanLower = plan.planActive ? plan.planLower || "free" : "free";
       const dailyCheck = await checkDailyExternalQuota(user.id, effectivePlanLower, 1);
       // console.log("[quota][stream] daily check", {
@@ -565,8 +624,9 @@ export async function POST(req: Request) {
         await closeWriter();
          
         // AI成功输出内容后才扣费（手动暂停也算）
-        const shouldCharge = hasContentOutput;
-         
+        // 游客模式不扣费
+        const shouldCharge = hasContentOutput && !isGuestMode && user;
+
         if (shouldDeductMediaQuota && shouldCharge) {
           const consumeResult = await consumeQuota({
             userId: user.id,

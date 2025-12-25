@@ -155,6 +155,7 @@ export default function ModalHub(props: ModalHubProps) {
       handleAuth={handleAuth}
       handleGoogleAuth={handleGoogleAuth}
       handleWechatAuth={handleWechatAuth}
+      isMobile={props.isMobile}
     />
 
       {/* Settings Dialog */}

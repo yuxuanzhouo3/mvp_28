@@ -93,9 +93,8 @@ function ChatInterface({
   onDeleteMessage,
 }: ChatInterfaceProps) {
   const isFreeUser = !!appUser && !appUser.isPro && (appUser.plan || "").toLowerCase() === "free";
-  const activeMessages = appUser
-    ? messages
-    : guestChatSessions.find((c) => c.id === currentChatId)?.messages || [];
+  // 直接使用 messages prop，ChatProvider 已正确处理消息来源（包括移动端访客试用模式）
+  const activeMessages = messages;
   const ctxLimit = typeof contextLimit === "number" ? contextLimit : null;
   const roundsUsed =
     ctxLimit !== null
@@ -412,11 +411,7 @@ function ChatInterface({
                   </button>
                 </div>
               )}
-              {(appUser
-                ? messages
-                : guestChatSessions.find((c) => c.id === currentChatId)
-                    ?.messages || []
-              ).map((message: Message) => {
+              {activeMessages.map((message: Message) => {
                     const isUser = message.role === "user";
                     const userDisplayName =
                       (appUser?.name || "").trim() ||

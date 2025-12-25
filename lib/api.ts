@@ -161,7 +161,8 @@ class ApiService {
     onChunk?: (chunk: string) => void,
     onEnd?: () => void,
     onError?: (error: string) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    isMobileGuest?: boolean
   ): Promise<void> {
     let alreadyNotified = false;
     try {
@@ -174,6 +175,11 @@ class ApiService {
       };
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      // Add mobile guest header for domestic version guest mode
+      if (isMobileGuest) {
+        headers['x-mobile-guest'] = 'true';
       }
 
       // Add language header for Chinese support
@@ -194,6 +200,15 @@ class ApiService {
         audios,
         quotaChecked,
         expertModelId,
+      });
+
+      // 调试日志
+      console.log("[api.ts] sendMessageStream request", {
+        url,
+        isMobileGuest,
+        hasToken: !!token,
+        modelId,
+        messageLength: message?.length,
       });
 
       const doRequest = async (attempt: number): Promise<void> => {

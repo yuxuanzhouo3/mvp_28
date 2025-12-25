@@ -56,7 +56,7 @@ import {
   FileText,
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
-import { useCamera } from "@/hooks";
+import { useCamera, useIsMobile } from "@/hooks";
 import { UploadedFilesList } from "@/features/chat/components/input/UploadedFilesList";
 import { StatusIndicators } from "@/features/chat/components/input/StatusIndicators";
 import { CameraPanel } from "@/features/chat/components/input/CameraPanel";
@@ -370,6 +370,11 @@ const InputArea = React.memo(function InputArea({
 
   // Get language context
   const { isDomesticVersion } = useLanguage();
+
+  // 检测移动端
+  const isMobile = useIsMobile();
+  // 国内版移动端隐藏 MornGPT 专家模型
+  const hideMornGPTModels = IS_DOMESTIC_VERSION && isMobile;
 
   // 独立的模型选择 Tab 状态（仅用于弹窗切换，不影响当前已选模型）
   const [modelSelectorTab, setModelSelectorTab] = React.useState(selectedModelType);
@@ -1230,7 +1235,7 @@ const InputArea = React.memo(function InputArea({
                           onValueChange={setModelSelectorTab}
                           className="w-full"
                         >
-                          <TabsList className="grid w-full grid-cols-3 bg-gray-100 dark:bg-[#565869]">
+                          <TabsList className={`grid w-full ${hideMornGPTModels ? "grid-cols-2" : "grid-cols-3"} bg-gray-100 dark:bg-[#565869]`}>
                             <TabsTrigger
                               value="general"
                               className="text-xs text-gray-900 dark:text-[#ececf1]"
@@ -1238,13 +1243,15 @@ const InputArea = React.memo(function InputArea({
                               <MessageSquare className="w-3 h-3 mr-1" />
                               {getLocalizedText("general")}
                             </TabsTrigger>
-                            <TabsTrigger
-                              value="morngpt"
-                              className="text-xs text-gray-900 dark:text-[#ececf1]"
-                            >
-                              <Sparkles className="w-3 h-3 mr-1" />
-                              {getLocalizedText("mornGPT")}
-                            </TabsTrigger>
+                            {!hideMornGPTModels && (
+                              <TabsTrigger
+                                value="morngpt"
+                                className="text-xs text-gray-900 dark:text-[#ececf1]"
+                              >
+                                <Sparkles className="w-3 h-3 mr-1" />
+                                {getLocalizedText("mornGPT")}
+                              </TabsTrigger>
+                            )}
                             <TabsTrigger
                               value="external"
                               className="text-xs text-gray-900 dark:text-[#ececf1]"
@@ -1272,52 +1279,54 @@ const InputArea = React.memo(function InputArea({
                             </div>
                           </TabsContent>
 
-                          <TabsContent value="morngpt" className="p-2">
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
-                              {mornGPTCategories.map((category) => {
-                                const IconComponent = category.icon || Bot;
-                                return (
-                                  <div
-                                    key={category.id}
-                                    className={`p-1.5 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm border ${
-                                      selectedCategory === category.id
-                                        ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
-                                        : "border-gray-100 dark:border-gray-700"
-                                    }`}
-                                    onClick={() =>
-                                      handleModelSelect("morngpt", category.id)
-                                    }
-                                  >
-                                    <div className="flex flex-col space-y-1">
-                                      <div className="flex items-center space-x-1.5">
-                                        <div
-                                          className={`p-1 rounded ${category.color} text-white shadow-sm flex items-center justify-center`}
-                                        >
-                                          <IconComponent className="w-3 h-3" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center justify-between">
-                                            <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
-                                              {category.name}
-                                            </p>
-                                            <Badge
-                                              variant="secondary"
-                                              className="text-[2px] px-0.5 py-0 h-2"
-                                            >
-                                              {category.id.toUpperCase()}1
-                                            </Badge>
+                          {!hideMornGPTModels && (
+                            <TabsContent value="morngpt" className="p-2">
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
+                                {mornGPTCategories.map((category) => {
+                                  const IconComponent = category.icon || Bot;
+                                  return (
+                                    <div
+                                      key={category.id}
+                                      className={`p-1.5 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm border ${
+                                        selectedCategory === category.id
+                                          ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
+                                          : "border-gray-100 dark:border-gray-700"
+                                      }`}
+                                      onClick={() =>
+                                        handleModelSelect("morngpt", category.id)
+                                      }
+                                    >
+                                      <div className="flex flex-col space-y-1">
+                                        <div className="flex items-center space-x-1.5">
+                                          <div
+                                            className={`p-1 rounded ${category.color} text-white shadow-sm flex items-center justify-center`}
+                                          >
+                                            <IconComponent className="w-3 h-3" />
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between">
+                                              <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
+                                                {category.name}
+                                              </p>
+                                              <Badge
+                                                variant="secondary"
+                                                className="text-[2px] px-0.5 py-0 h-2"
+                                              >
+                                                {category.id.toUpperCase()}1
+                                              </Badge>
+                                            </div>
                                           </div>
                                         </div>
+                                        <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
+                                          {category.description}
+                                        </p>
                                       </div>
-                                      <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
-                                        {category.description}
-                                      </p>
                                     </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </TabsContent>
+                                  );
+                                })}
+                              </div>
+                            </TabsContent>
+                          )}
 
                           <TabsContent value="external" className="p-2">
                             <div className="space-y-1 max-h-60 overflow-y-auto border border-gray-100 dark:border-gray-700 rounded-md p-2 bg-gray-50/50 dark:bg-[#2f3037]">

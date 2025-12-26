@@ -5,6 +5,7 @@ import './globals.css'
 import { DEFAULT_LANGUAGE } from '../config'
 import { LanguageProvider } from '../context/LanguageContext'
 import { Toaster } from '@/components/ui/sonner'
+import { DynamicTitle } from '@/components/DynamicTitle'
 
 export const metadata: Metadata = {
   title: "MornGPT",
@@ -37,6 +38,7 @@ html {
       </head>
       <body>
         <LanguageProvider>
+          <DynamicTitle />
           {children}
           <Toaster position="top-center" richColors closeButton />
         </LanguageProvider>

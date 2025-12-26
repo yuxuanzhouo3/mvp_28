@@ -58,6 +58,9 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
   // 国内版移动端隐藏微信登录按钮
   const shouldShowWechatLogin = isDomestic && !isMobile;
 
+  // 国内版移动端品牌名
+  const brandName = isDomestic && isMobile ? "晨佑AI平台" : "MornGPT";
+
   // 隐私条款确认状态
   const [agreePrivacy, setAgreePrivacy] = useState(false);
   const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
@@ -96,8 +99,8 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
                     : "Welcome Back"
                   : authMode === "signup"
                     ? isZh
-                      ? "加入 MornGPT"
-                      : "Join MornGPT"
+                      ? `加入 ${brandName}`
+                      : `Join ${brandName}`
                     : isZh
                       ? "重置密码"
                       : "Reset Password"}

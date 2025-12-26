@@ -12,6 +12,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { pricingPlans as pricingPlansRaw } from "@/constants/pricing";
 import { AddonPackageTab } from "./AddonPackageTab";
 import { SubscriptionTermsContent } from "@/components/legal";
+import { useIsMobile } from "@/hooks";
 
 type UpgradeTabType = "subscription" | "addon";
 
@@ -107,7 +108,10 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
   currentPlanExp,
 }) => {
   const { currentLanguage, isDomesticVersion } = useLanguage();
+  const isMobile = useIsMobile();
   const isZh = currentLanguage === "zh";
+  // 国内版移动端品牌名
+  const brandName = isDomesticVersion && isMobile ? "晨佑AI平台" : "MornGPT";
   const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
   const [activeTab, setActiveTab] = useState<UpgradeTabType>(defaultTab);
   // 国内版默认支付宝，国际版默认 Stripe
@@ -336,7 +340,7 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
               <span className="text-gray-900 dark:text-white font-bold">
               {selectedPaidModel
                 ? tr(`Upgrade to Access ${selectedPaidModel.name}`, `升级以解锁 ${selectedPaidModel.name}`)
-                : tr("Choose Your MornGPT Plan", "选择你的 MornGPT 套餐")}
+                : tr(`Choose Your ${brandName} Plan`, `选择你的 ${brandName} 套餐`)}
             </span>
           </DialogTitle>
         </DialogHeader>

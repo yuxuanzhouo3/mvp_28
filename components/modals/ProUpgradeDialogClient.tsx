@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Crown, Volume2, Video, Check } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
+import { useIsMobile } from "@/hooks";
 
 interface ProUpgradeDialogProps {
   open: boolean;
@@ -34,8 +35,11 @@ const ProUpgradeDialogClient: React.FC<ProUpgradeDialogProps> = ({
 }) => {
   const effectiveType = type ?? "voice";
   const isVoice = effectiveType === "voice";
-  const { currentLanguage } = useLanguage();
+  const { currentLanguage, isDomesticVersion } = useLanguage();
+  const isMobile = useIsMobile();
   const isZh = currentLanguage === "zh";
+  // 国内版移动端品牌名
+  const brandName = isDomesticVersion && isMobile ? "晨佑AI平台" : "MornGPT";
   const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
 
   const benefits = useMemo(
@@ -55,7 +59,7 @@ const ProUpgradeDialogClient: React.FC<ProUpgradeDialogProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2 text-gray-900 dark:text-[#ececf1]">
             <Crown className="w-5 h-5 text-purple-500" />
-            <span>{tr("Choose Your MornGPT Plan", "选择你的 MornGPT 套餐")}</span>
+            <span>{tr(`Choose Your ${brandName} Plan`, `选择你的 ${brandName} 套餐`)}</span>
           </DialogTitle>
           <DialogDescription className="text-gray-600 dark:text-gray-400">
             {tr(

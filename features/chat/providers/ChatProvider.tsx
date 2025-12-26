@@ -1641,12 +1641,15 @@ const loadMessagesForConversation = useCallback(
   }, [selectedLanguage, currentLanguage, setCurrentLanguage]);
   
   // Get current model configuration
+  // 国内版移动端：使用"晨佑AI平台"替代"MornGPT"
+  const useDomesticMobileBrand = IS_DOMESTIC_VERSION && isMobile;
   const getLocalizedText = useMemo<(key: string) => string>(
     () =>
       createLocalizedTextGetter(
         activeLanguage,
+        useDomesticMobileBrand,
       ) as unknown as (key: string) => string,
-    [activeLanguage],
+    [activeLanguage, useDomesticMobileBrand],
   );
 
   // Ref for the textarea to enable reliable scrolling

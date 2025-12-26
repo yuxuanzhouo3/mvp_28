@@ -379,6 +379,9 @@ const InputArea = React.memo(function InputArea({
   // 独立的模型选择 Tab 状态（仅用于弹窗切换，不影响当前已选模型）
   const [modelSelectorTab, setModelSelectorTab] = React.useState(selectedModelType);
 
+  // 国内版移动端访客模式：禁用外部模型选择
+  const isGuestMode = IS_DOMESTIC_VERSION && isMobile && !appUser;
+
   // 弹窗打开时同步当前模型到本地 Tab，避免误切换
   React.useEffect(() => {
     if (isModelSelectorOpen) {
@@ -1254,7 +1257,9 @@ const InputArea = React.memo(function InputArea({
                             )}
                             <TabsTrigger
                               value="external"
-                              className="text-xs text-gray-900 dark:text-[#ececf1]"
+                              className={`text-xs ${isGuestMode ? "text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50" : "text-gray-900 dark:text-[#ececf1]"}`}
+                              disabled={isGuestMode}
+                              title={isGuestMode ? (selectedLanguage === "zh" ? "请先登录后使用外部模型" : "Please login to use external models") : undefined}
                             >
                               <Globe className="w-3 h-3 mr-1" />
                               {getLocalizedText("external")}
@@ -1269,11 +1274,10 @@ const InputArea = React.memo(function InputArea({
                               >
                                 <MessageSquare className="w-4 h-4 mx-auto text-gray-500 dark:text-gray-400 mb-1" />
                                 <h3 className="text-xs font-semibold text-gray-900 dark:text-[#ececf1] mb-1">
-                                  General Model
+                                  {getLocalizedText("generalModelTitle")}
                                 </h3>
                                 <p className="text-[8px] text-gray-600 dark:text-gray-400 text-center">
-                                  Auto select AI assistant for general
-                                  conversations
+                                  {getLocalizedText("generalModelDesc")}
                                 </p>
                               </div>
                             </div>

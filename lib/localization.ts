@@ -9,6 +9,8 @@ export const translations = {
     deepThinking: "Deep thinking in progress...",
     newChat: "New Chat",
     general: "General",
+    generalModelTitle: "General Model",
+    generalModelDesc: "Auto select AI assistant for general conversations",
     guestUser: "Guest User",
     login: "Login",
     signOut: "Sign Out",
@@ -103,6 +105,8 @@ export const translations = {
     selectModel: "Select Model",
     external: "External",
     mornGPT: "MornGPT",
+    appName: "MornGPT",
+    newMornGPTChat: "New MornGPT Chat",
     beSpecific: "Be specific about your goals",
     chooseSpecialized: "Choose specialized MornGPT models",
     uploadFilesWith: "Upload files with",
@@ -186,6 +190,8 @@ export const translations = {
     deepThinking: "深度思考进行中...",
     newChat: "新对话",
     general: "通用",
+    generalModelTitle: "General Model",
+    generalModelDesc: "自动选择适合日常对话的AI助手",
     guestUser: "访客用户",
     login: "登录",
     signOut: "退出登录",
@@ -280,6 +286,8 @@ export const translations = {
     selectModel: "选择模型",
     external: "外部",
     mornGPT: "MornGPT",
+    appName: "MornGPT",
+    newMornGPTChat: "新建 MornGPT 对话",
     beSpecific: "明确您的目标",
     chooseSpecialized: "选择专门的 MornGPT 模型",
     uploadFilesWith: "上传文件",
@@ -361,11 +369,21 @@ export const translations = {
 
 export type TranslationKey = keyof typeof translations.en;
 
-export function getLocalizedText(key: TranslationKey, language: string): string {
+// 国内版移动端品牌名
+const DOMESTIC_MOBILE_BRAND = "晨佑AI平台";
+
+export function getLocalizedText(key: TranslationKey, language: string, useDomesticMobileBrand = false): string {
   const lang = language as keyof typeof translations;
-  return translations[lang]?.[key] || translations.en[key] || key;
+  let text = translations[lang]?.[key] || translations.en[key] || key;
+
+  // 国内版移动端替换 MornGPT 为 晨佑AI平台
+  if (useDomesticMobileBrand && typeof text === "string") {
+    text = text.replace(/MornGPT/g, DOMESTIC_MOBILE_BRAND);
+  }
+
+  return text;
 }
 
-export function createLocalizedTextGetter(language: string) {
-  return (key: TranslationKey) => getLocalizedText(key, language);
+export function createLocalizedTextGetter(language: string, useDomesticMobileBrand = false) {
+  return (key: TranslationKey) => getLocalizedText(key, language, useDomesticMobileBrand);
 }

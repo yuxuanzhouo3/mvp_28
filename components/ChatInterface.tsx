@@ -362,7 +362,7 @@ function ChatInterface({
         <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-[#2d2d30] transition-colors">
           <div className="text-center">
             <h1 className="text-4xl font-bold text-gray-900 dark:text-[#ececf1] mb-4">
-              MornGPT
+              {getLocalizedText("appName")}
             </h1>
             <p className="text-xl text-gray-600 dark:text-gray-300 mb-8">
               {getLocalizedText("heroTagline")}

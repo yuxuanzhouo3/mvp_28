@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useLanguage } from "@/context/LanguageContext";
+import { useIsMobile } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -131,6 +132,9 @@ export default function Sidebar({
   shouldShowAds = true,
 }: SidebarProps) {
   const { currentLanguage } = useLanguage();
+  const isMobile = useIsMobile();
+  // 国内版移动端隐藏 MornGPT 文件夹
+  const hideMornGPTFolder = isDomestic && isMobile;
   const canCloseAdsForUpsell = !appUser?.isPaid;
 
   // 社交链接数据状态
@@ -609,7 +613,8 @@ export default function Sidebar({
                   )}
                 </div>
 
-                {/* MornGPT Folder */}
+                {/* MornGPT Folder - 国内版移动端隐藏 */}
+                {!hideMornGPTFolder && (
                 <div className="mb-1">
                   <ContextMenu>
                     <ContextMenuTrigger>
@@ -624,7 +629,7 @@ export default function Sidebar({
                         )}
                         <Sparkles className="w-3 h-3 text-gray-500 dark:text-gray-400" />
                         <span className="text-xs font-medium text-gray-900 dark:text-[#ececf1]">
-                          MornGPT
+                          {getLocalizedText("appName")}
                         </span>
                         <ChevronRight
                           className={`w-2.5 h-2.5 text-gray-400 transition-transform ${
@@ -639,7 +644,7 @@ export default function Sidebar({
                         className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
                       >
                         <Plus className="w-4 h-4 mr-2" />
-                        {currentLanguage === "zh" ? "新建 MornGPT 对话" : "New MornGPT Chat"}
+                        {getLocalizedText("newMornGPTChat")}
                       </ContextMenuItem>
                     </ContextMenuContent>
                   </ContextMenu>
@@ -778,6 +783,7 @@ export default function Sidebar({
                     </div>
                   )}
                 </div>
+                )}
 
                 {/* External Folder */}
                 <div className="mb-1">

@@ -18,6 +18,7 @@ import {
   Crown,
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
+import { useIsMobile } from "@/hooks";
 
 interface Platform {
   platform: string;
@@ -55,8 +56,11 @@ export default function DownloadSectionDialog({
   onUpdateUserSettings,
   onUpgradeFromAds,
 }: DownloadSectionDialogProps) {
-  const { currentLanguage } = useLanguage();
+  const { currentLanguage, isDomesticVersion } = useLanguage();
+  const isMobile = useIsMobile();
   const isZh = currentLanguage === "zh";
+  // 国内版移动端品牌名
+  const brandName = isDomesticVersion && isMobile ? "晨佑AI平台" : "MornGPT";
   const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
 
   const isBrowser = (p?: string | null) =>
@@ -69,7 +73,7 @@ export default function DownloadSectionDialog({
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center space-x-2 text-gray-900 dark:text-[#ececf1]">
             <Download className="w-4 h-4 text-blue-600" />
-            <span className="text-base">{tr("Download MornGPT", "下载 MornGPT")}</span>
+            <span className="text-base">{tr(`Download ${brandName}`, `下载 ${brandName}`)}</span>
           </DialogTitle>
         </DialogHeader>
 

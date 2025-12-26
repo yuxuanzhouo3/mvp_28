@@ -372,8 +372,22 @@ export type TranslationKey = keyof typeof translations.en;
 // 国内版移动端品牌名
 const DOMESTIC_MOBILE_BRAND = "晨佑AI平台";
 
+// 国内版移动端特殊替换文本
+const DOMESTIC_MOBILE_OVERRIDES: Record<string, Record<string, string>> = {
+  chooseSpecialized: {
+    zh: "选择合适的模型",
+    en: "Choose the right model",
+  },
+};
+
 export function getLocalizedText(key: TranslationKey, language: string, useDomesticMobileBrand = false): string {
   const lang = language as keyof typeof translations;
+
+  // 国内版移动端特殊文本覆盖
+  if (useDomesticMobileBrand && DOMESTIC_MOBILE_OVERRIDES[key]) {
+    return DOMESTIC_MOBILE_OVERRIDES[key][lang] || DOMESTIC_MOBILE_OVERRIDES[key].en || key;
+  }
+
   let text = translations[lang]?.[key] || translations.en[key] || key;
 
   // 国内版移动端替换 MornGPT 为 晨佑AI平台

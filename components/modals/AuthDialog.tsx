@@ -55,8 +55,8 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
   const isZh = currentLanguage === "zh";
   const isDomestic = isDomesticVersion;
 
-  // 国内版移动端隐藏微信登录按钮
-  const shouldShowWechatLogin = isDomestic && !isMobile;
+  // 国内版显示微信登录按钮（移动端和桌面端都显示）
+  const shouldShowWechatLogin = isDomestic;
 
   // 国内版移动端品牌名
   const brandName = isDomestic && isMobile ? "晨佑AI平台" : "MornGPT";

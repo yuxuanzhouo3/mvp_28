@@ -48,6 +48,10 @@ import {
   setEmailCooldown,
   getCooldownMessage,
 } from "@/lib/utils/email-rate-limit";
+import {
+  isMiniProgram,
+  requestWxMpLogin,
+} from "@/lib/wechat-mp";
 import { signInWithGoogle } from "@/actions/oauth";
 
 const FREE_DAILY_LIMIT = (() => {
@@ -3064,6 +3068,19 @@ const loadMessagesForConversation = useCallback(
       return;
     }
     try {
+      // 检测小程序环境，使用原生登录
+      if (isMiniProgram()) {
+        console.log("[ChatProvider] In mini program, requesting native login");
+        const returnUrl = window.location.href;
+        const success = await requestWxMpLogin(returnUrl);
+        if (!success) {
+          throw new Error(isZh ? "无法调用微信登录，请重试" : "Cannot invoke WeChat login. Please try again.");
+        }
+        // 原生登录会跳转到小程序页面，这里不需要继续处理
+        return;
+      }
+
+      // 普通浏览器环境，使用扫码登录
       const nextPath = typeof window !== "undefined" ? window.location.pathname : "/";
       const res = await fetch(
         `/api/auth/wechat/qrcode${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`,

@@ -247,6 +247,7 @@ export async function exchangeCodeForToken(
     const response = await fetch("/api/wxlogin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include", // 确保 cookie 能被存储
       body: JSON.stringify({
         code,
         nickName: nickName || undefined,

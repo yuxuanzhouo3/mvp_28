@@ -1000,6 +1000,10 @@ const loadMessagesForConversation = useCallback(
                 console.error("[syncSession] exchangeCodeForToken failed:", result.error);
               } else {
                 console.log("[syncSession] exchangeCodeForToken success, token:", result.token);
+                // 登录成功后，清除 URL 参数并刷新页面以加载新会话
+                clearWxMpLoginParams();
+                window.location.reload();
+                return;
               }
               clearWxMpLoginParams();
             }

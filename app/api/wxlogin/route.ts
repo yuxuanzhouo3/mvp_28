@@ -41,8 +41,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 获取微信小程序配置
-    const appId = process.env.WX_MINI_APPID || process.env.WECHAT_MINI_APPID || process.env.WECHAT_APP_ID;
-    const appSecret = process.env.WX_MINI_SECRET || process.env.WECHAT_MINI_SECRET || process.env.WECHAT_APP_SECRET;
+    const appId = process.env.WX_MINI_APPID || process.env.WECHAT_MINI_APPID;
+    const appSecret = process.env.WX_MINI_SECRET || process.env.WECHAT_MINI_SECRET;
 
     if (!appId || !appSecret) {
       console.error("[wxlogin] Missing WX_MINI_APPID or WX_MINI_SECRET");

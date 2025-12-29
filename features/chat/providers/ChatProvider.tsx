@@ -48,10 +48,6 @@ import {
   setEmailCooldown,
   getCooldownMessage,
 } from "@/lib/utils/email-rate-limit";
-import {
-  isMiniProgram,
-  requestWxMpLogin,
-} from "@/lib/wechat-mp";
 import { signInWithGoogle } from "@/actions/oauth";
 
 const FREE_DAILY_LIMIT = (() => {
@@ -3068,19 +3064,22 @@ const loadMessagesForConversation = useCallback(
       return;
     }
     try {
-      // 检测小程序环境，使用原生登录
-      if (isMiniProgram()) {
-        console.log("[ChatProvider] In mini program, requesting native login");
-        const returnUrl = window.location.href;
-        const success = await requestWxMpLogin(returnUrl);
-        if (!success) {
-          throw new Error(isZh ? "无法调用微信登录，请重试" : "Cannot invoke WeChat login. Please try again.");
-        }
-        // 原生登录会跳转到小程序页面，这里不需要继续处理
+      const returnUrl = window.location.href;
+
+      // 尝试获取小程序 SDK 对象（直接检查而不是依赖环境检测）
+      const wx = (window as any).wx;
+      const mp = wx?.miniProgram;
+
+      // 如果 wx.miniProgram 存在且支持 navigateTo，使用原生登录
+      if (mp && typeof mp.navigateTo === "function") {
+        console.log("[ChatProvider] wx.miniProgram available, using native login");
+        const loginUrl = `/pages/webshell/login?returnUrl=${encodeURIComponent(returnUrl)}`;
+        mp.navigateTo({ url: loginUrl });
         return;
       }
 
       // 普通浏览器环境，使用扫码登录
+      console.log("[ChatProvider] wx.miniProgram not available, using QR code login");
       const nextPath = typeof window !== "undefined" ? window.location.pathname : "/";
       const res = await fetch(
         `/api/auth/wechat/qrcode${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`,

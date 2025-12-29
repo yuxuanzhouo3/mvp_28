@@ -174,19 +174,22 @@ export function AuthPage({ mode }: { mode: Mode }) {
     setIsLoading(true);
     setError(null);
     try {
-      // 如果在小程序环境，使用原生登录
-      if (isInMiniProgram) {
-        console.log("[AuthPage] In mini program, requesting native login");
-        const returnUrl = window.location.href;
-        const success = await requestWxMpLogin(returnUrl);
-        if (!success) {
-          throw new Error(isZhText ? "无法调用微信登录，请重试" : "Cannot invoke WeChat login. Please try again.");
-        }
-        // 原生登录会跳转到小程序页面，这里不需要继续处理
+      const returnUrl = window.location.href;
+
+      // 尝试获取小程序 SDK 对象（直接检查而不是依赖环境检测）
+      const wx = (window as any).wx;
+      const mp = wx?.miniProgram;
+
+      // 如果 wx.miniProgram 存在且支持 navigateTo，使用原生登录
+      if (mp && typeof mp.navigateTo === "function") {
+        console.log("[AuthPage] wx.miniProgram available, using native login");
+        const loginUrl = `/pages/webshell/login?returnUrl=${encodeURIComponent(returnUrl)}`;
+        mp.navigateTo({ url: loginUrl });
         return;
       }
 
       // 普通浏览器环境，使用扫码登录
+      console.log("[AuthPage] wx.miniProgram not available, using QR code login");
       const qs = next ? `?next=${encodeURIComponent(next)}` : "";
       const res = await fetch(`/api/auth/wechat/qrcode${qs}`);
       const data = await res.json();

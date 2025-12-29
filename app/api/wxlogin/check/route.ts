@@ -3,23 +3,25 @@ import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 
 /**
- * 微信小程序登录接口
- * POST /api/wxlogin
+ * 微信小程序登录预检查接口
+ * POST /api/wxlogin/check
+ *
+ * 用于检查用户是否已存在（通过 code 换取 openid 后查询）
+ * 如果用户已存在且有 profile，直接完成登录并返回 token
+ * 如果用户不存在，返回 openid 供后续注册使用
  *
  * 请求体:
  * {
- *   code: string,       // wx.login() 返回的 code（必填）
- *   nickName?: string,  // 用户昵称（可选）
- *   avatarUrl?: string  // 用户头像 URL（可选）
+ *   code: string  // wx.login() 返回的 code（必填）
  * }
  *
- * 成功响应:
+ * 响应:
  * {
- *   success: true,
- *   token: string,
- *   openid: string,
- *   expiresIn: number,
- *   user: { id, email, name, avatar, ... }
+ *   exists: boolean,        // 用户是否已存在
+ *   hasProfile: boolean,    // 用户是否有头像和昵称
+ *   openid?: string,        // 返回 openid 供后续使用
+ *   token?: string,         // 如果用户已存在，返回登录 token
+ *   user?: object           // 如果用户已存在，返回用户信息
  * }
  */
 export async function POST(request: NextRequest) {
@@ -30,8 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const { code, nickName, avatarUrl } = body;
-    console.log("[wxlogin] Received params - code:", code ? "***" : null, "nickName:", nickName, "avatarUrl:", avatarUrl ? "***" : null);
+    const { code } = body;
 
     // 验证必填参数
     if (!code) {
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     const appSecret = process.env.WX_MINI_SECRET || process.env.WECHAT_MINI_SECRET;
 
     if (!appId || !appSecret) {
-      console.error("[wxlogin] Missing WX_MINI_APPID or WX_MINI_SECRET");
+      console.error("[wxlogin/check] Missing WX_MINI_APPID or WX_MINI_SECRET");
       return NextResponse.json(
         { success: false, error: "CONFIG_ERROR", message: "微信小程序配置缺失" },
         { status: 500 }
@@ -56,13 +57,13 @@ export async function POST(request: NextRequest) {
     // 调用微信 jscode2session 接口
     const wxUrl = `https://api.weixin.qq.com/sns/jscode2session?appid=${appId}&secret=${appSecret}&js_code=${encodeURIComponent(code)}&grant_type=authorization_code`;
 
-    console.log("[wxlogin] Calling jscode2session...");
+    console.log("[wxlogin/check] Calling jscode2session...");
     const wxResponse = await fetch(wxUrl);
     const wxData = await wxResponse.json();
 
     // 检查微信返回结果
     if (wxData.errcode || !wxData.openid) {
-      console.error("[wxlogin] jscode2session error:", wxData);
+      console.error("[wxlogin/check] jscode2session error:", wxData);
       return NextResponse.json(
         {
           success: false,
@@ -74,28 +75,35 @@ export async function POST(request: NextRequest) {
     }
 
     const { openid, unionid } = wxData;
-    console.log("[wxlogin] Got openid:", openid);
+    console.log("[wxlogin/check] Got openid:", openid);
 
-    // 使用 CloudBase 认证服务登录/注册用户
+    // 使用 CloudBase 认证服务检查并登录用户
     const auth = new CloudBaseAuthService();
+
+    // 这里传入空的 nickname 和 avatar，signInWithWechat 会：
+    // - 如果用户存在：返回已有用户信息（不会覆盖已有的 name/avatar）
+    // - 如果用户不存在：创建新用户（使用默认值）
     const result = await auth.signInWithWechat({
       openid,
       unionid: unionid || null,
-      nickname: nickName || null,
-      avatar: avatarUrl || null,
+      nickname: null,  // 不传新值，保留已有值
+      avatar: null,    // 不传新值，保留已有值
     });
 
     if (!result.user || !result.session) {
-      console.error("[wxlogin] CloudBase auth failed:", result.error);
-      return NextResponse.json(
-        {
-          success: false,
-          error: "AUTH_FAILED",
-          message: result.error?.message || "登录失败",
-        },
-        { status: 401 }
-      );
+      // 用户不存在的情况（signInWithWechat 会自动创建，所以这种情况不太可能）
+      console.log("[wxlogin/check] User created or login failed");
+      return NextResponse.json({
+        success: true,
+        exists: false,
+        hasProfile: false,
+        openid,
+      });
     }
+
+    const user = result.user;
+    const hasProfile = !!(user.name && user.avatar);
+    console.log("[wxlogin/check] User exists, has profile:", hasProfile, "name:", user.name);
 
     // 计算过期时间（7天）
     const expiresIn = 7 * 24 * 60 * 60;
@@ -103,21 +111,27 @@ export async function POST(request: NextRequest) {
     // 构建响应
     const res = NextResponse.json({
       success: true,
-      token: result.session.access_token,
+      exists: true,
+      hasProfile,
       openid,
+      // 返回已有的用户信息
+      userName: user.name || null,
+      userAvatar: user.avatar || null,
+      // 直接返回 token，老用户可以跳过 profile 页面
+      token: result.session.access_token,
       expiresIn,
       user: {
-        id: result.user.id,
+        id: user.id,
         openid,
-        nickName: result.user.name,
-        avatarUrl: result.user.avatar,
-        email: result.user.email,
-        createdAt: result.user.createdAt,
-        metadata: result.user.metadata,
+        nickName: user.name,
+        avatarUrl: user.avatar,
+        email: user.email,
+        createdAt: user.createdAt,
+        metadata: user.metadata,
       },
     });
 
-    // 设置 cookie
+    // 设置 cookie（老用户直接登录成功）
     res.cookies.set("auth-token", result.session.access_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -126,10 +140,10 @@ export async function POST(request: NextRequest) {
       path: "/",
     });
 
-    console.log("[wxlogin] Login success for openid:", openid);
+    console.log("[wxlogin/check] Login completed for openid:", openid);
     return res;
   } catch (error) {
-    console.error("[wxlogin] Error:", error);
+    console.error("[wxlogin/check] Error:", error);
     return NextResponse.json(
       {
         success: false,

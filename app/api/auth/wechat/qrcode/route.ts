@@ -10,10 +10,12 @@ export async function GET(request: NextRequest) {
   try {
     // 版本隔离：国际版不返回微信扫码登录二维码
     if (!IS_DOMESTIC_VERSION) {
+      console.log("[auth/wechat/qrcode] Not domestic version, returning 404");
       return new NextResponse(null, { status: 404 });
     }
 
     const appId = process.env.WECHAT_APP_ID;
+    console.log("[auth/wechat/qrcode] WECHAT_APP_ID configured:", appId ? "yes" : "no");
 
     // 优先使用环境变量配置的域名；若未配置，则回落到请求头推断
     const envAppUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -31,6 +33,7 @@ export async function GET(request: NextRequest) {
     const appUrl = (envAppUrl || inferredUrl || "").replace(/\/$/, "");
 
     if (!appId || !appUrl) {
+      console.error("[auth/wechat/qrcode] Config missing - appId:", appId ? "yes" : "no", "appUrl:", appUrl || "empty");
       return NextResponse.json(
         { error: "WeChat config missing", code: "CONFIG_ERROR" },
         { status: 500 }

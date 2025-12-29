@@ -976,6 +976,9 @@ const loadMessagesForConversation = useCallback(
                   token: mpCallback.token,
                   openid: mpCallback.openid,
                   expiresIn: mpCallback.expiresIn,
+                  // 传递用户资料，用于更新数据库（新用户首次登录）
+                  nickName: mpCallback.nickName,
+                  avatarUrl: mpCallback.avatarUrl,
                 }),
               });
               if (!res.ok) {
@@ -3127,22 +3130,27 @@ const loadMessagesForConversation = useCallback(
       return;
     }
     try {
-      const returnUrl = window.location.href;
+      // 首先检测是否真正在小程序环境中（通过 userAgent 或全局标识）
+      const ua = navigator.userAgent.toLowerCase();
+      const isInMiniProgram = ua.includes("miniprogram") ||
+                               (window as any).__wxjs_environment === "miniprogram";
 
-      // 尝试获取小程序 SDK 对象（直接检查而不是依赖环境检测）
-      const wx = (window as any).wx;
-      const mp = wx?.miniProgram;
+      // 只有确认在小程序环境中，才尝试使用原生登录
+      if (isInMiniProgram) {
+        const wx = (window as any).wx;
+        const mp = wx?.miniProgram;
 
-      // 如果 wx.miniProgram 存在且支持 navigateTo，使用原生登录
-      if (mp && typeof mp.navigateTo === "function") {
-        console.log("[ChatProvider] wx.miniProgram available, using native login");
-        const loginUrl = `/pages/webshell/login?returnUrl=${encodeURIComponent(returnUrl)}`;
-        mp.navigateTo({ url: loginUrl });
-        return;
+        if (mp && typeof mp.navigateTo === "function") {
+          console.log("[ChatProvider] In MiniProgram environment, using native login");
+          const returnUrl = window.location.href;
+          const loginUrl = `/pages/webshell/login?returnUrl=${encodeURIComponent(returnUrl)}`;
+          mp.navigateTo({ url: loginUrl });
+          return;
+        }
       }
 
-      // 普通浏览器环境，使用扫码登录
-      console.log("[ChatProvider] wx.miniProgram not available, using QR code login");
+      // PC/手机浏览器环境，使用扫码登录
+      console.log("[ChatProvider] Not in MiniProgram, using QR code login");
       const nextPath = typeof window !== "undefined" ? window.location.pathname : "/";
       const res = await fetch(
         `/api/auth/wechat/qrcode${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`,

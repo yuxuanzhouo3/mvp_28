@@ -238,13 +238,16 @@ export class CloudBaseAuthService {
         user = { ...userData, _id: result.id };
       } else if (user._id) {
         // 更新已有用户的头像/昵称/登录时间
-        await usersColl.doc(user._id).update({
+        const updateData = {
           name: nickname || user.name,
           avatar: avatar || user.avatar,
           lastLoginAt: now,
           wechatOpenId: openid,
           wechatUnionId: unionid || null,
-        });
+        };
+        await usersColl.doc(user._id).update(updateData);
+        // 刷新 user 对象以反映更新
+        user = { ...user, ...updateData };
       }
 
       if (!user || !user._id) {

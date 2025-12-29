@@ -82,6 +82,9 @@ export function AuthPage({ mode }: { mode: Mode }) {
             token: callback.token,
             openid: callback.openid,
             expiresIn: callback.expiresIn,
+            // 传递用户资料，用于更新数据库（新用户首次登录）
+            nickName: callback.nickName,
+            avatarUrl: callback.avatarUrl,
           }),
         });
 
@@ -170,34 +173,48 @@ export function AuthPage({ mode }: { mode: Mode }) {
   };
 
   const handleWechat = async () => {
-    if (!isDomestic) return;
+    console.log("[AuthPage] handleWechat called, isDomestic:", isDomestic);
+    if (!isDomestic) {
+      console.log("[AuthPage] Not domestic version, returning");
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
-      const returnUrl = window.location.href;
+      // 首先检测是否真正在小程序环境中（通过 userAgent 或全局标识）
+      const ua = navigator.userAgent.toLowerCase();
+      const isInMiniProgram = ua.includes("miniprogram") ||
+                               (window as any).__wxjs_environment === "miniprogram";
+      console.log("[AuthPage] isInMiniProgram:", isInMiniProgram);
 
-      // 尝试获取小程序 SDK 对象（直接检查而不是依赖环境检测）
-      const wx = (window as any).wx;
-      const mp = wx?.miniProgram;
+      // 只有确认在小程序环境中，才尝试使用原生登录
+      if (isInMiniProgram) {
+        const wx = (window as any).wx;
+        const mp = wx?.miniProgram;
 
-      // 如果 wx.miniProgram 存在且支持 navigateTo，使用原生登录
-      if (mp && typeof mp.navigateTo === "function") {
-        console.log("[AuthPage] wx.miniProgram available, using native login");
-        const loginUrl = `/pages/webshell/login?returnUrl=${encodeURIComponent(returnUrl)}`;
-        mp.navigateTo({ url: loginUrl });
-        return;
+        if (mp && typeof mp.navigateTo === "function") {
+          console.log("[AuthPage] In MiniProgram environment, using native login");
+          const returnUrl = window.location.href;
+          const loginUrl = `/pages/webshell/login?returnUrl=${encodeURIComponent(returnUrl)}`;
+          mp.navigateTo({ url: loginUrl });
+          return;
+        }
       }
 
-      // 普通浏览器环境，使用扫码登录
-      console.log("[AuthPage] wx.miniProgram not available, using QR code login");
+      // PC/手机浏览器环境，使用扫码登录
+      console.log("[AuthPage] Using QR code login");
       const qs = next ? `?next=${encodeURIComponent(next)}` : "";
+      console.log("[AuthPage] Fetching:", `/api/auth/wechat/qrcode${qs}`);
       const res = await fetch(`/api/auth/wechat/qrcode${qs}`);
       const data = await res.json();
+      console.log("[AuthPage] QR code API response:", res.status, data);
       if (!res.ok || !data.qrcodeUrl) {
         throw new Error(data.error || (isZhText ? "微信登录失败" : "WeChat login failed"));
       }
+      console.log("[AuthPage] Redirecting to qrcodeUrl:", data.qrcodeUrl);
       window.location.href = data.qrcodeUrl as string;
     } catch (err) {
+      console.error("[AuthPage] WeChat login error:", err);
       setError(
         err instanceof Error
           ? err.message

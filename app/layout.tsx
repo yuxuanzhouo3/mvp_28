@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
+import Script from 'next/script'
 import './globals.css'
-import { DEFAULT_LANGUAGE } from '../config'
+import { DEFAULT_LANGUAGE, IS_DOMESTIC_VERSION } from '../config'
 import { LanguageProvider } from '../context/LanguageContext'
 import { Toaster } from '@/components/ui/sonner'
 import { DynamicTitle } from '@/components/DynamicTitle'
@@ -37,6 +38,13 @@ html {
         `}</style>
       </head>
       <body>
+        {/* 微信 JS-SDK - 仅国内版加载，用于小程序 web-view 环境 */}
+        {IS_DOMESTIC_VERSION && (
+          <Script
+            src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"
+            strategy="beforeInteractive"
+          />
+        )}
         <LanguageProvider>
           <DynamicTitle />
           {children}

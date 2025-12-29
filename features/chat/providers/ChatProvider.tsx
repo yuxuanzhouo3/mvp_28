@@ -956,9 +956,13 @@ const loadMessagesForConversation = useCallback(
     let mounted = true;
 
     const syncSession = async () => {
+      console.log("[syncSession] Starting, isDomestic:", isDomestic);
+      console.log("[syncSession] Current URL:", typeof window !== "undefined" ? window.location.href : "SSR");
+
       // 处理小程序登录回调（国内版）
       if (isDomestic && typeof window !== "undefined") {
         const mpCallback = parseWxMpLoginCallback();
+        console.log("[syncSession] mpCallback:", mpCallback);
         if (mpCallback) {
           console.log("[syncSession] Processing mini program login callback:", mpCallback);
           try {
@@ -977,19 +981,25 @@ const loadMessagesForConversation = useCallback(
               if (!res.ok) {
                 const data = await res.json();
                 console.error("[syncSession] mp-callback failed:", data.error);
+              } else {
+                console.log("[syncSession] mp-callback success");
               }
               clearWxMpLoginParams();
             }
             // 如果收到 code，需要换取 token
             else if (mpCallback.code) {
-              console.log("[syncSession] Exchanging code for token");
+              console.log("[syncSession] Exchanging code for token, code:", mpCallback.code);
+              console.log("[syncSession] nickName:", mpCallback.nickName, "avatarUrl:", mpCallback.avatarUrl);
               const result = await exchangeCodeForToken(
                 mpCallback.code,
                 mpCallback.nickName,
                 mpCallback.avatarUrl
               );
+              console.log("[syncSession] exchangeCodeForToken result:", result);
               if (!result.success) {
                 console.error("[syncSession] exchangeCodeForToken failed:", result.error);
+              } else {
+                console.log("[syncSession] exchangeCodeForToken success, token:", result.token);
               }
               clearWxMpLoginParams();
             }

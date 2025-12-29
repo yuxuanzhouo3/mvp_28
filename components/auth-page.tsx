@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { DEFAULT_LANGUAGE } from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
@@ -17,6 +17,13 @@ import {
   getCooldownMessage,
 } from "@/lib/utils/email-rate-limit";
 import { signInWithGoogle } from "@/actions/oauth";
+import {
+  isMiniProgram,
+  parseWxMpLoginCallback,
+  clearWxMpLoginParams,
+  requestWxMpLogin,
+  exchangeCodeForToken,
+} from "@/lib/wechat-mp";
 
 type Mode = "login" | "signup";
 
@@ -41,6 +48,91 @@ export function AuthPage({ mode }: { mode: Mode }) {
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [isInMiniProgram, setIsInMiniProgram] = useState(false);
+
+  // 检测小程序环境
+  useEffect(() => {
+    if (isDomestic) {
+      const inMp = isMiniProgram();
+      setIsInMiniProgram(inMp);
+      console.log("[AuthPage] Mini program environment:", inMp);
+    }
+  }, [isDomestic]);
+
+  // 处理小程序登录回调
+  const handleMpLoginCallback = useCallback(async () => {
+    if (!isDomestic) return;
+
+    const callback = parseWxMpLoginCallback();
+    if (!callback) return;
+
+    console.log("[AuthPage] Processing mini program login callback:", callback);
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // 如果直接收到 token，直接使用
+      if (callback.token && callback.openid) {
+        console.log("[AuthPage] Direct token received from mini program");
+        // 存储 token 到 cookie (由服务端API处理)
+        const res = await fetch("/api/auth/mp-callback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token: callback.token,
+            openid: callback.openid,
+            expiresIn: callback.expiresIn,
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || (isZhText ? "登录失败" : "Login failed"));
+        }
+
+        // 清除 URL 参数并跳转
+        clearWxMpLoginParams();
+        router.push(next);
+        return;
+      }
+
+      // 如果收到 code，需要换取 token
+      if (callback.code) {
+        console.log("[AuthPage] Exchanging code for token");
+        const result = await exchangeCodeForToken(
+          callback.code,
+          callback.nickName,
+          callback.avatarUrl
+        );
+
+        if (!result.success) {
+          throw new Error(result.error || (isZhText ? "登录失败" : "Login failed"));
+        }
+
+        // 清除 URL 参数并跳转
+        clearWxMpLoginParams();
+        router.push(next);
+        return;
+      }
+    } catch (err) {
+      console.error("[AuthPage] Mini program login callback error:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : isZhText
+            ? "微信登录失败，请重试"
+            : "WeChat login failed. Please try again."
+      );
+      // 清除 URL 参数
+      clearWxMpLoginParams();
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isDomestic, isZhText, next, router]);
+
+  useEffect(() => {
+    handleMpLoginCallback();
+  }, [handleMpLoginCallback]);
 
   const handleTabChange = (val: Mode) => {
     const target =
@@ -82,6 +174,19 @@ export function AuthPage({ mode }: { mode: Mode }) {
     setIsLoading(true);
     setError(null);
     try {
+      // 如果在小程序环境，使用原生登录
+      if (isInMiniProgram) {
+        console.log("[AuthPage] In mini program, requesting native login");
+        const returnUrl = window.location.href;
+        const success = await requestWxMpLogin(returnUrl);
+        if (!success) {
+          throw new Error(isZhText ? "无法调用微信登录，请重试" : "Cannot invoke WeChat login. Please try again.");
+        }
+        // 原生登录会跳转到小程序页面，这里不需要继续处理
+        return;
+      }
+
+      // 普通浏览器环境，使用扫码登录
       const qs = next ? `?next=${encodeURIComponent(next)}` : "";
       const res = await fetch(`/api/auth/wechat/qrcode${qs}`);
       const data = await res.json();

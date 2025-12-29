@@ -49,6 +49,11 @@ import {
   getCooldownMessage,
 } from "@/lib/utils/email-rate-limit";
 import { signInWithGoogle } from "@/actions/oauth";
+import {
+  parseWxMpLoginCallback,
+  clearWxMpLoginParams,
+  exchangeCodeForToken,
+} from "@/lib/wechat-mp";
 
 const FREE_DAILY_LIMIT = (() => {
   const raw = process.env.NEXT_PUBLIC_FREE_DAILY_LIMIT || "10";
@@ -951,6 +956,50 @@ const loadMessagesForConversation = useCallback(
     let mounted = true;
 
     const syncSession = async () => {
+      // 处理小程序登录回调（国内版）
+      if (isDomestic && typeof window !== "undefined") {
+        const mpCallback = parseWxMpLoginCallback();
+        if (mpCallback) {
+          console.log("[syncSession] Processing mini program login callback:", mpCallback);
+          try {
+            // 如果直接收到 token，调用 mp-callback API 设置 cookie
+            if (mpCallback.token && mpCallback.openid) {
+              console.log("[syncSession] Direct token received from mini program");
+              const res = await fetch("/api/auth/mp-callback", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  token: mpCallback.token,
+                  openid: mpCallback.openid,
+                  expiresIn: mpCallback.expiresIn,
+                }),
+              });
+              if (!res.ok) {
+                const data = await res.json();
+                console.error("[syncSession] mp-callback failed:", data.error);
+              }
+              clearWxMpLoginParams();
+            }
+            // 如果收到 code，需要换取 token
+            else if (mpCallback.code) {
+              console.log("[syncSession] Exchanging code for token");
+              const result = await exchangeCodeForToken(
+                mpCallback.code,
+                mpCallback.nickName,
+                mpCallback.avatarUrl
+              );
+              if (!result.success) {
+                console.error("[syncSession] exchangeCodeForToken failed:", result.error);
+              }
+              clearWxMpLoginParams();
+            }
+          } catch (err) {
+            console.error("[syncSession] Mini program login callback error:", err);
+            clearWxMpLoginParams();
+          }
+        }
+      }
+
       const hasCloudToken =
         typeof document !== "undefined" &&
         /(^|; )auth-token=/.test(document.cookie || "");

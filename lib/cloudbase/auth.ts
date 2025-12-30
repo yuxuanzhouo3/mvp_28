@@ -200,11 +200,22 @@ export class CloudBaseAuthService {
       await this.ensureReady();
       const usersColl = this.db.collection("users");
 
-      // 优先按 wechatOpenId 查找
-      let existing = await usersColl.where({ wechatOpenId: openid }).limit(1).get();
-      let user = existing.data[0] as CloudBaseUser | undefined;
+      let existing;
+      let user: CloudBaseUser | undefined;
 
-      // 兼容早期用 email 存 openid 的情况
+      // 1. 如果有 unionid，优先按 unionid 查找（跨应用统一：PC/小程序/公众号）
+      if (unionid) {
+        existing = await usersColl.where({ wechatUnionId: unionid }).limit(1).get();
+        user = existing.data[0] as CloudBaseUser | undefined;
+      }
+
+      // 2. 如果没找到，按 wechatOpenId 查找
+      if (!user) {
+        existing = await usersColl.where({ wechatOpenId: openid }).limit(1).get();
+        user = existing.data[0] as CloudBaseUser | undefined;
+      }
+
+      // 3. 兼容早期用 email 存 openid 的情况
       if (!user) {
         const emailKey = `wechat_${openid}@local.wechat`;
         existing = await usersColl.where({ email: emailKey }).limit(1).get();

@@ -660,15 +660,23 @@ function ChatInterface({
                           isUser ? "flex-row-reverse" : "flex-row"
                         } transition-colors duration-500`}
                       >
-                        <div
-                          className={`mt-1 h-10 w-10 min-w-[2.5rem] min-h-[2.5rem] flex-shrink-0 rounded-xl flex items-center justify-center text-white shadow-md ${
-                            isUser
-                              ? "bg-gradient-to-br from-indigo-500 to-blue-600 shadow-blue-400/30"
-                              : "bg-gradient-to-br from-emerald-500 to-teal-500 shadow-emerald-400/30"
-                          }`}
-                        >
-                          {isUser ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
-                        </div>
+                        {isUser && appUser?.avatar ? (
+                          <img
+                            src={appUser.avatar}
+                            alt={appUser.name || "User"}
+                            className="mt-1 h-10 w-10 min-w-[2.5rem] min-h-[2.5rem] flex-shrink-0 rounded-xl object-cover shadow-md shadow-blue-400/30"
+                          />
+                        ) : (
+                          <div
+                            className={`mt-1 h-10 w-10 min-w-[2.5rem] min-h-[2.5rem] flex-shrink-0 rounded-xl flex items-center justify-center text-white shadow-md ${
+                              isUser
+                                ? "bg-gradient-to-br from-indigo-500 to-blue-600 shadow-blue-400/30"
+                                : "bg-gradient-to-br from-emerald-500 to-teal-500 shadow-emerald-400/30"
+                            }`}
+                          >
+                            {isUser ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
+                          </div>
+                        )}
 
                         <ContextMenu>
                           <ContextMenuTrigger asChild>{bubble}</ContextMenuTrigger>

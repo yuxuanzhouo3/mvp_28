@@ -454,7 +454,7 @@ export default function Sidebar({
                               onClick={() => selectChat(chat.id)}
                               onDoubleClick={() => setEditingChatId(chat.id)}
                             >
-                              <div className="flex items-center space-x-1.5">
+                              <div className="flex items-center space-x-1.5 min-w-0 overflow-hidden">
                                 <MessageSquare className="w-2.5 h-2.5 shrink-0" />
                                 {editingChatId === chat.id ? (
                                   <div className="flex items-center space-x-1 flex-1">
@@ -490,15 +490,15 @@ export default function Sidebar({
                                 ) : (
                                   <>
                                     <span
-                                      className="truncate flex-1 text-gray-700 dark:text-gray-300"
+                                      className="truncate flex-1 min-w-0 text-gray-700 dark:text-gray-300"
                                       title={chat.title}
                                     >
                                       {truncateText(
                                         chat.title,
-                                        Math.floor((sidebarWidth - 120) / 6)
+                                        isMobile ? 8 : Math.floor((sidebarWidth - 120) / 6)
                                       )}
                                     </span>
-                                    <div className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center space-x-0.5">
+                                    <div className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center space-x-0.5">
                                       <Button
                                         size="sm"
                                         variant="ghost"
@@ -662,7 +662,7 @@ export default function Sidebar({
                               onClick={() => selectChat(chat.id)}
                               onDoubleClick={() => setEditingChatId(chat.id)}
                             >
-                              <div className="flex items-center space-x-1.5">
+                              <div className="flex items-center space-x-1.5 min-w-0 overflow-hidden">
                                 <MessageSquare className="w-2.5 h-2.5 shrink-0" />
                                 {editingChatId === chat.id ? (
                                   <div className="flex items-center space-x-1 flex-1">
@@ -696,15 +696,15 @@ export default function Sidebar({
                                 ) : (
                                   <>
                                     <span
-                                      className="truncate flex-1 text-gray-700 dark:text-gray-300"
+                                      className="truncate flex-1 min-w-0 text-gray-700 dark:text-gray-300"
                                       title={chat.title}
                                     >
                                       {truncateText(
                                         chat.title,
-                                        Math.floor((sidebarWidth - 120) / 6)
+                                        isMobile ? 8 : Math.floor((sidebarWidth - 120) / 6)
                                       )}
                                     </span>
-                                    <div className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center space-x-0.5">
+                                    <div className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center space-x-0.5">
                                       <Button
                                         size="sm"
                                         variant="ghost"
@@ -833,7 +833,7 @@ export default function Sidebar({
                               onClick={() => selectChat(chat.id)}
                               onDoubleClick={() => setEditingChatId(chat.id)}
                             >
-                              <div className="flex items-center space-x-1.5">
+                              <div className="flex items-center space-x-1.5 min-w-0 overflow-hidden">
                                 <MessageSquare className="w-2.5 h-2.5 shrink-0" />
                                 {editingChatId === chat.id ? (
                                   <div className="flex items-center space-x-1 flex-1">
@@ -867,15 +867,15 @@ export default function Sidebar({
                                 ) : (
                                   <>
                                     <span
-                                      className="truncate flex-1 text-gray-700 dark:text-gray-300"
+                                      className="truncate flex-1 min-w-0 text-gray-700 dark:text-gray-300"
                                       title={chat.title}
                                     >
                                       {truncateText(
                                         chat.title,
-                                        Math.floor((sidebarWidth - 120) / 6)
+                                        isMobile ? 8 : Math.floor((sidebarWidth - 120) / 6)
                                       )}
                                     </span>
-                                    <div className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center space-x-0.5">
+                                    <div className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center space-x-0.5">
                                       <Button
                                         size="sm"
                                         variant="ghost"

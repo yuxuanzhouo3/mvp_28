@@ -1079,6 +1079,7 @@ const loadMessagesForConversation = useCallback(
             id: user.id,
             email: user.email || "",
             name: user.name || user.email || "User",
+            avatar: user.avatar || undefined, // 用户头像
             // Basic 不是无限制，忽略 pro 标记
             isPro: effectiveIsPro,
             isPaid: serverHasActiveSubscription, // 使用服务器返回的订阅状态
@@ -1207,6 +1208,7 @@ const loadMessagesForConversation = useCallback(
             userMeta?.full_name ||
             user.email?.split("@")[0] ||
             "User",
+          avatar: profile?.avatar || userMeta?.avatar_url || undefined, // 用户头像
           isPro: effectiveIsPro,
           isPaid: serverHasActiveSubscription, // 使用服务器返回的订阅状态（更准确）
           plan: plan || undefined,
@@ -1305,6 +1307,7 @@ const loadMessagesForConversation = useCallback(
                 (user.user_metadata as any)?.full_name ||
                 user.email?.split("@")[0] ||
                 "User",
+              avatar: profile?.avatar || (user.user_metadata as any)?.avatar_url || undefined, // 用户头像
               isPro: serverIsPro,
               isPaid: serverIsPaid,
               plan: userMeta?.plan,
@@ -2846,6 +2849,7 @@ const loadMessagesForConversation = useCallback(
             id: data.user.id,
             email: data.user.email || "",
             name: data.user.name || data.user.email || "User",
+            avatar: data.user.avatar || undefined, // 用户头像
             isPro: isProMeta && planLower !== "basic",
             isPaid: isPaidUser,
             plan: data.user.metadata?.plan,
@@ -2937,6 +2941,7 @@ const loadMessagesForConversation = useCallback(
             id: data.user.id,
             email: data.user.email || "",
             name: data.user.name || data.user.email || "User",
+            avatar: data.user.avatar || undefined, // 用户头像
             isPro: isProMeta && planLower !== "basic",
             isPaid: isPaidUser,
             plan: data.user.metadata?.plan,
@@ -3074,6 +3079,7 @@ const loadMessagesForConversation = useCallback(
                 (user.user_metadata as any)?.full_name ||
                 user.email?.split("@")[0] ||
                 "User",
+              avatar: (user.user_metadata as any)?.avatar_url || undefined, // 用户头像
               isPro: serverIsPro,
               isPaid: serverIsPaid,
               settings: {

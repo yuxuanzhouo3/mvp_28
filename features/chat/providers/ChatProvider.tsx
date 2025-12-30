@@ -1759,6 +1759,17 @@ const loadMessagesForConversation = useCallback(
     }
   }, [appUser, currentChatId, chatSessions.length, setSelectedModel, setSelectedModelType, setSelectedCategory]);
 
+  // 用户登录后自动展开侧边栏，未登录时保持收起
+  useEffect(() => {
+    if (appUser && isLoggedIn) {
+      // 用户已登录，展开侧边栏
+      setSidebarCollapsed(false);
+    } else if (!appUser && !isLoggedIn) {
+      // 用户未登录，收起侧边栏
+      setSidebarCollapsed(true);
+    }
+  }, [appUser, isLoggedIn, setSidebarCollapsed]);
+
   useEffect(() => {
     chatSessionsRef.current = chatSessions;
   }, [chatSessions]);

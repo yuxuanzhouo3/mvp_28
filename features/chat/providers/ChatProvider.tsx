@@ -2235,7 +2235,7 @@ const loadMessagesForConversation = useCallback(
       consumeFreeQuota,
       refreshQuota,
       () => setShowUpgradeDialog(true),
-      mobileGuestTrial.isEnabled, // 移动端访客试用：允许跳过登录检查
+      !appUser && mobileGuestTrial.isEnabled, // 移动端访客试用：仅未登录用户才允许跳过登录检查
     );
 
   // Guest session timeout management

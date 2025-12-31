@@ -16,6 +16,7 @@ import {
   Link as LinkIcon,
   Menu,
   X,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,11 @@ interface AdminSidebarProps {
 }
 
 const navItems = [
+  {
+    href: "/admin/stats",
+    label: "数据统计",
+    icon: BarChart3,
+  },
   {
     href: "/admin/ads",
     label: "广告管理",

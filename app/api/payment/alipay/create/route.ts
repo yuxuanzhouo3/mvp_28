@@ -273,6 +273,7 @@ export async function POST(request: NextRequest) {
       metadata,
       createdAt: nowIso,
       updatedAt: nowIso,
+      source: "cn", // 国内版数据标识
     };
 
     try {

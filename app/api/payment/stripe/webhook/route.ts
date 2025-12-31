@@ -257,6 +257,7 @@ export async function POST(req: Request) {
           addon_package_id: metadata.addonPackageId || "",
           image_credits: imageCredits,
           video_audio_credits: videoAudioCredits,
+          source: "global", // 国际版数据标识
         });
         await addSupabaseAddonCredits(userId, imageCredits, videoAudioCredits);
         console.log(`[Stripe][ADDON] credited for user ${userId}`);
@@ -327,6 +328,7 @@ export async function POST(req: Request) {
           currency,
           status: "COMPLETED",
           type: "SUBSCRIPTION",
+          source: "global", // 国际版数据标识
         });
       }
 

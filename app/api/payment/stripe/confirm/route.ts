@@ -184,6 +184,7 @@ export async function POST(request: NextRequest) {
           imageCredits,
           videoAudioCredits,
           createdAt: new Date().toISOString(),
+          source: "cn", // 国内版数据标识
         });
 
         // 国内版：使用原子操作增加加油包额度
@@ -235,6 +236,7 @@ export async function POST(request: NextRequest) {
           addon_package_id: addonPackageId,
           image_credits: imageCredits,
           video_audio_credits: videoAudioCredits,
+          source: "global", // 国际版数据标识
         });
 
         // 国际版：使用 Supabase 钱包服务增加加油包额度
@@ -355,6 +357,7 @@ export async function POST(request: NextRequest) {
         currency,
         status: "COMPLETED",
         type: "SUBSCRIPTION",
+        source: "global", // 国际版数据标识
       });
 
       if (isDowngrade) {
@@ -555,6 +558,7 @@ export async function POST(request: NextRequest) {
         period,
         type: "SUBSCRIPTION",
         createdAt: nowIso,
+        source: "cn", // 国内版数据标识
       });
 
       const subsColl = db.collection("subscriptions");

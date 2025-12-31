@@ -30,6 +30,7 @@ export interface CloudBaseUser {
     effectiveAt?: string;
   } | null;
   hide_ads?: boolean; // 是否去除广告
+  source?: string; // 数据来源标识：cn 或 global
 }
 
 export interface CloudBaseSession {
@@ -137,6 +138,7 @@ export class CloudBaseAuthService {
         plan: "free",
         plan_exp: null,
         paymentMethod: null,
+        source: "cn", // 国内版数据标识
       };
 
       const result = await this.db.collection("users").add(userData);
@@ -243,6 +245,7 @@ export class CloudBaseAuthService {
             paymentMethod: null,
             wechatOpenId: openid,
             wechatUnionId: unionid || null,
+            source: "cn", // 国内版数据标识
           };
 
         const result = await usersColl.add(userData);

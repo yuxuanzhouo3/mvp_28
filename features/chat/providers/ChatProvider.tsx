@@ -1208,7 +1208,7 @@ const loadMessagesForConversation = useCallback(
             userMeta?.full_name ||
             user.email?.split("@")[0] ||
             "User",
-          avatar: profile?.avatar || userMeta?.avatar_url || undefined, // 用户头像
+          avatar: userMeta?.avatar_url || undefined, // 用户头像
           isPro: effectiveIsPro,
           isPaid: serverHasActiveSubscription, // 使用服务器返回的订阅状态（更准确）
           plan: plan || undefined,
@@ -1307,7 +1307,7 @@ const loadMessagesForConversation = useCallback(
                 (user.user_metadata as any)?.full_name ||
                 user.email?.split("@")[0] ||
                 "User",
-              avatar: profile?.avatar || (user.user_metadata as any)?.avatar_url || undefined, // 用户头像
+              avatar: (user.user_metadata as any)?.avatar_url || undefined, // 用户头像
               isPro: serverIsPro,
               isPaid: serverIsPaid,
               plan: userMeta?.plan,

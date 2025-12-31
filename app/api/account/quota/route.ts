@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
     }
 
     const plan = getPlanInfo(user.metadata);
-    if (QUOTA_LOG) console.log("[quota] user", user.id, "plan", plan.planLower, "isBasic", plan.isBasic, "isPro", plan.isPro, "isFree", plan.isFree);
+    if (QUOTA_LOG) console.log("[quota] user", user.id, "plan", plan.planLower, "isBasic", plan.isBasic, "isPro", plan.isProPlan, "isFree", plan.isFree);
     
     const today = getTodayString();
     const currentMonth = getCurrentYearMonth();

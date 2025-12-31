@@ -439,19 +439,14 @@ export default function SocialLinksManagementPage() {
                       <input
                         type="hidden"
                         name="isActive"
-                        value="false"
+                        id="create-isActive-hidden"
+                        defaultValue="true"
                       />
                       <Switch
-                        name="isActive"
                         defaultChecked={true}
                         onCheckedChange={(checked) => {
-                          const form = document.querySelector("form");
-                          if (form) {
-                            const hidden = form.querySelector(
-                              'input[name="isActive"][type="hidden"]'
-                            ) as HTMLInputElement;
-                            if (hidden) hidden.value = String(checked);
-                          }
+                          const hidden = document.getElementById("create-isActive-hidden") as HTMLInputElement;
+                          if (hidden) hidden.value = String(checked);
                         }}
                       />
                     </div>

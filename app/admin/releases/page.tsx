@@ -420,18 +420,12 @@ export default function ReleasesManagementPage() {
                   <div className="space-y-2">
                     <Label>立即启用</Label>
                     <div className="flex items-center h-10">
-                      <input type="hidden" name="isActive" value="false" />
+                      <input type="hidden" name="isActive" id="create-isActive-hidden" defaultValue="true" />
                       <Switch
-                        name="isActive"
                         defaultChecked={true}
                         onCheckedChange={(checked) => {
-                          const form = document.querySelector("form");
-                          if (form) {
-                            const hidden = form.querySelector(
-                              'input[name="isActive"][type="hidden"]'
-                            ) as HTMLInputElement;
-                            if (hidden) hidden.value = String(checked);
-                          }
+                          const hidden = document.getElementById("create-isActive-hidden") as HTMLInputElement;
+                          if (hidden) hidden.value = String(checked);
                         }}
                       />
                     </div>
@@ -440,18 +434,12 @@ export default function ReleasesManagementPage() {
                   <div className="space-y-2">
                     <Label>强制更新</Label>
                     <div className="flex items-center h-10">
-                      <input type="hidden" name="isMandatory" value="false" />
+                      <input type="hidden" name="isMandatory" id="create-isMandatory-hidden" defaultValue="false" />
                       <Switch
-                        name="isMandatory"
                         defaultChecked={false}
                         onCheckedChange={(checked) => {
-                          const form = document.querySelector("form");
-                          if (form) {
-                            const hidden = form.querySelector(
-                              'input[name="isMandatory"][type="hidden"]'
-                            ) as HTMLInputElement;
-                            if (hidden) hidden.value = String(checked);
-                          }
+                          const hidden = document.getElementById("create-isMandatory-hidden") as HTMLInputElement;
+                          if (hidden) hidden.value = String(checked);
                         }}
                       />
                     </div>

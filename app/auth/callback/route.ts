@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getSupabaseAnonKeyFromEnv, getSupabaseUrlFromEnv } from "@/lib/supabase/env";
 import { IS_DOMESTIC_VERSION } from "@/config";
+import { trackLoginEvent, trackRegisterEvent } from "@/services/analytics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -181,6 +182,21 @@ export async function GET(request: NextRequest) {
   }
 
   console.info("[auth/callback] Session established for:", data?.session?.user?.email);
+
+  // 记录登录/注册事件到 user_analytics
+  if (data?.session?.user) {
+    const user = data.session.user;
+    const isNewUser = user.created_at &&
+      (new Date().getTime() - new Date(user.created_at).getTime()) < 5 * 60 * 1000;
+
+    const trackFn = isNewUser ? trackRegisterEvent : trackLoginEvent;
+    trackFn(user.id, {
+      userAgent: request.headers.get("user-agent") || undefined,
+      language: request.headers.get("accept-language")?.split(",")[0] || undefined,
+      referrer: request.headers.get("referer") || undefined,
+      ...(isNewUser ? { registerMethod: "google" } : {}),
+    }).catch((err) => console.warn("[auth/callback] track event error:", err));
+  }
 
   // 创建响应并设置 cookie
   const successUrl = new URL(next, origin);

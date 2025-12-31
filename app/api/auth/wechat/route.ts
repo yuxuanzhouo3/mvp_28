@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
+import { trackWechatLoginEvent } from "@/services/analytics";
 
 /**
  * POST /api/auth/wechat
@@ -84,6 +85,17 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    // 判断是否为新用户（通过检查创建时间是否在5分钟内）
+    const isNewUser = result.user.createdAt &&
+      (new Date().getTime() - new Date(result.user.createdAt).getTime()) < 5 * 60 * 1000;
+
+    // 记录微信登录事件到 user_analytics
+    trackWechatLoginEvent(result.user.id, {
+      userAgent: request.headers.get("user-agent") || undefined,
+      language: request.headers.get("accept-language")?.split(",")[0] || undefined,
+      isNewUser,
+    }).catch((err) => console.warn("[auth/wechat] trackWechatLoginEvent error:", err));
 
     const res = NextResponse.json({
       success: true,

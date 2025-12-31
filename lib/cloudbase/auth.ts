@@ -28,6 +28,10 @@ export interface CloudBaseUser {
   pendingDowngrade?: {
     targetPlan: string;
     effectiveAt?: string;
+    expiresAt?: string;
+  }[] | {
+    targetPlan: string;
+    effectiveAt?: string;
   } | null;
   hide_ads?: boolean; // 是否去除广告
   source?: string; // 数据来源标识：cn 或 global
@@ -310,29 +314,39 @@ export class CloudBaseAuthService {
    * 处理已过期的降级请求：
    * - 等到当前套餐到期后，自动切换到用户预先购买的低阶套餐
    * - 激活 pending 订阅记录，并重置对应套餐的钱包额度
+   * - 支持单个对象（旧格式）和数组队列（新格式）
    */
   private async applyPendingDowngradeIfNeeded(
     userId: string,
     userDoc: CloudBaseUser
   ): Promise<CloudBaseUser> {
-    const pending = userDoc?.pendingDowngrade;
-    if (!pending?.targetPlan) return userDoc;
-
-    const effectiveAt = pending.effectiveAt
-      ? new Date(pending.effectiveAt)
-      : userDoc.plan_exp
-        ? new Date(userDoc.plan_exp)
-        : null;
-    if (!effectiveAt || effectiveAt.getTime() > Date.now()) {
-      return userDoc;
-    }
+    const pendingRaw = userDoc?.pendingDowngrade;
+    if (!pendingRaw) return userDoc;
 
     const now = new Date();
     const subsColl = this.db.collection("subscriptions");
 
+    // 标准化为数组格式
+    const pendingQueue = Array.isArray(pendingRaw) ? pendingRaw : [pendingRaw];
+    if (pendingQueue.length === 0 || !pendingQueue[0]?.targetPlan) return userDoc;
+
+    // 找到第一个已经到生效时间的降级
+    const firstPending = pendingQueue[0];
+    const effectiveAt = firstPending.effectiveAt
+      ? new Date(firstPending.effectiveAt)
+      : userDoc.plan_exp
+        ? new Date(userDoc.plan_exp)
+        : null;
+
+    // 如果还没到生效时间，不做任何处理
+    if (!effectiveAt || effectiveAt.getTime() > Date.now()) {
+      return userDoc;
+    }
+
     try {
+      // 查找对应的 pending 订阅记录
       const pendingRes = await subsColl
-        .where({ userId, plan: pending.targetPlan, status: "pending" })
+        .where({ userId, plan: firstPending.targetPlan, status: "pending" })
         .get();
 
       const pendingSub =
@@ -342,19 +356,25 @@ export class CloudBaseAuthService {
 
       const nextExpire = pendingSub?.expiresAt
         ? new Date(pendingSub.expiresAt)
-        : null;
+        : firstPending.expiresAt
+          ? new Date(firstPending.expiresAt)
+          : null;
+
+      // 从队列中移除第一个已生效的降级
+      const remainingQueue = pendingQueue.slice(1);
 
       const updatePayload: Record<string, any> = {
-        plan: pending.targetPlan,
-        subscriptionTier: pending.targetPlan,
+        plan: firstPending.targetPlan,
+        subscriptionTier: firstPending.targetPlan,
         plan_exp: nextExpire ? nextExpire.toISOString() : null,
-        pro: (pending.targetPlan || "").toLowerCase() !== "basic",
-        pendingDowngrade: null,
+        pro: (firstPending.targetPlan || "").toLowerCase() !== "basic",
+        pendingDowngrade: remainingQueue.length > 0 ? remainingQueue : null,
         updatedAt: now.toISOString(),
       };
 
       await this.db.collection("users").doc(userId).update(updatePayload);
 
+      // 激活 pending 订阅记录
       if (pendingSub?._id) {
         await subsColl.doc(pendingSub._id).update({
           status: "active",
@@ -363,10 +383,18 @@ export class CloudBaseAuthService {
         });
       }
 
-      await seedWalletForPlan(userId, (pending.targetPlan as string).toLowerCase(), {
+      // 重置钱包额度
+      await seedWalletForPlan(userId, (firstPending.targetPlan as string).toLowerCase(), {
         forceReset: true,
       });
 
+      console.log("[cloudbase] Applied pending downgrade:", {
+        userId,
+        plan: firstPending.targetPlan,
+        remainingQueue: remainingQueue.length,
+      });
+
+      // 刷新用户文档
       const refreshed = await this.db.collection("users").doc(userId).get();
       const refreshedDoc = refreshed?.data?.[0] as CloudBaseUser | undefined;
       return refreshedDoc || ({ ...userDoc, ...updatePayload } as CloudBaseUser);

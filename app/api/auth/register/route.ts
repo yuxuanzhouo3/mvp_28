@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
+import { trackRegisterEvent } from "@/services/analytics";
 
 export const runtime = "nodejs";
 
@@ -26,6 +27,14 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // 记录注册事件到 user_analytics
+    trackRegisterEvent(result.user.id, {
+      userAgent: req.headers.get("user-agent") || undefined,
+      language: req.headers.get("accept-language")?.split(",")[0] || undefined,
+      referrer: req.headers.get("referer") || undefined,
+      registerMethod: "email",
+    }).catch((err) => console.warn("[auth/register] trackRegisterEvent error:", err));
 
     const res = NextResponse.json({
       success: true,

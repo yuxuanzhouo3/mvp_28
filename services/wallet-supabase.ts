@@ -300,18 +300,24 @@ async function applySupabasePendingDowngradeIfNeeded(params: {
   const raw = wallet.pending_downgrade;
   if (!raw) return null;
 
-  let pending: any = null;
+  let pendingData: any = null;
   try {
-    pending = JSON.parse(raw);
+    pendingData = JSON.parse(raw);
   } catch {
     return null;
   }
 
+  // 标准化为数组格式（支持单个对象和数组队列）
+  const pendingQueue = Array.isArray(pendingData) ? pendingData : [pendingData];
+  if (pendingQueue.length === 0) return null;
+
+  // 获取第一个待生效的降级
+  const firstPending = pendingQueue[0];
   const targetPlanRaw =
-    pending?.targetPlan ||
-    pending?.target_plan ||
-    pending?.plan ||
-    pending?.target ||
+    firstPending?.targetPlan ||
+    firstPending?.target_plan ||
+    firstPending?.plan ||
+    firstPending?.target ||
     null;
   if (!targetPlanRaw) return null;
 
@@ -319,8 +325,8 @@ async function applySupabasePendingDowngradeIfNeeded(params: {
   const targetPlan = normalizeSupabasePlanLabel(targetPlanLower);
   const pro = targetPlanLower !== "free" && targetPlanLower !== "basic";
 
-  const effectiveAt = pending?.effectiveAt
-    ? new Date(pending.effectiveAt)
+  const effectiveAt = firstPending?.effectiveAt
+    ? new Date(firstPending.effectiveAt)
     : wallet.plan_exp
       ? new Date(wallet.plan_exp)
       : null;
@@ -328,17 +334,21 @@ async function applySupabasePendingDowngradeIfNeeded(params: {
     return null;
   }
 
-  const { data: pendingSub, error: pendingErr } = await supabaseAdmin
+  // 查找对应的 pending 订阅记录
+  const { data: pendingSubs, error: pendingErr } = await supabaseAdmin
     .from("subscriptions")
     .select("*")
     .eq("user_id", userId)
     .eq("status", "pending")
-    .maybeSingle();
+    .eq("plan", targetPlan)
+    .order("created_at", { ascending: true })
+    .limit(1);
 
   if (pendingErr) {
     console.error("[wallet-supabase] pending subscription fetch error:", pendingErr);
   }
 
+  const pendingSub = pendingSubs?.[0] || null;
   const periodStr = (pendingSub?.period || "monthly").toString().toLowerCase();
   const period: "monthly" | "annual" =
     periodStr === "annual" || periodStr === "yearly" ? "annual" : "monthly";
@@ -352,11 +362,16 @@ async function applySupabasePendingDowngradeIfNeeded(params: {
 
   const nextExpireIso =
     pendingSub?.expires_at ||
+    firstPending?.expiresAt ||
     addCalendarMonths(effectiveAt, monthsToAdd, anchorDay).toISOString();
   const nowIso = now.toISOString();
 
+  // 从队列中移除第一个已生效的降级
+  const remainingQueue = pendingQueue.slice(1);
+  const newPendingDowngrade = remainingQueue.length > 0 ? JSON.stringify(remainingQueue) : null;
+
   // 1) 激活待生效订阅记录
-  if (pendingSub?.user_id) {
+  if (pendingSub?.id) {
     const { error } = await supabaseAdmin
       .from("subscriptions")
       .update({
@@ -367,7 +382,7 @@ async function applySupabasePendingDowngradeIfNeeded(params: {
         plan: targetPlan,
         period,
       })
-      .eq("user_id", userId);
+      .eq("id", pendingSub.id);
     if (error) {
       console.error("[wallet-supabase] activate pending subscription error:", error);
     }
@@ -398,7 +413,7 @@ async function applySupabasePendingDowngradeIfNeeded(params: {
       subscription_tier: targetPlan,
       plan_exp: nextExpireIso,
       pro,
-      pending_downgrade: null,
+      pending_downgrade: newPendingDowngrade,
       updated_at: nowIso,
     })
     .eq("user_id", userId);
@@ -422,6 +437,12 @@ async function applySupabasePendingDowngradeIfNeeded(params: {
   // 4) 重置月度配额到目标套餐（降级生效时视为新账期开始）
   const limits = getSupabasePlanMediaLimits(targetPlanLower);
   await resetSupabaseMonthlyQuota(userId, limits.imageLimit, limits.videoLimit);
+
+  console.log("[wallet-supabase] Applied pending downgrade:", {
+    userId,
+    plan: targetPlan,
+    remainingQueue: remainingQueue.length,
+  });
 
   return await getSupabaseUserWallet(userId);
 }

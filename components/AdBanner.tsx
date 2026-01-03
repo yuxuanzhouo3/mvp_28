@@ -34,6 +34,10 @@ export interface AdBannerProps {
   onAdClick?: (ad: PublicAdvertisement) => void;
   /** 没有广告时是否显示占位符（用于调试） */
   showPlaceholder?: boolean;
+  /** 用户是否已登录 */
+  isLoggedIn?: boolean;
+  /** 未登录时点击关闭按钮的回调（用于弹出登录弹窗） */
+  onLoginRequired?: () => void;
 }
 
 /**
@@ -48,6 +52,8 @@ export default function AdBanner({
   showCloseButton = false,
   onClose,
   onAdClick,
+  isLoggedIn = false,
+  onLoginRequired,
 }: AdBannerProps) {
   const [ads, setAds] = useState<PublicAdvertisement[]>([]);
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
@@ -114,7 +120,14 @@ export default function AdBanner({
 
   // 处理关闭
   const handleClose = () => {
+    // 广告正常关闭
     setVisible(false);
+    // 未登录时，弹出登录弹窗（不触发 onClose 避免弹出升级弹窗）
+    if (!isLoggedIn && onLoginRequired) {
+      onLoginRequired();
+      return;
+    }
+    // 已登录用户触发 onClose 回调
     onClose?.();
   };
 

@@ -92,6 +92,8 @@ interface HeaderProps {
   mobileGuestTrialEnabled?: boolean;
   mobileGuestTrialRemaining?: number;
   mobileGuestTrialMax?: number;
+  // 未登录时点击关闭广告按钮的回调
+  onLoginRequired?: () => void;
 }
 
 export default function Header({
@@ -150,6 +152,7 @@ export default function Header({
   mobileGuestTrialEnabled = false,
   mobileGuestTrialRemaining = 0,
   mobileGuestTrialMax = 10,
+  onLoginRequired,
 }: HeaderProps) {
   const planLower = (
     currentPlan ||
@@ -738,6 +741,8 @@ export default function Header({
                 position="top"
                 isDomestic={isDomestic}
                 showCloseButton={true}
+                isLoggedIn={!!appUser}
+                onLoginRequired={onLoginRequired || (() => setShowAuthDialog(true))}
                 onClose={() => {
                   if (shouldShowUpgradeDialogOnAdClose) {
                     setShowUpgradeDialog(true);

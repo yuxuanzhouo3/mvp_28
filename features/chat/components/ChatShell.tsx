@@ -72,6 +72,14 @@ function ChatShell() {
     }
   };
 
+  // 用户是否已登录
+  const isLoggedIn = !!appUser;
+
+  // 未登录时点击关闭广告按钮，弹出登录弹窗
+  const handleLoginRequired = () => {
+    modalProps?.setShowAuthDialog?.(true);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-[#2d2d30] text-gray-900 dark:text-[#ececf1] flex relative overflow-x-hidden">
       {/* 移动端/平板端遮罩层 - 当侧边栏展开时显示 */}
@@ -98,7 +106,7 @@ function ChatShell() {
       <div className="flex-1 flex flex-col h-screen overflow-x-hidden max-w-full transition-all duration-300">
         {/* Header - Fixed height */}
         <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#40414f] flex-shrink-0 transition-colors">
-          <Header {...headerProps} showGlobalAds={displayAds} />
+          <Header {...headerProps} showGlobalAds={displayAds} onLoginRequired={handleLoginRequired} />
         </header>
 
         {/* Chat Messages - Flexible height with scroll */}
@@ -116,6 +124,8 @@ function ChatShell() {
                   isDomestic={isDomestic}
                   showCloseButton={true}
                   onClose={handleAdClose}
+                  isLoggedIn={isLoggedIn}
+                  onLoginRequired={handleLoginRequired}
                   className="rounded-xl overflow-hidden shadow-md w-full"
                 />
               )}
@@ -134,6 +144,8 @@ function ChatShell() {
                   isDomestic={isDomestic}
                   showCloseButton={true}
                   onClose={handleAdClose}
+                  isLoggedIn={isLoggedIn}
+                  onLoginRequired={handleLoginRequired}
                   className="rounded-xl overflow-hidden shadow-md w-full"
                 />
               )}
@@ -150,6 +162,8 @@ function ChatShell() {
                   isDomestic={isDomestic}
                   showCloseButton={true}
                   onClose={handleAdClose}
+                  isLoggedIn={isLoggedIn}
+                  onLoginRequired={handleLoginRequired}
                   className="rounded-xl overflow-hidden shadow-md w-full"
                 />
               </div>
@@ -161,6 +175,8 @@ function ChatShell() {
                   isDomestic={isDomestic}
                   showCloseButton={true}
                   onClose={handleAdClose}
+                  isLoggedIn={isLoggedIn}
+                  onLoginRequired={handleLoginRequired}
                   className="rounded-xl overflow-hidden shadow-sm"
                 />
               </div>
@@ -172,6 +188,8 @@ function ChatShell() {
                   isDomestic={isDomestic}
                   showCloseButton={true}
                   onClose={handleAdClose}
+                  isLoggedIn={isLoggedIn}
+                  onLoginRequired={handleLoginRequired}
                   className="rounded-xl overflow-hidden shadow-md w-full"
                 />
               </div>

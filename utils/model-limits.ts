@@ -112,9 +112,9 @@ export function getFreeDailyLimit(): number {
  * 获取 Basic 订阅每日外部模型限制
  */
 export function getBasicDailyLimit(): number {
-  const raw = process.env.NEXT_PUBLIC_BASIC_DAILY_LIMIT || "100";
+  const raw = process.env.NEXT_PUBLIC_BASIC_DAILY_LIMIT || "50";
   const n = parseInt(raw, 10);
-  if (!Number.isFinite(n) || n <= 0) return 100;
+  if (!Number.isFinite(n) || n <= 0) return 50;
   return Math.min(10000, n);
 }
 
@@ -192,9 +192,9 @@ export function getProMonthlyVideoAudioLimit(): number {
  * 获取 Enterprise 订阅每日外部模型限制
  */
 export function getEnterpriseDailyLimit(): number {
-  const raw = process.env.NEXT_PUBLIC_ENTERPRISE_DAILY_LIMIT || "500";
+  const raw = process.env.NEXT_PUBLIC_ENTERPRISE_DAILY_LIMIT || "2000";
   const n = parseInt(raw, 10);
-  if (!Number.isFinite(n) || n <= 0) return 500;
+  if (!Number.isFinite(n) || n <= 0) return 2000;
   return Math.min(50000, n);
 }
 
@@ -202,9 +202,9 @@ export function getEnterpriseDailyLimit(): number {
  * 获取 Enterprise 订阅多模态图片月度限制
  */
 export function getEnterpriseMonthlyPhotoLimit(): number {
-  const raw = process.env.NEXT_PUBLIC_ENTERPRISE_MONTHLY_PHOTO_LIMIT || "1000";
+  const raw = process.env.NEXT_PUBLIC_ENTERPRISE_MONTHLY_PHOTO_LIMIT || "1500";
   const n = parseInt(raw, 10);
-  if (!Number.isFinite(n) || n <= 0) return 1000;
+  if (!Number.isFinite(n) || n <= 0) return 1500;
   return Math.min(50000, n);
 }
 

@@ -30,7 +30,7 @@ export default function AdminLoginPage() {
     const result = await adminLogin(formData);
 
     if (result.success) {
-      router.push("/admin/ads");
+      router.push("/admin/stats");
       router.refresh();
     } else {
       setError(result.error || "登录失败");

@@ -370,7 +370,7 @@ export const translations = {
 export type TranslationKey = keyof typeof translations.en;
 
 // 国内版移动端品牌名
-const DOMESTIC_MOBILE_BRAND = "晨佑AI平台";
+const DOMESTIC_MOBILE_BRAND = "晨佑 AI";
 
 // 国内版移动端特殊替换文本
 const DOMESTIC_MOBILE_OVERRIDES: Record<string, Record<string, string>> = {

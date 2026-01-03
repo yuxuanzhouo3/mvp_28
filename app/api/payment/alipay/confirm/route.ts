@@ -15,6 +15,7 @@ import {
   seedWalletForPlan,
   upgradeMonthlyQuota,
 } from "@/services/wallet";
+import { trackPaymentEvent, trackSubscriptionEvent } from "@/services/analytics";
 import { isAfter } from "date-fns";
 
 const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
@@ -153,6 +154,15 @@ export async function POST(request: NextRequest) {
       }
 
       console.log("[Alipay Confirm] Addon credits added successfully");
+
+      // 埋点：记录加油包支付事件
+      trackPaymentEvent(userId, {
+        amount: Number(paymentRecord.amount) || 0,
+        currency: "CNY",
+        plan: "ADDON",
+        provider: "alipay",
+        orderId: outTradeNo,
+      }).catch((err) => console.warn("[Alipay Confirm] trackPaymentEvent error:", err));
     } else {
       // 订阅处理
       const period = (paymentRecord.period || paymentRecord?.metadata?.billingCycle || "monthly") as
@@ -171,6 +181,21 @@ export async function POST(request: NextRequest) {
       });
 
       await applySubscriptionPayment(userId, outTradeNo, period, days, planName);
+
+      // 埋点：记录订阅支付和订阅变更事件
+      trackPaymentEvent(userId, {
+        amount: Number(paymentRecord.amount) || 0,
+        currency: "CNY",
+        plan: planName,
+        provider: "alipay",
+        orderId: outTradeNo,
+      }).catch((err) => console.warn("[Alipay Confirm] trackPaymentEvent error:", err));
+
+      trackSubscriptionEvent(userId, {
+        action: "subscribe",
+        toPlan: planName,
+        period,
+      }).catch((err) => console.warn("[Alipay Confirm] trackSubscriptionEvent error:", err));
     }
 
     // 6. 更新支付记录状态

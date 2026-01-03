@@ -60,7 +60,7 @@ export default function DownloadSectionDialog({
   const isMobile = useIsMobile();
   const isZh = currentLanguage === "zh";
   // 国内版移动端品牌名
-  const brandName = isDomesticVersion && isMobile ? "晨佑AI平台" : "MornGPT";
+  const brandName = isDomesticVersion && isMobile ? "晨佑 AI" : "MornGPT";
   const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
 
   const isBrowser = (p?: string | null) =>

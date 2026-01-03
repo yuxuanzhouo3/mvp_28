@@ -145,6 +145,7 @@ export async function getAdminStats(
 /**
  * 后备方案：直接查询各表获取统计数据
  * 支持从 Supabase (global) 和 CloudBase (cn) 获取并合并数据
+ * 兼容缺少 source 字段和 user_analytics 表的情况
  */
 async function getAdminStatsFallback(
   source: "all" | "global" | "cn"
@@ -174,41 +175,58 @@ async function getAdminStatsFallback(
 
     // ========== 查询 Supabase (国际版) ==========
     if ((source === "all" || source === "global") && supabaseAdmin) {
-      const sourceFilter = source === "global" ? { source: "global" } : {};
+      // 分别查询各表，避免因某个表/字段不存在导致整体失败
+      let profiles: any[] = [];
+      let payments: any[] = [];
+      let subscriptions: any[] = [];
+      let analytics: any[] = [];
+      let profilesCount = 0;
 
-      const [
-        profilesResult,
-        paymentsResult,
-        subscriptionsResult,
-        analyticsResult,
-      ] = await Promise.all([
-        supabaseAdmin
+      // 查询 profiles（不依赖 source 字段）
+      try {
+        const profilesResult = await supabaseAdmin
           .from("profiles")
-          .select("id, created_at, source", { count: "exact" })
-          .match(sourceFilter),
-        supabaseAdmin
-          .from("payments")
-          .select("amount, user_id, created_at, source")
-          .in("status", ["success", "completed"])
-          .match(sourceFilter),
-        supabaseAdmin
-          .from("subscriptions")
-          .select("plan, status, source")
-          .match(sourceFilter),
-        supabaseAdmin
-          .from("user_analytics")
-          .select("user_id, created_at, device_type, os, source")
-          .gte("created_at", monthAgo)
-          .match(sourceFilter),
-      ]);
+          .select("id, created_at", { count: "exact" });
+        profiles = profilesResult.data || [];
+        profilesCount = profilesResult.count || profiles.length;
+      } catch (err) {
+        console.warn("[getAdminStatsFallback] profiles query failed:", err);
+      }
 
-      const profiles = profilesResult.data || [];
-      const payments = paymentsResult.data || [];
-      const subscriptions = subscriptionsResult.data || [];
-      const analytics = analyticsResult.data || [];
+      // 查询 payments（不依赖 source 字段）
+      try {
+        const paymentsResult = await supabaseAdmin
+          .from("payments")
+          .select("amount, user_id, created_at")
+          .in("status", ["success", "completed", "SUCCESS", "COMPLETED"]);
+        payments = paymentsResult.data || [];
+      } catch (err) {
+        console.warn("[getAdminStatsFallback] payments query failed:", err);
+      }
+
+      // 查询 subscriptions（不依赖 source 字段）
+      try {
+        const subscriptionsResult = await supabaseAdmin
+          .from("subscriptions")
+          .select("plan, status");
+        subscriptions = subscriptionsResult.data || [];
+      } catch (err) {
+        console.warn("[getAdminStatsFallback] subscriptions query failed:", err);
+      }
+
+      // 查询 user_analytics（可能不存在）
+      try {
+        const analyticsResult = await supabaseAdmin
+          .from("user_analytics")
+          .select("user_id, created_at, device_type, os")
+          .gte("created_at", monthAgo);
+        analytics = analyticsResult.data || [];
+      } catch (err) {
+        console.warn("[getAdminStatsFallback] user_analytics query failed (table may not exist):", err);
+      }
 
       // 累加用户统计
-      userStats.total += profilesResult.count || profiles.length;
+      userStats.total += profilesCount;
       userStats.newToday += profiles.filter((p) => p.created_at?.startsWith(today)).length;
       userStats.newThisWeek += profiles.filter((p) => p.created_at >= weekAgo).length;
       userStats.newThisMonth += profiles.filter((p) => p.created_at >= monthAgo).length;
@@ -231,23 +249,24 @@ async function getAdminStatsFallback(
         subscriptionStats.byPlan[s.plan] = (subscriptionStats.byPlan[s.plan] || 0) + 1;
       });
 
-      // 累加活跃用户统计
-      const dauSet = new Set(analytics.filter((a) => a.created_at >= todayStart).map((a) => a.user_id));
-      const wauSet = new Set(analytics.filter((a) => a.created_at >= weekAgo).map((a) => a.user_id));
-      const mauSet = new Set(analytics.map((a) => a.user_id));
-      activeUserStats.dau += dauSet.size;
-      activeUserStats.wau += wauSet.size;
-      activeUserStats.mau += mauSet.size;
+      // 累加活跃用户统计（如果 user_analytics 表存在）
+      if (analytics.length > 0) {
+        const dauSet = new Set(analytics.filter((a) => a.created_at >= todayStart).map((a) => a.user_id));
+        const wauSet = new Set(analytics.filter((a) => a.created_at >= weekAgo).map((a) => a.user_id));
+        const mauSet = new Set(analytics.map((a) => a.user_id));
+        activeUserStats.dau += dauSet.size;
+        activeUserStats.wau += wauSet.size;
+        activeUserStats.mau += mauSet.size;
+        allAnalytics.push(...analytics);
+      } else {
+        // 如果没有 user_analytics 数据，使用 profiles 作为活跃用户的近似值
+        activeUserStats.mau = profilesCount;
+      }
 
-      // 收集分析数据
-      allAnalytics.push(...analytics);
-
-      // 来源对比 - global
+      // 来源对比 - global（所有 Supabase 数据视为 global）
       if (source === "all") {
-        const globalProfiles = profiles.filter((p) => p.source === "global" || !p.source);
-        const globalPayments = payments.filter((p) => p.source === "global" || !p.source);
-        sourceComparison.global.users = globalProfiles.length;
-        sourceComparison.global.revenue = globalPayments.reduce(
+        sourceComparison.global.users = profilesCount;
+        sourceComparison.global.revenue = payments.reduce(
           (sum, p) => sum + (Number(p.amount) || 0), 0
         );
       }
@@ -382,33 +401,46 @@ export async function getDailyStats(
 
     // ========== 查询 Supabase (国际版) ==========
     if ((source === "all" || source === "global") && supabaseAdmin) {
-      const [profilesResult, paymentsResult, analyticsResult] = await Promise.all([
-        supabaseAdmin
+      // 分别查询各表，避免因某个表/字段不存在导致整体失败
+      let profiles: any[] = [];
+      let payments: any[] = [];
+      let analytics: any[] = [];
+
+      try {
+        const profilesResult = await supabaseAdmin
           .from("profiles")
-          .select("created_at, source")
-          .gte("created_at", startDateStr),
-        supabaseAdmin
+          .select("created_at")
+          .gte("created_at", startDateStr);
+        profiles = profilesResult.data || [];
+      } catch (err) {
+        console.warn("[getDailyStats] profiles query failed:", err);
+      }
+
+      try {
+        const paymentsResult = await supabaseAdmin
           .from("payments")
-          .select("created_at, amount, source")
+          .select("created_at, amount")
           .gte("created_at", startDateStr)
-          .in("status", ["success", "completed"]),
-        supabaseAdmin
+          .in("status", ["success", "completed", "SUCCESS", "COMPLETED"]);
+        payments = paymentsResult.data || [];
+      } catch (err) {
+        console.warn("[getDailyStats] payments query failed:", err);
+      }
+
+      try {
+        const analyticsResult = await supabaseAdmin
           .from("user_analytics")
-          .select("created_at, user_id, source")
-          .gte("created_at", startDateStr),
-      ]);
+          .select("created_at, user_id")
+          .gte("created_at", startDateStr);
+        analytics = analyticsResult.data || [];
+      } catch (err) {
+        console.warn("[getDailyStats] user_analytics query failed (table may not exist):", err);
+      }
 
-      const profiles = profilesResult.data || [];
-      const payments = paymentsResult.data || [];
-      const analytics = analyticsResult.data || [];
-
-      // 填充新用户数据
+      // 填充新用户数据（所有 Supabase 数据视为 global）
       profiles.forEach((p) => {
         const dateStr = p.created_at?.split("T")[0];
-        const s = p.source || "global";
-        if (source === "global" && s !== "global") return;
-
-        const key = `${dateStr}_${s}`;
+        const key = `${dateStr}_global`;
         const entry = dailyMap.get(key);
         if (entry) {
           entry.newUsers++;
@@ -418,10 +450,7 @@ export async function getDailyStats(
       // 填充支付数据
       payments.forEach((p) => {
         const dateStr = p.created_at?.split("T")[0];
-        const s = p.source || "global";
-        if (source === "global" && s !== "global") return;
-
-        const key = `${dateStr}_${s}`;
+        const key = `${dateStr}_global`;
         const entry = dailyMap.get(key);
         if (entry) {
           entry.revenue += Number(p.amount) || 0;
@@ -431,10 +460,7 @@ export async function getDailyStats(
       // 填充活跃用户数据
       analytics.forEach((a) => {
         const dateStr = a.created_at?.split("T")[0];
-        const s = a.source || "global";
-        if (source === "global" && s !== "global") return;
-
-        const key = `${dateStr}_${s}`;
+        const key = `${dateStr}_global`;
         const entry = dailyMap.get(key);
         if (entry) {
           entry.activeUsers.add(a.user_id);
@@ -548,25 +574,47 @@ async function getCloudBaseStats(): Promise<CloudBaseStatsData | null> {
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
+    // 分别查询各集合，避免因某个集合不存在导致整体失败
+    let users: any[] = [];
+    let payments: any[] = [];
+    let subscriptions: any[] = [];
+    let analytics: any[] = [];
+
     // 查询用户
-    const usersResult = await db.collection("users").get();
-    const users = usersResult.data || [];
+    try {
+      const usersResult = await db.collection("users").get();
+      users = usersResult.data || [];
+    } catch (err) {
+      console.warn("[getCloudBaseStats] users collection query failed:", err);
+    }
 
     // 查询支付
-    const paymentsResult = await db.collection("payments")
-      .where({ status: db.command.in(["COMPLETED", "success", "completed"]) })
-      .get();
-    const payments = paymentsResult.data || [];
+    try {
+      const paymentsResult = await db.collection("payments")
+        .where({ status: db.command.in(["COMPLETED", "success", "completed"]) })
+        .get();
+      payments = paymentsResult.data || [];
+    } catch (err) {
+      console.warn("[getCloudBaseStats] payments collection query failed:", err);
+    }
 
     // 查询订阅
-    const subscriptionsResult = await db.collection("subscriptions").get();
-    const subscriptions = subscriptionsResult.data || [];
+    try {
+      const subscriptionsResult = await db.collection("subscriptions").get();
+      subscriptions = subscriptionsResult.data || [];
+    } catch (err) {
+      console.warn("[getCloudBaseStats] subscriptions collection query failed:", err);
+    }
 
-    // 查询分析数据
-    const analyticsResult = await db.collection("user_analytics")
-      .where({ created_at: db.command.gte(monthAgo) })
-      .get();
-    const analytics = analyticsResult.data || [];
+    // 查询分析数据（可能不存在）
+    try {
+      const analyticsResult = await db.collection("user_analytics")
+        .where({ created_at: db.command.gte(monthAgo) })
+        .get();
+      analytics = analyticsResult.data || [];
+    } catch (err) {
+      console.warn("[getCloudBaseStats] user_analytics collection query failed (may not exist):", err);
+    }
 
     // 处理用户统计
     const userStats = {
@@ -636,26 +684,43 @@ async function getCloudBaseDailyStats(days: number): Promise<Array<{
     startDate.setDate(startDate.getDate() - days);
     const startDateStr = startDate.toISOString();
 
+    // 分别查询各集合，避免因某个集合不存在导致整体失败
+    let users: any[] = [];
+    let payments: any[] = [];
+    let analytics: any[] = [];
+
     // 查询用户
-    const usersResult = await db.collection("users")
-      .where({ createdAt: db.command.gte(startDateStr) })
-      .get();
-    const users = usersResult.data || [];
+    try {
+      const usersResult = await db.collection("users")
+        .where({ createdAt: db.command.gte(startDateStr) })
+        .get();
+      users = usersResult.data || [];
+    } catch (err) {
+      console.warn("[getCloudBaseDailyStats] users collection query failed:", err);
+    }
 
     // 查询支付
-    const paymentsResult = await db.collection("payments")
-      .where({
-        createdAt: db.command.gte(startDateStr),
-        status: db.command.in(["COMPLETED", "success", "completed"]),
-      })
-      .get();
-    const payments = paymentsResult.data || [];
+    try {
+      const paymentsResult = await db.collection("payments")
+        .where({
+          createdAt: db.command.gte(startDateStr),
+          status: db.command.in(["COMPLETED", "success", "completed"]),
+        })
+        .get();
+      payments = paymentsResult.data || [];
+    } catch (err) {
+      console.warn("[getCloudBaseDailyStats] payments collection query failed:", err);
+    }
 
-    // 查询分析
-    const analyticsResult = await db.collection("user_analytics")
-      .where({ created_at: db.command.gte(startDateStr) })
-      .get();
-    const analytics = analyticsResult.data || [];
+    // 查询分析（可能不存在）
+    try {
+      const analyticsResult = await db.collection("user_analytics")
+        .where({ created_at: db.command.gte(startDateStr) })
+        .get();
+      analytics = analyticsResult.data || [];
+    } catch (err) {
+      console.warn("[getCloudBaseDailyStats] user_analytics collection query failed (may not exist):", err);
+    }
 
     // 按日期聚合
     const dailyMap = new Map<string, {

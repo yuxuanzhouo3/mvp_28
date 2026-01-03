@@ -59,7 +59,7 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
   const shouldShowWechatLogin = isDomestic;
 
   // 国内版移动端品牌名
-  const brandName = isDomestic && isMobile ? "晨佑AI平台" : "MornGPT";
+  const brandName = isDomestic && isMobile ? "晨佑 AI" : "MornGPT";
 
   // 隐私条款确认状态
   const [agreePrivacy, setAgreePrivacy] = useState(false);

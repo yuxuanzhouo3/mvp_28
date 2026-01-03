@@ -12,6 +12,7 @@ import {
   updateSupabaseSubscription,
   upgradeSupabaseMonthlyQuota,
 } from "@/services/wallet-supabase";
+import { trackPaymentEvent, trackSubscriptionEvent } from "@/services/analytics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -260,6 +261,16 @@ export async function POST(req: Request) {
           source: "global", // 国际版数据标识
         });
         await addSupabaseAddonCredits(userId, imageCredits, videoAudioCredits);
+
+        // 埋点：记录加油包支付事件
+        trackPaymentEvent(userId, {
+          amount,
+          currency,
+          plan: "ADDON",
+          provider: "stripe",
+          orderId: session.id,
+        }).catch((err) => console.warn("[stripe webhook] trackPaymentEvent error:", err));
+
         console.log(`[Stripe][ADDON] credited for user ${userId}`);
       } catch (err) {
         console.error("[Stripe][ADDON] error", err);
@@ -405,6 +416,22 @@ export async function POST(req: Request) {
       await seedSupabaseWalletForPlan(userId, plan.toLowerCase(), {
         forceReset: isUpgrade || isNewOrExpired,
       });
+
+      // 埋点：记录订阅支付和订阅变更事件
+      trackPaymentEvent(userId, {
+        amount,
+        currency,
+        plan,
+        provider: "stripe",
+        orderId: session.id,
+      }).catch((err) => console.warn("[stripe webhook] trackPaymentEvent error:", err));
+
+      trackSubscriptionEvent(userId, {
+        action: isUpgrade ? "upgrade" : isNewOrExpired ? "subscribe" : "renew",
+        fromPlan: currentPlanKey || "Free",
+        toPlan: plan,
+        period,
+      }).catch((err) => console.warn("[stripe webhook] trackSubscriptionEvent error:", err));
 
       console.log(`[Stripe][SUBSCRIPTION] processed for user ${userId}`);
     } catch (err) {

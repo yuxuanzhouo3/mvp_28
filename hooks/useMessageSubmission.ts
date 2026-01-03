@@ -1230,6 +1230,9 @@ export const useMessageSubmission = (
       return;
     }
 
+    // 记录当前空对话的 ID，用于后续清理
+    const currentEmptyChatId = currentChatId;
+
     try {
       const result = await createServerConversation(
         pendingData.title,
@@ -1252,7 +1255,17 @@ export const useMessageSubmission = (
           isModelLocked: true,
         };
 
-        setChatSessions((prev) => [newChat, ...prev.filter(c => c.id !== replaceConversationState.oldestConversation?.id)]);
+        // 需要清理的对话 ID：最早的对话 + 当前空对话（如果存在且不同于新创建的对话）
+        const idsToRemove = new Set<string>();
+        if (replaceConversationState.oldestConversation?.id) {
+          idsToRemove.add(replaceConversationState.oldestConversation.id);
+        }
+        // 清理用户点击"新建对话"时创建的空对话
+        if (currentEmptyChatId && currentEmptyChatId !== result.id) {
+          idsToRemove.add(currentEmptyChatId);
+        }
+
+        setChatSessions((prev) => [newChat, ...prev.filter(c => !idsToRemove.has(c.id))]);
         setCurrentChatId(result.id);
 
         // 设置预创建的对话 ID，让 handleSubmit 跳过创建对话步骤

@@ -111,7 +111,7 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
   const isMobile = useIsMobile();
   const isZh = currentLanguage === "zh";
   // 国内版移动端品牌名
-  const brandName = isDomesticVersion && isMobile ? "晨佑AI平台" : "MornGPT";
+  const brandName = isDomesticVersion && isMobile ? "晨佑 AI" : "MornGPT";
   const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
   const [activeTab, setActiveTab] = useState<UpgradeTabType>(defaultTab);
   // 国内版默认支付宝，国际版默认 Stripe
@@ -340,7 +340,9 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
               <span className="text-gray-900 dark:text-white font-bold">
               {selectedPaidModel
                 ? tr(`Upgrade to Access ${selectedPaidModel.name}`, `升级以解锁 ${selectedPaidModel.name}`)
-                : tr(`Choose Your ${brandName} Plan`, `选择你的 ${brandName} 套餐`)}
+                : isMobile && isDomesticVersion
+                  ? tr("Choose Your Plan", "选择您的套餐")
+                  : tr(`Choose Your ${brandName} Plan`, `选择你的 ${brandName} 套餐`)}
             </span>
           </DialogTitle>
         </DialogHeader>

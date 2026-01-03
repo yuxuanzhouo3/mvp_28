@@ -131,8 +131,8 @@ function ChatShell() {
               )}
             </div>
 
-            {/* Input Area - 中央主体 */}
-            <div className="w-full lg:max-w-4xl flex-1 lg:flex-shrink-0">
+            {/* Input Area - 中央主体，固定宽度避免语言切换时宽度变化 */}
+            <div className="w-full lg:w-[896px] lg:max-w-4xl flex-shrink-0">
               <InputAreaComponent {...inputAreaProps} />
             </div>
 

@@ -229,6 +229,16 @@ export function getFreeContextMsgLimit(): number {
 }
 
 /**
+ * 获取 Free 用户对话数量限制
+ */
+export function getFreeConversationLimit(): number {
+  const raw = process.env.NEXT_PUBLIC_FREE_CONVERSATION_LIMIT || "5";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 5;
+  return Math.min(20, n);
+}
+
+/**
  * 获取 Basic 用户上下文消息限制 (非消耗型，仅用于截断历史)
  */
 export function getBasicContextMsgLimit(): number {

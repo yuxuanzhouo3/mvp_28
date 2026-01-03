@@ -119,7 +119,7 @@ export async function GET(
     const plan = getPlanInfo(userData.user.user_metadata);
 
     // Free 用户或本地会话不返回历史
-    if (plan.isFree || conversationId.startsWith("local-")) {
+    if (conversationId.startsWith("local-")) {
       return Response.json([]);
     }
 
@@ -142,8 +142,8 @@ export async function GET(
   if (!user) return new Response("Unauthorized", { status: 401 });
   const plan = getPlanInfo(user.metadata);
 
-  // Free 用户或本地会话不返回历史
-  if (plan.isFree || conversationId.startsWith("local-")) {
+  // 本地会话不返回历史
+  if (conversationId.startsWith("local-")) {
     return Response.json([]);
   }
 
@@ -345,7 +345,7 @@ export async function POST(
     }
 
     // Free 用户或本地会话不落库消息
-    if (plan.isFree || conversationId.startsWith("local-")) {
+    if (conversationId.startsWith("local-")) {
       return new Response(null, { status: 201 });
     }
 
@@ -468,7 +468,7 @@ export async function POST(
     }
 
     // Free 用户或本地会话：不落库，仅返回成功
-    if (plan.isFree || conversationId.startsWith("local-")) {
+    if (conversationId.startsWith("local-")) {
       return new Response(null, { status: 201 });
     }
 

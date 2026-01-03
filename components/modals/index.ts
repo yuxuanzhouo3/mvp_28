@@ -18,3 +18,4 @@ export { default as SecretConfirmDialog } from "./SecretConfirmDialog";
 export { default as ProUpgradeDialog } from "./ProUpgradeDialog";
 export { default as DownloadSectionDialog } from "./DownloadSectionDialog";
 export { default as ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
+export { default as ReplaceConversationDialog } from "./ReplaceConversationDialog";

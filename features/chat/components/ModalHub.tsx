@@ -21,6 +21,7 @@ import {
   ProUpgradeDialog,
   DownloadSectionDialog,
   ShortcutsHelpDialog,
+  ReplaceConversationDialog,
 } from "@/components/modals";
 
 type ModalHubProps = Record<string, any>;
@@ -379,6 +380,19 @@ export default function ModalHub(props: ModalHubProps) {
         currentUsage={paymentError?.currentUsage}
         limit={paymentError?.limit}
         modelName={paymentError?.modelName}
+      />
+
+      {/* Replace Conversation Dialog for Free Users */}
+      <ReplaceConversationDialog
+        open={props.replaceConversationState?.needConfirm || false}
+        onOpenChange={(open) => {
+          if (!open) props.cancelReplaceConversation?.();
+        }}
+        oldestConversation={props.replaceConversationState?.oldestConversation}
+        currentCount={props.replaceConversationState?.currentCount || 0}
+        conversationLimit={props.replaceConversationState?.conversationLimit || 5}
+        onCancel={props.cancelReplaceConversation}
+        onConfirm={props.confirmReplaceConversation}
       />
     </>
   );

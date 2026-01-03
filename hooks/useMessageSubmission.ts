@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef } from "react";
+import { useMemo, useState, useRef, useCallback } from "react";
 import { IS_DOMESTIC_VERSION } from "../config";
 import { Message, ChatSession, ExternalModel, AttachmentItem } from "../types";
 import { simulateMultiGPTResponse } from "../services";
@@ -14,6 +14,22 @@ import {
   getEnterpriseContextMsgLimit,
 } from "@/utils/model-limits";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+// 覆盖对话确认状态类型
+export interface ReplaceConversationState {
+  needConfirm: boolean;
+  oldestConversation?: { id: string; title: string; created_at: string };
+  currentCount: number;
+  conversationLimit: number;
+  pendingSubmitData?: {
+    title: string;
+    model: string;
+    modelType: string;
+    expertModelId?: string | null;
+    userMessage: Message;
+    originalPrompt: string; // 保存原始 prompt 用于确认后重新提交
+  };
+}
 
 export const useMessageSubmission = (
   prompt: string,
@@ -62,8 +78,15 @@ export const useMessageSubmission = (
   allowGuestSubmit?: boolean, // 允许移动端访客发送消息（跳过登录检查）
 ) => {
   const [forceUpdate, setForceUpdate] = useState(0);
+  const [replaceConversationState, setReplaceConversationState] = useState<ReplaceConversationState>({
+    needConfirm: false,
+    currentCount: 0,
+    conversationLimit: 0,
+  });
   const supabase = useMemo(() => supabaseClient || createClient(), [supabaseClient]);
   const submitLock = useRef(false);
+  // 用于存储已通过确认覆盖创建的对话 ID，避免 handleSubmit 重复创建
+  const preCreatedConversationIdRef = useRef<string | null>(null);
 
   const formatStreamingError = (error: string, lang: string) => {
     const isZh = lang === "zh";
@@ -105,17 +128,30 @@ export const useMessageSubmission = (
     model: string,
     modelType: string,
     expertModelId?: string | null,
-  ) => {
+    replaceOldest?: boolean,
+  ): Promise<{ id: string; needConfirmReplace?: boolean; oldestConversation?: any; currentCount?: number; conversationLimit?: number }> => {
     const res = await fetch("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ title, model, modelType, expertModelId }),
+      body: JSON.stringify({ title, model, modelType, expertModelId, replaceOldest }),
     });
+
+    // 409 表示需要确认覆盖最早的对话
+    if (res.status === 409) {
+      const data = await res.json();
+      return {
+        id: "",
+        needConfirmReplace: true,
+        oldestConversation: data.oldestConversation,
+        currentCount: data.currentCount,
+        conversationLimit: data.conversationLimit,
+      };
+    }
 
     if (!res.ok) throw new Error(`Create conversation failed ${res.status}`);
     const data = await res.json();
-    return data.id as string;
+    return { id: data.id as string };
   };
 
   const handleSubmit = async () => {
@@ -343,16 +379,57 @@ export const useMessageSubmission = (
     }
 
     try {
-      if (!currentChat) {
-        if (isFreeUser) {
+      // 检查是否有预创建的对话 ID（来自确认覆盖流程）
+      if (preCreatedConversationIdRef.current) {
+        conversationId = preCreatedConversationIdRef.current;
+        preCreatedConversationIdRef.current = null; // 清除，只使用一次
+
+        // 更新现有对话的消息
+        setMessages([userMessage]);
+        setChatSessions((prev) =>
+          prev.map((session) =>
+            session.id === conversationId
+              ? { ...session, messages: [userMessage] }
+              : session
+          )
+        );
+      } else if (!currentChat) {
+        if (isFreeUser && allowGuestSubmit) {
+          // 未登录访客使用本地对话
           conversationId = `local-${Date.now()}`;
-        } else {
-          conversationId = await createServerConversation(
+        } else if (appUser) {
+          // 已登录用户（包括 Free 用户）创建服务端对话
+          const result = await createServerConversation(
             userMessage.content.slice(0, 30) + "...",
             persistedModelId,
             effectiveModelType,
             expertModelIdForConversation
           );
+
+          // 需要确认覆盖最早的对话
+          if (result.needConfirmReplace) {
+            setReplaceConversationState({
+              needConfirm: true,
+              oldestConversation: result.oldestConversation,
+              currentCount: result.currentCount || 0,
+              conversationLimit: result.conversationLimit || 5,
+              pendingSubmitData: {
+                title: userMessage.content.slice(0, 30) + "...",
+                model: persistedModelId,
+                modelType: effectiveModelType,
+                expertModelId: expertModelIdForConversation,
+                userMessage,
+                originalPrompt: prompt,
+              },
+            });
+            releaseLock();
+            return;
+          }
+
+          conversationId = result.id;
+        } else {
+          // 未登录且不允许访客提交
+          conversationId = `local-${Date.now()}`;
         }
 
         const newChat: ChatSession = {
@@ -380,15 +457,42 @@ export const useMessageSubmission = (
           setExpandedFolders([newChatFolder]);
         }
       } else if (!currentChat.isModelLocked) {
-        if (isFreeUser) {
+        if (isFreeUser && allowGuestSubmit) {
+          // 未登录访客使用本地对话
           conversationId = `local-${Date.now()}`;
-        } else {
-          conversationId = await createServerConversation(
+        } else if (appUser) {
+          // 已登录用户（包括 Free 用户）创建服务端对话
+          const result = await createServerConversation(
             userMessage.content.slice(0, 30) + "...",
             persistedModelId,
             effectiveModelType,
             expertModelIdForConversation
           );
+
+          // 需要确认覆盖最早的对话
+          if (result.needConfirmReplace) {
+            setReplaceConversationState({
+              needConfirm: true,
+              oldestConversation: result.oldestConversation,
+              currentCount: result.currentCount || 0,
+              conversationLimit: result.conversationLimit || 5,
+              pendingSubmitData: {
+                title: userMessage.content.slice(0, 30) + "...",
+                model: persistedModelId,
+                modelType: effectiveModelType,
+                expertModelId: expertModelIdForConversation,
+                userMessage,
+                originalPrompt: prompt,
+              },
+            });
+            releaseLock();
+            return;
+          }
+
+          conversationId = result.id;
+        } else {
+          // 未登录且不允许访客提交
+          conversationId = `local-${Date.now()}`;
         }
 
         const newChat: ChatSession = {
@@ -1109,8 +1213,72 @@ export const useMessageSubmission = (
     }
   };
 
+  // 取消覆盖确认
+  const cancelReplaceConversation = useCallback(() => {
+    setReplaceConversationState({
+      needConfirm: false,
+      currentCount: 0,
+      conversationLimit: 0,
+    });
+  }, []);
+
+  // 确认覆盖并继续创建对话
+  const confirmReplaceConversation = useCallback(async () => {
+    const pendingData = replaceConversationState.pendingSubmitData;
+    if (!pendingData) {
+      cancelReplaceConversation();
+      return;
+    }
+
+    try {
+      const result = await createServerConversation(
+        pendingData.title,
+        pendingData.model,
+        pendingData.modelType,
+        pendingData.expertModelId,
+        true // replaceOldest = true
+      );
+
+      if (result.id) {
+        // 创建成功，更新对话列表（不设置消息，让 handleSubmit 来处理）
+        const newChat: ChatSession = {
+          id: result.id,
+          title: pendingData.title,
+          messages: [], // 空消息，让 handleSubmit 来添加
+          model: pendingData.model,
+          modelType: pendingData.modelType,
+          category: "general",
+          lastUpdated: new Date(),
+          isModelLocked: true,
+        };
+
+        setChatSessions((prev) => [newChat, ...prev.filter(c => c.id !== replaceConversationState.oldestConversation?.id)]);
+        setCurrentChatId(result.id);
+
+        // 设置预创建的对话 ID，让 handleSubmit 跳过创建对话步骤
+        preCreatedConversationIdRef.current = result.id;
+
+        // 恢复原始 prompt 并清除确认状态
+        setPrompt(pendingData.originalPrompt);
+        cancelReplaceConversation();
+
+        // 使用 setTimeout 确保状态更新后再调用 handleSubmit
+        setTimeout(() => {
+          handleSubmit();
+        }, 50);
+        return;
+      }
+    } catch (err) {
+      console.error("Failed to create conversation with replace", err);
+    }
+    cancelReplaceConversation();
+  }, [replaceConversationState, setChatSessions, setCurrentChatId, setPrompt, cancelReplaceConversation, handleSubmit]);
+
   return {
     handleSubmit,
     forceUpdate,
+    replaceConversationState,
+    cancelReplaceConversation,
+    confirmReplaceConversation,
   };
 };

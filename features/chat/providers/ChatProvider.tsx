@@ -719,22 +719,6 @@ const loadMessagesForConversation = useCallback(
       return;
     }
 
-    // Free 账号：不落库，仅使用内存缓存，刷新即丢失
-    const planLower = (currentPlan || appUserRef.current?.plan || "").toLowerCase?.() || "";
-    const isFreeUser = !!appUserRef.current && (planLower === "" || planLower === "free");
-    if (isFreeUser) {
-      const cached = chatSessionsRef.current.find((c) => c.id === conversationId);
-      setMessages(cached?.messages || []);
-      if (cached) {
-        const cachedModelType = (cached.modelType || "general").toLowerCase();
-        setSelectedModelType(cached.modelType || "general");
-        setSelectedModel(cached.model || GENERAL_MODEL_ID);
-        setSelectedCategory(cachedModelType === "morngpt" ? cached.category || "general" : "general");
-      }
-      setIsConversationLoading(false);
-      return;
-    }
-
     setIsConversationLoading(true);
     try {
       const res = await fetch(`/api/conversations/${conversationId}/messages`, {
@@ -841,14 +825,7 @@ const loadMessagesForConversation = useCallback(
         loadedConversationsForUserRef.current === user.id
       )
         return;
-      const planLower = (user.plan || "").toLowerCase?.() || "";
-      // Free 登录用户：不拉取服务端记录，保持当前内存列表（刷新即失效）
-      if (planLower === "" || planLower === "free") {
-        hasLoadedConversationsRef.current = true;
-        loadedConversationsForUserRef.current = user.id;
-        setIsSidebarLoading(false);
-        return;
-      }
+      // Free 用户现在也支持对话落库，不再跳过加载
       loadConversationsPendingRef.current = true;
       setIsSidebarLoading(true);
       try {
@@ -869,8 +846,11 @@ const loadMessagesForConversation = useCallback(
         }
         const data = await res.json();
 
+        // 支持新的返回格式 { conversations, conversationLimit, totalCount }
+        const conversationsList = Array.isArray(data) ? data : (data?.conversations || []);
+
         const mapped: ChatSession[] =
-          data?.map((c: any) => {
+          conversationsList?.map((c: any) => {
             const rawModel = c.model || GENERAL_MODEL_ID;
             const isGeneralModel =
               (rawModel || "").toLowerCase() === GENERAL_MODEL_ID.toLowerCase();
@@ -2202,7 +2182,13 @@ const loadMessagesForConversation = useCallback(
   );
 
   // Use message submission hook
-  const { handleSubmit: handleMessageSubmit, forceUpdate } = useMessageSubmission(
+  const {
+    handleSubmit: handleMessageSubmit,
+    forceUpdate,
+    replaceConversationState,
+    cancelReplaceConversation,
+    confirmReplaceConversation,
+  } = useMessageSubmission(
       prompt,
       setPrompt,
       uploadedFiles,
@@ -3886,19 +3872,6 @@ const loadMessagesForConversation = useCallback(
       return;
     }
 
-    const planLower = (currentPlan || appUser?.plan || "").toLowerCase?.() || "";
-    const isFreeUser = !!appUser && !appUser.isPro && (planLower === "" || planLower === "free");
-    if (isFreeUser && chatSessions.length > 0) {
-      const proceed = window.confirm(
-        selectedLanguage === "zh"
-          ? "新建对话将覆盖之前的聊天记录，确认继续？"
-          : "Starting a new chat will overwrite your previous chat history. Continue?"
-      );
-      if (!proceed) return;
-      setChatSessions([]);
-      setMessages([]);
-    }
-
     const chosenModelType = modelType || "general";
     const chosenModel =
       chosenModelType === "general" || chosenModelType === "morngpt"
@@ -5105,6 +5078,10 @@ const loadMessagesForConversation = useCallback(
     handlePaymentModalClose,
     handlePaymentModalUpgrade,
     paymentError,
+    // 覆盖对话确认相关
+    replaceConversationState,
+    cancelReplaceConversation,
+    confirmReplaceConversation,
   };
 
   const contextValue: ChatUIContextValue = {

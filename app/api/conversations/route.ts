@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
+import { getFreeConversationLimit } from "@/utils/model-limits";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -48,44 +49,45 @@ export async function GET(req: NextRequest) {
       return new Response("Unauthorized", { status: 401 });
     }
     const plan = getPlanInfo(userData.user.user_metadata);
-
-    // Free 用户不返回历史记录（不读库）
-    if (plan.isFree) {
-      return Response.json([]);
-    }
+    const conversationLimit = plan.isFree ? getFreeConversationLimit() : undefined;
 
     const { data, error } = await supabase
       .from("conversations")
-      .select("id, title, model, updated_at, model_type, expert_model_id")
-      .order("updated_at", { ascending: false });
+      .select("id, title, model, created_at, updated_at, model_type, expert_model_id")
+      .order("created_at", { ascending: true }); // 按创建时间升序，方便找最早的
 
     if (error) {
       console.error("List conversations error", error);
       return new Response("Failed to list conversations", { status: 500 });
     }
 
-    const list =
-      (data ?? []).map((c: any) => ({
-        id: c.id,
-        title: c.title,
-        model: c.model,
-        updated_at: c.updated_at,
-        modelType: c.model_type || null,
-        expertModelId: c.expert_model_id || null,
-      })) || [];
+    let list = (data ?? []).map((c: any) => ({
+      id: c.id,
+      title: c.title,
+      model: c.model,
+      created_at: c.created_at,
+      updated_at: c.updated_at,
+      modelType: c.model_type || null,
+      expertModelId: c.expert_model_id || null,
+    }));
 
-    return Response.json(list);
+    // 按 updated_at 降序排列返回给前端
+    list.sort((a: any, b: any) =>
+      new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime()
+    );
+
+    return Response.json({
+      conversations: list,
+      conversationLimit,
+      totalCount: list.length,
+    });
   }
 
   // domestic -> CloudBase
   const user = await getDomesticUser(req);
   if (!user) return new Response("Unauthorized", { status: 401 });
   const plan = getPlanInfo(user.metadata);
-
-  // Free 用户不返回历史记录，保持与国际版一致
-  if (plan.isFree) {
-    return Response.json([]);
-  }
+  const conversationLimit = plan.isFree ? getFreeConversationLimit() : undefined;
 
   const connector = new CloudBaseConnector();
   await connector.initialize();
@@ -101,23 +103,27 @@ export async function GET(req: NextRequest) {
       records = (all?.data || []).filter((c: any) => c.userId === user.id);
     }
 
-    const list =
-      records
-        .map((c: any) => ({
-          id: c._id,
-          title: c.title,
-          model: c.model || null,
-          updated_at: c.updatedAt || c.createdAt,
-          modelType: c.modelType || null,
-          expertModelId: c.expertModelId || null,
-        }))
-        .sort(
-          (a: any, b: any) =>
-            new Date(b.updated_at || b.created_at || 0).getTime() -
-            new Date(a.updated_at || a.created_at || 0).getTime(),
-        );
+    let list = records.map((c: any) => ({
+      id: c._id,
+      title: c.title,
+      model: c.model || null,
+      created_at: c.createdAt,
+      updated_at: c.updatedAt || c.createdAt,
+      modelType: c.modelType || null,
+      expertModelId: c.expertModelId || null,
+    }));
 
-    return Response.json(list);
+    // 按 updated_at 降序排列返回给前端
+    list.sort((a: any, b: any) =>
+      new Date(b.updated_at || b.created_at || 0).getTime() -
+      new Date(a.updated_at || a.created_at || 0).getTime()
+    );
+
+    return Response.json({
+      conversations: list,
+      conversationLimit,
+      totalCount: list.length,
+    });
   } catch (error) {
     console.error("CloudBase list conversations error", error);
     return new Response("Failed to list conversations", { status: 500 });
@@ -126,6 +132,9 @@ export async function GET(req: NextRequest) {
 
 // Create conversation
 export async function POST(req: NextRequest) {
+  const reqBody = await req.json();
+  const { title, model, modelType, expertModelId, replaceOldest } = reqBody;
+
   if (!isDomesticRequest(req)) {
     const supabase = await createClient();
     const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -133,7 +142,6 @@ export async function POST(req: NextRequest) {
       return new Response("Unauthorized", { status: 401 });
     }
     const userId = userData.user.id;
-    const { title, model, modelType, expertModelId } = await req.json();
     const plan = getPlanInfo(userData.user.user_metadata);
 
     // 调试日志
@@ -144,18 +152,51 @@ export async function POST(req: NextRequest) {
       isFree: plan.isFree,
     });
 
-    // Free 用户：不落库，返回本地临时会话 ID
+    // Free 用户对话数量限制检查
     if (plan.isFree) {
-      const now = new Date().toISOString();
-      return Response.json({
-        id: `local-${Date.now()}`,
-        title: title || "New Chat",
-        model: model || null,
-        created_at: now,
-        updated_at: now,
-        modelType: modelType || null,
-        expertModelId: expertModelId || null,
-      });
+      const conversationLimit = getFreeConversationLimit();
+
+      // 获取当前对话数量
+      const { data: existingConvs, error: countError } = await supabase
+        .from("conversations")
+        .select("id, created_at")
+        .order("created_at", { ascending: true });
+
+      if (countError) {
+        console.error("Count conversations error", countError);
+        return new Response("Failed to count conversations", { status: 500 });
+      }
+
+      const currentCount = existingConvs?.length || 0;
+
+      // 如果达到限制且未确认覆盖
+      if (currentCount >= conversationLimit && !replaceOldest) {
+        const oldestConv = existingConvs?.[0];
+        return Response.json({
+          needConfirmReplace: true,
+          oldestConversation: oldestConv,
+          currentCount,
+          conversationLimit,
+          message: "对话数量已达上限，需要覆盖最早的对话才能创建新对话",
+        }, { status: 409 });
+      }
+
+      // 如果确认覆盖，删除最早的对话及其消息
+      if (currentCount >= conversationLimit && replaceOldest) {
+        const oldestConv = existingConvs?.[0];
+        if (oldestConv) {
+          // 先删除该对话的所有消息
+          await supabase
+            .from("messages")
+            .delete()
+            .eq("conversation_id", oldestConv.id);
+          // 再删除对话
+          await supabase
+            .from("conversations")
+            .delete()
+            .eq("id", oldestConv.id);
+        }
+      }
     }
 
     const { data, error } = await supabase
@@ -191,29 +232,66 @@ export async function POST(req: NextRequest) {
   if (!user) return new Response("Unauthorized", { status: 401 });
   const plan = getPlanInfo(user.metadata);
 
-  const { title, model, modelType, expertModelId } = await req.json();
-
-  // Free 用户：不落库，返回本地临时会话 ID
-  if (plan.isFree) {
-    const now = new Date().toISOString();
-    return Response.json({
-      id: `local-${Date.now()}`,
-      title: title || "新对话",
-      model: model || null,
-      created_at: now,
-      updated_at: now,
-      modelType: modelType || null,
-      expertModelId: expertModelId || null,
-    });
-  }
-
-  const now = new Date().toISOString();
-
   const connector = new CloudBaseConnector();
   await connector.initialize();
   const db = connector.getClient();
 
   try {
+    // Free 用户对话数量限制检查
+    if (plan.isFree) {
+      const conversationLimit = getFreeConversationLimit();
+
+      // 获取当前对话数量
+      let res = await db.collection("conversations").where({ userId: user.id }).get();
+      let existingConvs = res?.data || [];
+
+      // 防御性兜底
+      if (!existingConvs.length) {
+        const all = await db.collection("conversations").get();
+        existingConvs = (all?.data || []).filter((c: any) => c.userId === user.id);
+      }
+
+      // 按创建时间升序排列
+      existingConvs.sort((a: any, b: any) =>
+        new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
+      );
+
+      const currentCount = existingConvs.length;
+
+      // 如果达到限制且未确认覆盖
+      if (currentCount >= conversationLimit && !replaceOldest) {
+        const oldestConv = existingConvs[0];
+        return Response.json({
+          needConfirmReplace: true,
+          oldestConversation: {
+            id: oldestConv._id,
+            title: oldestConv.title,
+            created_at: oldestConv.createdAt,
+          },
+          currentCount,
+          conversationLimit,
+          message: "对话数量已达上限，需要覆盖最早的对话才能创建新对话",
+        }, { status: 409 });
+      }
+
+      // 如果确认覆盖，删除最早的对话及其消息
+      if (currentCount >= conversationLimit && replaceOldest) {
+        const oldestConv = existingConvs[0];
+        if (oldestConv?._id) {
+          // 先删除该对话的所有消息
+          const messagesRes = await db.collection("messages").where({ conversationId: oldestConv._id }).get();
+          const messages = messagesRes?.data || [];
+          for (const msg of messages) {
+            await db.collection("messages").doc(msg._id).remove();
+          }
+          // 再删除对话
+          await db.collection("conversations").doc(oldestConv._id).remove();
+        }
+      }
+    }
+
+    const now = new Date().toISOString();
+
     const addRes = await db.collection("conversations").add({
       userId: user.id,
       title: title || "新对话",

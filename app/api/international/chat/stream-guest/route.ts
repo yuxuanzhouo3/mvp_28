@@ -4,6 +4,7 @@
  * 1. 只能使用通用模型
  * 2. 上下文限制为 5 条消息
  * 3. 不支持多模态
+ * 4. 每日请求次数限制（基于 IP）
  */
 
 import { createClient } from "@/lib/supabase/server";
@@ -26,6 +27,54 @@ const INTERNATIONAL_GENERAL_MODEL_ID = "mistral-small-latest";
 
 // 游客上下文限制
 const GUEST_CONTEXT_LIMIT = 5;
+
+// 从环境变量读取游客每日限制，默认为 10
+const GUEST_DAILY_LIMIT = (() => {
+  const raw = process.env.NEXT_PUBLIC_TRIAL_DAILY_LIMIT || "10";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 10;
+  return Math.min(100, n);
+})();
+
+// 内存中的 IP 限制缓存（生产环境建议使用 Redis）
+const ipRateLimitCache = new Map<string, { count: number; resetTime: number }>();
+
+/**
+ * 检查 IP 是否超过每日限制
+ */
+function checkIpRateLimit(ip: string): { allowed: boolean; remaining: number } {
+  const now = Date.now();
+  const todayEnd = new Date().setHours(23, 59, 59, 999);
+
+  const record = ipRateLimitCache.get(ip);
+
+  if (!record || record.resetTime < now) {
+    ipRateLimitCache.set(ip, { count: 1, resetTime: todayEnd });
+    return { allowed: true, remaining: GUEST_DAILY_LIMIT - 1 };
+  }
+
+  if (record.count >= GUEST_DAILY_LIMIT) {
+    return { allowed: false, remaining: 0 };
+  }
+
+  record.count++;
+  return { allowed: true, remaining: GUEST_DAILY_LIMIT - record.count };
+}
+
+/**
+ * 获取客户端 IP 地址
+ */
+function getClientIp(req: Request): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0].trim();
+  }
+  const realIp = req.headers.get("x-real-ip");
+  if (realIp) {
+    return realIp;
+  }
+  return "unknown";
+}
 
 const getMistralProvider = (modelId: string) => {
   const apiKey = process.env.MISTRAL_API_KEY;
@@ -138,20 +187,20 @@ export async function POST(req: Request) {
       let wallet = await getSupabaseUserWallet(userId);
       let plan = getPlanInfo(userMeta, wallet);
       effectivePlanLower = plan.planActive ? plan.planLower : "free";
-      
+
       // 登录用户使用完整上下文限制
       contextLimit = getFreeContextMsgLimit();
-      
+
       // 确保钱包存在
       await seedSupabaseWalletForPlan(userId, effectivePlanLower);
       wallet = await getSupabaseUserWallet(userId);
       plan = getPlanInfo(userMeta, wallet);
       effectivePlanLower = plan.planActive ? plan.planLower : "free";
-      
+
       // 外部模型需要扣减配额
       if (category === "external") {
         shouldDeductDailyExternal = true;
-        
+
         // 检查每日配额
         const dailyCheck = await checkSupabaseDailyExternalQuota(userId, effectivePlanLower, 1);
         if (!dailyCheck.allowed) {
@@ -167,6 +216,29 @@ export async function POST(req: Request) {
         }
       }
     } else {
+      // 游客模式：检查 IP 限制
+      const clientIp = getClientIp(req);
+      const rateLimit = checkIpRateLimit(clientIp);
+
+      if (!rateLimit.allowed) {
+        console.log("[quota][stream-guest-intl] IP rate limit exceeded", { clientIp });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: language === "zh"
+              ? "今日试用次数已用完，请登录后继续使用。"
+              : "Daily trial limit reached. Please sign in to continue.",
+            rateLimitExceeded: true,
+          }),
+          { status: 429, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log("[quota][stream-guest-intl] guest mode enabled", {
+        clientIp,
+        remaining: rateLimit.remaining,
+      });
+
       // 游客模式：只允许使用通用模型
       if (category === "external") {
         return new Response(

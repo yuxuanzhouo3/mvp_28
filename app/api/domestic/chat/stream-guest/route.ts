@@ -23,8 +23,60 @@ export const dynamic = "force-dynamic";
 const PROVIDER_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const DOMESTIC_GENERAL_MODEL_ID = "qwen-turbo";
 
-// 移动端游客试用配置
-const MOBILE_GUEST_MAX_CONTEXT = 10; // 移动端游客最大上下文消息数
+// 游客试用配置
+const GUEST_MAX_CONTEXT = 10; // 游客最大上下文消息数
+
+// 从环境变量读取游客每日限制，默认为 10
+const GUEST_DAILY_LIMIT = (() => {
+  const raw = process.env.NEXT_PUBLIC_TRIAL_DAILY_LIMIT || "10";
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return 10;
+  return Math.min(100, n);
+})();
+
+// 内存中的 IP 限制缓存（生产环境建议使用 Redis）
+const ipRateLimitCache = new Map<string, { count: number; resetTime: number }>();
+
+/**
+ * 检查 IP 是否超过每日限制
+ */
+function checkIpRateLimit(ip: string): { allowed: boolean; remaining: number } {
+  const now = Date.now();
+  const todayEnd = new Date().setHours(23, 59, 59, 999);
+
+  const record = ipRateLimitCache.get(ip);
+
+  if (!record || record.resetTime < now) {
+    // 新的一天或首次访问，重置计数
+    ipRateLimitCache.set(ip, { count: 1, resetTime: todayEnd });
+    return { allowed: true, remaining: GUEST_DAILY_LIMIT - 1 };
+  }
+
+  if (record.count >= GUEST_DAILY_LIMIT) {
+    return { allowed: false, remaining: 0 };
+  }
+
+  record.count++;
+  return { allowed: true, remaining: GUEST_DAILY_LIMIT - record.count };
+}
+
+/**
+ * 获取客户端 IP 地址
+ */
+function getClientIp(req: Request): string {
+  // 优先从 X-Forwarded-For 获取（经过代理的情况）
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0].trim();
+  }
+  // 其次从 X-Real-IP 获取
+  const realIp = req.headers.get("x-real-ip");
+  if (realIp) {
+    return realIp;
+  }
+  // 默认返回未知
+  return "unknown";
+}
 
 /**
  * 获取用户计划信息
@@ -182,23 +234,42 @@ export async function POST(req: Request) {
         ? decodeURIComponent(headerToken)
         : null;
 
-    // 检查是否是移动端游客请求（通过 User-Agent 或自定义 header）
+    // 检查是否是游客请求（通过自定义 header，同时支持移动端和桌面端）
     const userAgent = req.headers.get("user-agent") || "";
     const isMobileUA = /Mobile|Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-    const isMobileGuestHeader = req.headers.get("x-mobile-guest") === "true";
-    const isMobileGuest = !authToken && (isMobileUA || isMobileGuestHeader);
+    const isGuestHeader = req.headers.get("x-guest-trial") === "true" || req.headers.get("x-mobile-guest") === "true";
+    const isGuest = !authToken && (isMobileUA || isGuestHeader);
 
     let user: any = null;
     let plan = getPlanInfo({});
     let isGuestMode = false;
 
     if (!authToken) {
-      if (isMobileGuest) {
-        // 移动端游客模式：允许无 token 访问，但有限制
-        console.log("[quota][stream-guest] mobile guest mode enabled", {
+      if (isGuest) {
+        // 游客模式：允许无 token 访问，但有限制（同时支持移动端和桌面端）
+        const clientIp = getClientIp(req);
+        const rateLimit = checkIpRateLimit(clientIp);
+
+        if (!rateLimit.allowed) {
+          console.log("[quota][stream-guest] IP rate limit exceeded", { clientIp });
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: language === "zh"
+                ? "今日试用次数已用完，请登录后继续使用。"
+                : "Daily trial limit reached. Please sign in to continue.",
+              rateLimitExceeded: true,
+            }),
+            { status: 429, headers: { "Content-Type": "application/json" } },
+          );
+        }
+
+        console.log("[quota][stream-guest] guest mode enabled", {
+          clientIp,
           isMobileUA,
-          isMobileGuestHeader,
+          isGuestHeader,
           hasMediaPayload,
+          remaining: rateLimit.remaining,
         });
         isGuestMode = true;
         // 强制使用 General Model，禁止媒体上传
@@ -226,8 +297,8 @@ export async function POST(req: Request) {
           );
         }
         // 截断游客消息上下文
-        if (processedMessages.length > MOBILE_GUEST_MAX_CONTEXT) {
-          processedMessages = truncateContextMessages(processedMessages, MOBILE_GUEST_MAX_CONTEXT);
+        if (processedMessages.length > GUEST_MAX_CONTEXT) {
+          processedMessages = truncateContextMessages(processedMessages, GUEST_MAX_CONTEXT);
           contextTruncated = true;
         }
       } else {

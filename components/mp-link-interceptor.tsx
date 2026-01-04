@@ -5,7 +5,7 @@ import { isMiniProgram, getWxMiniProgram } from "@/lib/wechat-mp";
 
 /**
  * 微信小程序外部链接拦截器
- * 仅在微信小程序环境中拦截外部链接，直接跳转到小程序二维码页面
+ * 在微信小程序环境下拦截外部链接，直接跳转到小程序二维码页面
  */
 export function MpLinkInterceptor() {
   // 判断是否为外部链接
@@ -30,20 +30,19 @@ export function MpLinkInterceptor() {
     if (!mp || typeof mp.navigateTo !== "function") return;
 
     // 直接跳转到小程序的二维码页面，通过 URL 参数传递链接
-    const encodedUrl = encodeURIComponent(url);
-    const qrcodePageUrl = "/pages/qrcode/qrcode?url=" + encodedUrl;
+    const qrcodePageUrl = "/pages/qrcode/qrcode?url=" + encodeURIComponent(url);
     console.log("[mp-link-interceptor] 跳转到二维码页面:", qrcodePageUrl);
     mp.navigateTo({ url: qrcodePageUrl });
   }, []);
 
   useEffect(() => {
-    // 仅在微信小程序环境中启用拦截
+    // 仅在微信小程序环境下启用拦截
     if (!isMiniProgram()) {
       console.log("[mp-link-interceptor] 非小程序环境，跳过");
       return;
     }
 
-    console.log("[mp-link-interceptor] 外部链接拦截器已启动");
+    console.log("[mp-link-interceptor] 外部链接拦截器已启用");
 
     // 拦截所有链接点击
     const handleClick = (e: MouseEvent) => {
@@ -70,7 +69,7 @@ export function MpLinkInterceptor() {
       }
     };
 
-    // 使用捕获阶段拦截
+    // 使用捕获阶段监听
     document.addEventListener("click", handleClick, true);
 
     // 拦截 window.open
@@ -91,6 +90,6 @@ export function MpLinkInterceptor() {
     };
   }, [isExternalUrl, navigateToQrcodePage]);
 
-  // 此组件不渲染任何内容
+  // 不需要渲染任何内容
   return null;
 }

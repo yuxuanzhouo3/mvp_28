@@ -26,10 +26,12 @@ COPY . .
 # 从而满足 Next.js 构建时对 process.env 的基本检查。
 ARG NEXT_PUBLIC_SUPABASE_URL=https://build-placeholder.supabase.co
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=build-placeholder-key
+ARG ADMIN_SESSION_SECRET=build-placeholder-admin-session-secret
 
 # 2. 将 ARG 转为 ENV
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV ADMIN_SESSION_SECRET=$ADMIN_SESSION_SECRET
 
 # 构建应用
 # 此时 Next.js 会使用上面的假值完成构建。

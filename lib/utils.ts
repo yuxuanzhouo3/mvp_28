@@ -89,6 +89,48 @@ export const downloadMessage = (text: string, messageId: string) => {
 };
 
 // Model display functions
+// Date formatting for chat messages
+export const formatMessageDate = (date: Date, lang: string = "zh"): string => {
+  const now = new Date();
+  const msgDate = new Date(date);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const msgDay = new Date(msgDate.getFullYear(), msgDate.getMonth(), msgDate.getDate());
+
+  if (msgDay.getTime() === today.getTime()) {
+    return lang === "zh" ? "今天" : "Today";
+  }
+  if (msgDay.getTime() === yesterday.getTime()) {
+    return lang === "zh" ? "昨天" : "Yesterday";
+  }
+
+  const diffDays = Math.floor((today.getTime() - msgDay.getTime()) / 86400000);
+  if (diffDays < 7) {
+    const weekdays = lang === "zh"
+      ? ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+      : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    return weekdays[msgDate.getDay()];
+  }
+
+  if (msgDate.getFullYear() === now.getFullYear()) {
+    return lang === "zh"
+      ? `${msgDate.getMonth() + 1}月${msgDate.getDate()}日`
+      : msgDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+
+  return lang === "zh"
+    ? `${msgDate.getFullYear()}年${msgDate.getMonth() + 1}月${msgDate.getDate()}日`
+    : msgDate.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+};
+
+export const isSameDay = (d1: Date, d2: Date): boolean => {
+  const date1 = new Date(d1);
+  const date2 = new Date(d2);
+  return date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate();
+};
+
 export const getSelectedModelDisplay = (
   selectedModelType: string,
   selectedModel: string,

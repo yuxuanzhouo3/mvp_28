@@ -7,6 +7,7 @@ import { DEFAULT_LANGUAGE, IS_DOMESTIC_VERSION } from '../config'
 import { LanguageProvider } from '../context/LanguageContext'
 import { Toaster } from '@/components/ui/sonner'
 import { DynamicTitle } from '@/components/DynamicTitle'
+import { MpLinkInterceptor } from '@/components/mp-link-interceptor'
 
 export const metadata: Metadata = {
   title: "MornGPT",
@@ -47,6 +48,8 @@ html {
         )}
         <LanguageProvider>
           <DynamicTitle />
+          {/* 微信小程序外部链接拦截器 - 仅在小程序环境中生效 */}
+          {IS_DOMESTIC_VERSION && <MpLinkInterceptor />}
           {children}
           <Toaster position="top-center" richColors closeButton />
         </LanguageProvider>

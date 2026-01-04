@@ -493,10 +493,7 @@ export default function Sidebar({
                                       className="truncate flex-1 min-w-0 text-gray-700 dark:text-gray-300"
                                       title={chat.title}
                                     >
-                                      {truncateText(
-                                        chat.title,
-                                        isMobile ? 8 : Math.floor((sidebarWidth - 120) / 6)
-                                      )}
+                                      {truncateText(chat.title, 8)}
                                     </span>
                                     <div className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center space-x-0.5">
                                       <Button
@@ -699,10 +696,7 @@ export default function Sidebar({
                                       className="truncate flex-1 min-w-0 text-gray-700 dark:text-gray-300"
                                       title={chat.title}
                                     >
-                                      {truncateText(
-                                        chat.title,
-                                        isMobile ? 8 : Math.floor((sidebarWidth - 120) / 6)
-                                      )}
+                                      {truncateText(chat.title, 8)}
                                     </span>
                                     <div className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center space-x-0.5">
                                       <Button
@@ -905,10 +899,7 @@ export default function Sidebar({
                                       className="truncate flex-1 min-w-0 text-gray-700 dark:text-gray-300"
                                       title={chat.title}
                                     >
-                                      {truncateText(
-                                        chat.title,
-                                        isMobile ? 8 : Math.floor((sidebarWidth - 120) / 6)
-                                      )}
+                                      {truncateText(chat.title, 8)}
                                     </span>
                                     <div className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center space-x-0.5">
                                       <Button

@@ -13,7 +13,9 @@ import { Message } from "../types";
 import type { ReactNode } from "react";
 import { externalModels } from "@/constants";
 import { GENERAL_MODEL_ID } from "@/utils/model-limits";
+import { formatMessageDate, isSameDay } from "@/lib/utils";
 import { useState, memo, useEffect, useRef } from "react";
+import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -411,8 +413,11 @@ function ChatInterface({
                   </button>
                 </div>
               )}
-              {activeMessages.map((message: Message) => {
+              {activeMessages.map((message: Message, index: number) => {
                     const isUser = message.role === "user";
+                    const prevMessage = index > 0 ? activeMessages[index - 1] : null;
+                    const showDateSeparator = !prevMessage || !isSameDay(message.timestamp, prevMessage.timestamp);
+                    const dateLabel = showDateSeparator ? formatMessageDate(message.timestamp, selectedLanguage) : null;
                     const userDisplayName =
                       (appUser?.name || "").trim() ||
                       getLocalizedText("you") ||
@@ -653,13 +658,22 @@ function ChatInterface({
                     );
 
                     return (
-                      <div
-                        key={message.id}
-                        id={`message-${message.id}`}
-                        className={`flex items-start gap-3 ${
-                          isUser ? "flex-row-reverse" : "flex-row"
-                        } transition-colors duration-500`}
-                      >
+                      <React.Fragment key={message.id}>
+                        {showDateSeparator && (
+                          <div className="flex items-center justify-center my-4">
+                            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent" />
+                            <span className="px-4 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100/80 dark:bg-gray-800/80 rounded-full backdrop-blur-sm">
+                              {dateLabel}
+                            </span>
+                            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent" />
+                          </div>
+                        )}
+                        <div
+                          id={`message-${message.id}`}
+                          className={`flex items-start gap-3 ${
+                            isUser ? "flex-row-reverse" : "flex-row"
+                          } transition-colors duration-500`}
+                        >
                         {isUser && appUser?.avatar ? (
                           <img
                             src={appUser.avatar}
@@ -697,6 +711,7 @@ function ChatInterface({
                           </ContextMenuContent>
                         </ContextMenu>
                       </div>
+                      </React.Fragment>
                     );
                   })}
               {isLoading && thinkingText && (

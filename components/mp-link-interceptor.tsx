@@ -5,7 +5,7 @@ import { isMiniProgram, getWxMiniProgram } from "@/lib/wechat-mp";
 
 /**
  * 微信小程序外部链接拦截器
- * 仅在微信小程序环境中拦截外部链接，通知小程序显示二维码弹窗
+ * 仅在微信小程序环境中拦截外部链接，直接跳转到小程序二维码页面
  */
 export function MpLinkInterceptor() {
   // 判断是否为外部链接
@@ -24,23 +24,16 @@ export function MpLinkInterceptor() {
     }
   }, []);
 
-  // 发送消息给小程序
-  const postToMiniProgram = useCallback((url: string) => {
+  // 跳转到小程序二维码页面
+  const navigateToQrcodePage = useCallback((url: string) => {
     const mp = getWxMiniProgram();
-    if (!mp) return;
+    if (!mp || typeof mp.navigateTo !== "function") return;
 
-    // 发送 postMessage
-    if (typeof mp.postMessage === "function") {
-      mp.postMessage({
-        data: { type: "OPEN_EXTERNAL_URL", url },
-      });
-    }
-
-    // 使用 reLaunch 触发 postMessage（postMessage 需要页面跳转才能被接收）
-    if (typeof mp.navigateTo === "function") {
-      // 跳转到当前页面触发消息发送
-      mp.navigateTo({ url: "/pages/webshell/webshell" });
-    }
+    // 直接跳转到小程序的二维码页面，通过 URL 参数传递链接
+    const encodedUrl = encodeURIComponent(url);
+    const qrcodePageUrl = "/pages/qrcode/qrcode?url=" + encodedUrl;
+    console.log("[mp-link-interceptor] 跳转到二维码页面:", qrcodePageUrl);
+    mp.navigateTo({ url: qrcodePageUrl });
   }, []);
 
   useEffect(() => {
@@ -73,7 +66,7 @@ export function MpLinkInterceptor() {
         e.preventDefault();
         e.stopPropagation();
         console.log("[mp-link-interceptor] 拦截外部链接:", href);
-        postToMiniProgram(href);
+        navigateToQrcodePage(href);
       }
     };
 
@@ -86,7 +79,7 @@ export function MpLinkInterceptor() {
       const urlStr = url?.toString() || "";
       if (isExternalUrl(urlStr)) {
         console.log("[mp-link-interceptor] 拦截 window.open:", urlStr);
-        postToMiniProgram(urlStr);
+        navigateToQrcodePage(urlStr);
         return null;
       }
       return originalOpen.call(this, url, ...args);
@@ -96,7 +89,7 @@ export function MpLinkInterceptor() {
       document.removeEventListener("click", handleClick, true);
       window.open = originalOpen;
     };
-  }, [isExternalUrl, postToMiniProgram]);
+  }, [isExternalUrl, navigateToQrcodePage]);
 
   // 此组件不渲染任何内容
   return null;

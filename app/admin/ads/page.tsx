@@ -802,7 +802,7 @@ export default function AdsManagementPage() {
                               <AlertDialogHeader>
                                 <AlertDialogTitle>确认删除</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  确定要删除广告"{ad.title}"吗？此操作不可恢复。
+                                  确定要删除广告「{ad.title}」吗？此操作不可恢复。
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>

@@ -12,7 +12,12 @@ import {
   updateSupabaseSubscription,
   upgradeSupabaseMonthlyQuota,
 } from "@/services/wallet-supabase";
-import { trackPaymentEvent, trackSubscriptionEvent } from "@/services/analytics";
+import {
+  checkPaymentExists,
+  insertPaymentRecord,
+  validatePaymentAmountCents,
+} from "@/lib/payment/payment-record-helper";
+import { trackPayment, trackPaymentAndSubscription } from "@/lib/payment/analytics-helper";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -185,56 +190,22 @@ export async function POST(req: Request) {
     const currency = session.currency?.toUpperCase() || "USD";
     const actualCents = session.amount_total || 0;
 
-    // 金额一致性校验：期望金额写入 Stripe metadata（create 阶段），webhook 阶段严格对齐
-    const expectedCentsStr =
-      metadata.expectedAmountCents ||
-      (metadata as any).expected_amount_cents ||
-      null;
-    const expectedAmountStr =
-      metadata.expectedAmount ||
-      (metadata as any).expected_amount ||
-      null;
-
+    // 金额一致性校验
+    const expectedCentsStr = metadata.expectedAmountCents || (metadata as any).expected_amount_cents;
+    const expectedAmountStr = metadata.expectedAmount || (metadata as any).expected_amount;
+    let expectedCents = 0;
     if (expectedCentsStr != null) {
-      const expectedCents = parseInt(String(expectedCentsStr), 10);
-      if (!Number.isNaN(expectedCents) && expectedCents !== actualCents) {
-        console.error("[stripe webhook][amount-mismatch]", {
-          sessionId: session.id,
-          userId,
-          expectedCents,
-          actualCents,
-          currency,
-          productType,
-          metadata,
-        });
-        return new Response(null, { status: 200 });
-      }
+      expectedCents = parseInt(String(expectedCentsStr), 10);
     } else if (expectedAmountStr != null) {
-      const expected = parseFloat(String(expectedAmountStr));
-      if (!Number.isNaN(expected)) {
-        const expectedCents = Math.round(expected * 100);
-        if (expectedCents !== actualCents) {
-          console.error("[stripe webhook][amount-mismatch]", {
-            sessionId: session.id,
-            userId,
-            expectedCents,
-            actualCents,
-            currency,
-            productType,
-            metadata,
-          });
-          return new Response(null, { status: 200 });
-        }
-      }
+      expectedCents = Math.round(parseFloat(String(expectedAmountStr)) * 100);
+    }
+    if (!validatePaymentAmountCents(expectedCents, actualCents)) {
+      console.error("[stripe webhook][amount-mismatch]", { sessionId: session.id, userId, expectedCents, actualCents });
+      return new Response(null, { status: 200 });
     }
 
-    // 幂等：按 provider + provider_order_id best-effort 去重（建议后续在 DB 加唯一约束）
-    const { data: existingPayment } = await supabaseAdmin
-      .from("payments")
-      .select("id")
-      .eq("provider_order_id", session.id)
-      .eq("provider", "stripe")
-      .maybeSingle();
+    // 幂等性检查
+    const existingPayment = await checkPaymentExists("stripe", session.id);
 
     // 加油包
     if (productType === "ADDON") {
@@ -247,30 +218,14 @@ export async function POST(req: Request) {
       }
 
       try {
-        await supabaseAdmin.from("payments").insert({
-          user_id: userId,
-          provider: "stripe",
-          provider_order_id: session.id,
-          amount,
-          currency,
-          status: "COMPLETED",
-          type: "ADDON",
-          addon_package_id: metadata.addonPackageId || "",
-          image_credits: imageCredits,
-          video_audio_credits: videoAudioCredits,
-          source: "global", // 国际版数据标识
+        await insertPaymentRecord({
+          userId, provider: "stripe", providerOrderId: session.id,
+          amount, currency, type: "ADDON",
+          addonPackageId: metadata.addonPackageId || "",
+          imageCredits, videoAudioCredits,
         });
         await addSupabaseAddonCredits(userId, imageCredits, videoAudioCredits);
-
-        // 埋点：记录加油包支付事件
-        trackPaymentEvent(userId, {
-          amount,
-          currency,
-          plan: "ADDON",
-          provider: "stripe",
-          orderId: session.id,
-        }).catch((err) => console.warn("[stripe webhook] trackPaymentEvent error:", err));
-
+        trackPayment({ userId, amount, currency, plan: "ADDON", provider: "stripe", orderId: session.id });
         console.log(`[Stripe][ADDON] credited for user ${userId}`);
       } catch (err) {
         console.error("[Stripe][ADDON] error", err);
@@ -331,15 +286,9 @@ export async function POST(req: Request) {
       }
 
       if (!existingPayment) {
-        await supabaseAdmin.from("payments").insert({
-          user_id: userId,
-          provider: "stripe",
-          provider_order_id: session.id,
-          amount,
-          currency,
-          status: "COMPLETED",
-          type: "SUBSCRIPTION",
-          source: "global", // 国际版数据标识
+        await insertPaymentRecord({
+          userId, provider: "stripe", providerOrderId: session.id,
+          amount, currency, type: "SUBSCRIPTION",
         });
       }
 
@@ -417,21 +366,11 @@ export async function POST(req: Request) {
         forceReset: isUpgrade || isNewOrExpired,
       });
 
-      // 埋点：记录订阅支付和订阅变更事件
-      trackPaymentEvent(userId, {
-        amount,
-        currency,
-        plan,
-        provider: "stripe",
-        orderId: session.id,
-      }).catch((err) => console.warn("[stripe webhook] trackPaymentEvent error:", err));
-
-      trackSubscriptionEvent(userId, {
-        action: isUpgrade ? "upgrade" : isNewOrExpired ? "subscribe" : "renew",
-        fromPlan: currentPlanKey || "Free",
-        toPlan: plan,
-        period,
-      }).catch((err) => console.warn("[stripe webhook] trackSubscriptionEvent error:", err));
+      // 埋点追踪
+      trackPaymentAndSubscription(
+        { userId, amount, currency, plan, provider: "stripe", orderId: session.id },
+        { action: isUpgrade ? "upgrade" : isNewOrExpired ? "subscribe" : "renew", fromPlan: currentPlanKey || "Free", toPlan: plan, period }
+      );
 
       console.log(`[Stripe][SUBSCRIPTION] processed for user ${userId}`);
     } catch (err) {

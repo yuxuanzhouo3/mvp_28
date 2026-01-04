@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   getAdminStats,
   getDailyStats,
@@ -37,6 +37,8 @@ import {
 import {
   AreaChart,
   Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -108,11 +110,10 @@ export default function StatsPage() {
     return num.toString();
   };
 
-  // 准备图表数据
-  const prepareChartData = () => {
+  // 准备图表数据（使用 useMemo 缓存）
+  const chartData = useMemo(() => {
     if (!dailyStats) return [];
 
-    // 按日期聚合
     const dateMap = new Map<string, { date: string; global: number; cn: number; total: number }>();
 
     dailyStats.forEach((item) => {
@@ -129,10 +130,10 @@ export default function StatsPage() {
     });
 
     return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-  };
+  }, [dailyStats]);
 
-  // 准备收入图表数据
-  const prepareRevenueData = () => {
+  // 准备收入图表数据（使用 useMemo 缓存）
+  const revenueData = useMemo(() => {
     if (!dailyStats) return [];
 
     const dateMap = new Map<string, { date: string; global: number; cn: number; total: number }>();
@@ -151,7 +152,7 @@ export default function StatsPage() {
     });
 
     return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-  };
+  }, [dailyStats]);
 
   // 准备设备分布数据
   const prepareDeviceData = () => {
@@ -174,8 +175,6 @@ export default function StatsPage() {
     return Object.entries(stats.subscriptions.byPlan).map(([name, value]) => ({ name, value }));
   };
 
-  const chartData = prepareChartData();
-  const revenueData = prepareRevenueData();
   const deviceData = prepareDeviceData();
   const osData = prepareOSData();
   const planData = preparePlanData();
@@ -255,7 +254,7 @@ export default function StatsPage() {
               <CardContent>
                 <div className="text-2xl font-bold">{formatNumber(stats.activeUsers.mau)}</div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  DAU: {stats.activeUsers.dau} / WAU: {stats.activeUsers.wau}
+                  日活: {stats.activeUsers.dau} / 周活: {stats.activeUsers.wau}
                 </p>
               </CardContent>
             </Card>
@@ -269,15 +268,40 @@ export default function StatsPage() {
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
-                  {formatCurrency(stats.payments.totalAmount)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  <span className="text-green-600">
-                    +{formatCurrency(stats.payments.todayAmount)}
-                  </span>{" "}
-                  今日
-                </p>
+                {source === "all" ? (
+                  <>
+                    <div className="text-lg font-bold">
+                      ${stats.sourceComparison.global.revenue.toFixed(2)} + ¥{stats.sourceComparison.cn.revenue.toFixed(2)}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      今日: <span className="text-green-600">+${stats.sourceComparison.global.todayRevenue.toFixed(2)}</span> / <span className="text-green-600">+¥{stats.sourceComparison.cn.todayRevenue.toFixed(2)}</span>
+                    </p>
+                  </>
+                ) : source === "cn" ? (
+                  <>
+                    <div className="text-2xl font-bold">
+                      ¥{stats.payments.totalAmount.toFixed(2)}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      <span className="text-green-600">
+                        +¥{stats.payments.todayAmount.toFixed(2)}
+                      </span>{" "}
+                      今日
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold">
+                      ${stats.payments.totalAmount.toFixed(2)}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      <span className="text-green-600">
+                        +${stats.payments.todayAmount.toFixed(2)}
+                      </span>{" "}
+                      今日
+                    </p>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -322,7 +346,7 @@ export default function StatsPage() {
                     </div>
                     <div className="text-right">
                       <p className="text-2xl font-bold text-green-600">
-                        {formatCurrency(stats.sourceComparison.global.revenue)}
+                        ${stats.sourceComparison.global.revenue.toFixed(2)}
                       </p>
                       <p className="text-xs text-muted-foreground">总收入</p>
                     </div>
@@ -347,7 +371,7 @@ export default function StatsPage() {
                     </div>
                     <div className="text-right">
                       <p className="text-2xl font-bold text-green-600">
-                        {formatCurrency(stats.sourceComparison.cn.revenue)}
+                        ¥{stats.sourceComparison.cn.revenue.toFixed(2)}
                       </p>
                       <p className="text-xs text-muted-foreground">总收入</p>
                     </div>
@@ -394,14 +418,14 @@ export default function StatsPage() {
                   <div className="h-[350px]">
                     {chartData.length > 0 ? (
                       <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartData}>
+                        <LineChart data={chartData}>
                           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                           <XAxis
                             dataKey="date"
                             tickFormatter={(value) => value.slice(5)}
                             className="text-xs"
                           />
-                          <YAxis className="text-xs" />
+                          <YAxis className="text-xs" allowDecimals={false} />
                           <Tooltip
                             contentStyle={{
                               backgroundColor: "hsl(var(--background))",
@@ -410,38 +434,16 @@ export default function StatsPage() {
                             }}
                           />
                           <Legend />
-                          {source === "all" ? (
-                            <>
-                              <Area
-                                type="monotone"
-                                dataKey="global"
-                                name="国际版"
-                                stackId="1"
-                                stroke={SOURCE_COLORS.global}
-                                fill={SOURCE_COLORS.global}
-                                fillOpacity={0.6}
-                              />
-                              <Area
-                                type="monotone"
-                                dataKey="cn"
-                                name="国内版"
-                                stackId="1"
-                                stroke={SOURCE_COLORS.cn}
-                                fill={SOURCE_COLORS.cn}
-                                fillOpacity={0.6}
-                              />
-                            </>
-                          ) : (
-                            <Area
-                              type="monotone"
-                              dataKey="total"
-                              name="活跃用户"
-                              stroke="#3b82f6"
-                              fill="#3b82f6"
-                              fillOpacity={0.6}
-                            />
-                          )}
-                        </AreaChart>
+                          <Line
+                            type="monotone"
+                            dataKey="total"
+                            name="活跃用户"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                          />
+                        </LineChart>
                       </ResponsiveContainer>
                     ) : (
                       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -470,24 +472,18 @@ export default function StatsPage() {
                             tickFormatter={(value) => value.slice(5)}
                             className="text-xs"
                           />
-                          <YAxis className="text-xs" tickFormatter={(value) => `$${value}`} />
+                          <YAxis className="text-xs" />
                           <Tooltip
-                            formatter={(value: number) => formatCurrency(value)}
                             contentStyle={{
                               backgroundColor: "hsl(var(--background))",
                               border: "1px solid hsl(var(--border))",
                               borderRadius: "8px",
                             }}
+                            formatter={(value: number) => value.toFixed(2)}
                           />
                           <Legend />
-                          {source === "all" ? (
-                            <>
-                              <Bar dataKey="global" name="国际版" fill={SOURCE_COLORS.global} />
-                              <Bar dataKey="cn" name="国内版" fill={SOURCE_COLORS.cn} />
-                            </>
-                          ) : (
-                            <Bar dataKey="total" name="收入" fill="#3b82f6" />
-                          )}
+                          <Bar dataKey="global" name="$ 美元收入" fill="#3b82f6" />
+                          <Bar dataKey="cn" name="¥ 人民币收入" fill="#f97316" />
                         </BarChart>
                       </ResponsiveContainer>
                     ) : (

@@ -7,7 +7,12 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
-    unoptimized: true,
+    // 启用图片优化以提升性能
+    unoptimized: false,
+    // 配置远程图片域名（如有需要可添加）
+    remotePatterns: [],
+    // 图片格式优化
+    formats: ['image/avif', 'image/webp'],
   },
   env: {
     MAX_IMAGE_UPLOAD_MB: process.env.MAX_IMAGE_UPLOAD_MB,
@@ -25,6 +30,29 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: "10mb", // 支持最大 10MB 的文件上传
     },
+  },
+  // 性能优化：启用压缩
+  compress: true,
+  // 性能优化：生产环境移除 console.log
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn'] } : false,
+  },
+  // 性能优化：配置 headers 缓存策略
+  async headers() {
+    return [
+      {
+        source: '/api/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, must-revalidate' },
+        ],
+      },
+      {
+        source: '/:all*(svg|jpg|jpeg|png|gif|ico|webp|avif)',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+        ],
+      },
+    ];
   },
 }
 

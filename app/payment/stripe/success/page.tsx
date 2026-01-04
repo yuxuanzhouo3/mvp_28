@@ -13,18 +13,21 @@ function StripeSuccessContent() {
   const { currentLanguage } = useLanguage();
   const isZh = currentLanguage === "zh";
 
-  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
+  // 初始化状态时就检查 sessionId，避免在 useEffect 中同步调用 setState
+  const initialStatus = sessionId ? "loading" : "error";
+  const initialError = sessionId ? null : "Missing payment session ID";
+
+  const [status, setStatus] = useState<"loading" | "success" | "error">(initialStatus);
   const [result, setResult] = useState<{
     plan?: string;
     period?: string;
     expiresAt?: string;
   } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError);
 
   useEffect(() => {
     if (!sessionId) {
-      setStatus("error");
-      setError(isZh ? "缺少支付会话ID" : "Missing payment session ID");
+      // 状态已在初始化时设置，无需再次调用 setState
       return;
     }
 

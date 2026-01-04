@@ -57,11 +57,17 @@ const navItems = [
   },
 ];
 
-export default function AdminSidebar({ username }: AdminSidebarProps) {
-  const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  const SidebarContent = () => (
+// 将 SidebarContent 提取为独立组件，避免在渲染期间创建组件
+function SidebarContent({
+  pathname,
+  username,
+  onNavClick,
+}: {
+  pathname: string;
+  username: string;
+  onNavClick: () => void;
+}) {
+  return (
     <>
       {/* Logo / 标题 - 仅桌面端显示 */}
       <div className="hidden md:block p-6 border-b border-slate-200 dark:border-slate-700">
@@ -81,7 +87,7 @@ export default function AdminSidebar({ username }: AdminSidebarProps) {
             <Link
               key={item.href}
               href={item.href}
-              onClick={() => setMobileMenuOpen(false)}
+              onClick={onNavClick}
               className={cn(
                 "flex items-center gap-3 px-3 md:px-4 py-2.5 md:py-3 rounded-lg transition-colors",
                 isActive
@@ -120,6 +126,13 @@ export default function AdminSidebar({ username }: AdminSidebarProps) {
       </div>
     </>
   );
+}
+
+export default function AdminSidebar({ username }: AdminSidebarProps) {
+  const pathname = usePathname();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const handleNavClick = () => setMobileMenuOpen(false);
 
   return (
     <>
@@ -149,14 +162,22 @@ export default function AdminSidebar({ username }: AdminSidebarProps) {
           />
           {/* 侧边栏 */}
           <aside className="md:hidden fixed left-0 top-14 bottom-0 w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col z-50 animate-in slide-in-from-left duration-200">
-            <SidebarContent />
+            <SidebarContent
+              pathname={pathname}
+              username={username}
+              onNavClick={handleNavClick}
+            />
           </aside>
         </>
       )}
 
       {/* 桌面端固定侧边栏 */}
       <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex-col">
-        <SidebarContent />
+        <SidebarContent
+          pathname={pathname}
+          username={username}
+          onNavClick={handleNavClick}
+        />
       </aside>
     </>
   );

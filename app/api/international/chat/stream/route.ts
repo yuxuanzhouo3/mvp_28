@@ -24,36 +24,13 @@ import {
   consumeSupabaseDailyExternalQuota,
   getSupabaseUserWallet,
 } from "@/services/wallet-supabase";
-import { isAfter } from "date-fns";
+import { getPlanInfo, truncateContextMessages } from "@/utils/plan-utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
 const INTERNATIONAL_GENERAL_MODEL_ID = "mistral-small-latest";
-
-/**
- * 获取用户计划信息
- */
-function getPlanInfo(userMeta: any, wallet: any) {
-  const rawPlan =
-    wallet?.plan ||
-    wallet?.subscription_tier ||
-    (userMeta?.plan as string | undefined) ||
-    (userMeta?.subscriptionTier as string | undefined) ||
-    "";
-  const rawPlanLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
-  const planExp = wallet?.plan_exp ? new Date(wallet.plan_exp) : 
-                  userMeta?.plan_exp ? new Date(userMeta.plan_exp) : null;
-  const planActive = planExp ? isAfter(planExp, new Date()) : true;
-  const planLower = planActive ? rawPlanLower : "free";
-  const isProFlag = !!wallet?.pro || (!!userMeta?.pro && planLower !== "free" && planLower !== "basic");
-  const isBasic = planLower === "basic";
-  const isPro = planLower === "pro" || planLower === "enterprise" || isProFlag;
-  const isEnterprise = planLower === "enterprise";
-  const isFree = !isPro && !isBasic && !isEnterprise;
-  return { planLower, isPro, isBasic, isEnterprise, isFree, planActive, planExp };
-}
 
 /**
  * 获取上下文限制
@@ -69,14 +46,6 @@ function getContextLimit(planLower: string): number {
     default:
       return getFreeContextMsgLimit();
   }
-}
-
-/**
- * 截断消息历史以符合上下文限制
- */
-function truncateContextMessages<T>(messages: T[], limit: number): T[] {
-  if (messages.length <= limit) return messages;
-  return messages.slice(-limit);
 }
 
 const getMistralProvider = (modelId: string) => {

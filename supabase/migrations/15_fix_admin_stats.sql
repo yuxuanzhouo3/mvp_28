@@ -95,11 +95,25 @@ ALTER TABLE public.user_analytics ENABLE ROW LEVEL SECURITY;
 
 -- 删除旧策略（如果存在）
 DROP POLICY IF EXISTS "Users can view own analytics" ON public.user_analytics;
+DROP POLICY IF EXISTS "Service role can insert analytics" ON public.user_analytics;
+DROP POLICY IF EXISTS "Allow service role full access" ON public.user_analytics;
 
--- 创建新策略
+-- 创建新策略：用户可以查看自己的分析数据
 CREATE POLICY "Users can view own analytics"
 ON public.user_analytics FOR SELECT
+TO authenticated
 USING (auth.uid() = user_id);
+
+-- 创建新策略：允许 service_role 完全访问（用于服务端埋点）
+-- 注意：service_role 默认绑定 BYPASSRLS，此策略作为显式声明
+CREATE POLICY "Allow service role full access"
+ON public.user_analytics FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
+-- 授予 service_role 完全权限
+GRANT ALL ON public.user_analytics TO service_role;
 
 -- =============================================================================
 -- 5. 创建或替换统计函数

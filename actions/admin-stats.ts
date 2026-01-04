@@ -7,6 +7,7 @@
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
+import { getAdminSession } from "@/utils/session";
 
 // 统计数据类型定义
 export interface UserStats {
@@ -43,8 +44,8 @@ export interface DeviceStats {
 }
 
 export interface SourceComparison {
-  global: { users: number; revenue: number };
-  cn: { users: number; revenue: number };
+  global: { users: number; revenue: number; todayRevenue: number };
+  cn: { users: number; revenue: number; todayRevenue: number };
 }
 
 export interface AdminStatsResult {
@@ -81,65 +82,13 @@ export interface DailyStatsResult {
 export async function getAdminStats(
   source: "all" | "global" | "cn" = "all"
 ): Promise<AdminStatsResult> {
-  if (!supabaseAdmin) {
-    return { success: false, error: "数据库连接失败" };
+  // 权限验证：仅管理员可访问
+  const session = await getAdminSession();
+  if (!session) {
+    return { success: false, error: "未授权访问" };
   }
 
-  try {
-    // 尝试调用数据库函数
-    const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc(
-      "get_admin_stats",
-      { p_source: source }
-    );
-
-    if (!rpcError && rpcData) {
-      return {
-        success: true,
-        data: {
-          users: {
-            total: rpcData.users?.total || 0,
-            newToday: rpcData.users?.new_today || 0,
-            newThisWeek: rpcData.users?.new_this_week || 0,
-            newThisMonth: rpcData.users?.new_this_month || 0,
-          },
-          payments: {
-            totalAmount: rpcData.payments?.total_amount || 0,
-            totalCount: rpcData.payments?.total_count || 0,
-            payingUsers: rpcData.payments?.paying_users || 0,
-            todayAmount: rpcData.payments?.today_amount || 0,
-            thisMonthAmount: rpcData.payments?.this_month_amount || 0,
-            currency: "USD",
-          },
-          subscriptions: {
-            total: rpcData.subscriptions?.total || 0,
-            active: rpcData.subscriptions?.active || 0,
-            byPlan: rpcData.subscriptions?.by_plan || {},
-          },
-          activeUsers: {
-            dau: rpcData.active_users?.dau || 0,
-            wau: rpcData.active_users?.wau || 0,
-            mau: rpcData.active_users?.mau || 0,
-          },
-          devices: {
-            byType: rpcData.devices?.by_type || {},
-            byOS: rpcData.devices?.by_os || {},
-          },
-          sourceComparison: {
-            global: { users: 0, revenue: 0 },
-            cn: { users: 0, revenue: 0 },
-          },
-          generatedAt: rpcData.query_params?.generated_at || new Date().toISOString(),
-        },
-      };
-    }
-
-    // 如果 RPC 调用失败，使用直接查询作为后备方案
-    console.warn("[getAdminStats] RPC failed, using fallback queries:", rpcError?.message);
-    return await getAdminStatsFallback(source);
-  } catch (err) {
-    console.error("[getAdminStats] Error:", err);
-    return { success: false, error: "获取统计数据失败" };
-  }
+  return await getAdminStatsFallback(source);
 }
 
 /**
@@ -166,8 +115,8 @@ async function getAdminStatsFallback(
     let activeUserStats: ActiveUserStats = { dau: 0, wau: 0, mau: 0 };
     let deviceStats: DeviceStats = { byType: {}, byOS: {} };
     let sourceComparison: SourceComparison = {
-      global: { users: 0, revenue: 0 },
-      cn: { users: 0, revenue: 0 },
+      global: { users: 0, revenue: 0, todayRevenue: 0 },
+      cn: { users: 0, revenue: 0, todayRevenue: 0 },
     };
 
     // 收集所有活跃用户分析数据用于设备统计
@@ -231,16 +180,21 @@ async function getAdminStatsFallback(
       userStats.newThisWeek += profiles.filter((p) => p.created_at >= weekAgo).length;
       userStats.newThisMonth += profiles.filter((p) => p.created_at >= monthAgo).length;
 
-      // 累加支付统计
-      paymentStats.totalAmount += payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      // 累加支付统计（单次遍历优化）
+      const payingUserSet = new Set<string>();
+      let totalAmt = 0, todayAmt = 0, monthAmt = 0;
+      for (const p of payments) {
+        const amt = Number(p.amount) || 0;
+        totalAmt += amt;
+        if (p.user_id) payingUserSet.add(p.user_id);
+        if (p.created_at?.startsWith(today)) todayAmt += amt;
+        if (p.created_at >= monthAgo) monthAmt += amt;
+      }
+      paymentStats.totalAmount += totalAmt;
       paymentStats.totalCount += payments.length;
-      paymentStats.payingUsers += new Set(payments.map((p) => p.user_id)).size;
-      paymentStats.todayAmount += payments
-        .filter((p) => p.created_at?.startsWith(today))
-        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-      paymentStats.thisMonthAmount += payments
-        .filter((p) => p.created_at >= monthAgo)
-        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      paymentStats.payingUsers += payingUserSet.size;
+      paymentStats.todayAmount += todayAmt;
+      paymentStats.thisMonthAmount += monthAmt;
 
       // 累加订阅统计
       subscriptionStats.total += subscriptions.length;
@@ -263,12 +217,11 @@ async function getAdminStatsFallback(
         activeUserStats.mau = profilesCount;
       }
 
-      // 来源对比 - global（所有 Supabase 数据视为 global）
+      // 来源对比 - global（复用已计算的值）
       if (source === "all") {
         sourceComparison.global.users = profilesCount;
-        sourceComparison.global.revenue = payments.reduce(
-          (sum, p) => sum + (Number(p.amount) || 0), 0
-        );
+        sourceComparison.global.revenue = totalAmt;
+        sourceComparison.global.todayRevenue = todayAmt;
       }
     }
 
@@ -312,6 +265,7 @@ async function getAdminStatsFallback(
         if (source === "all") {
           sourceComparison.cn.users = cbStats.users.total;
           sourceComparison.cn.revenue = cbStats.payments.totalAmount;
+          sourceComparison.cn.todayRevenue = cbStats.payments.todayAmount;
         }
       }
     }
@@ -364,6 +318,12 @@ export async function getDailyStats(
   days: number = 30,
   source: "all" | "global" | "cn" = "all"
 ): Promise<DailyStatsResult> {
+  // 权限验证：仅管理员可访问
+  const session = await getAdminSession();
+  if (!session) {
+    return { success: false, error: "未授权访问" };
+  }
+
   try {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -509,49 +469,6 @@ export async function getDailyStats(
   }
 }
 
-/**
- * 记录用户分析事件
- */
-export async function trackAnalyticsEvent(params: {
-  userId: string;
-  source: "global" | "cn";
-  eventType: string;
-  deviceType?: string;
-  os?: string;
-  browser?: string;
-  appVersion?: string;
-  eventData?: Record<string, unknown>;
-  sessionId?: string;
-}): Promise<{ success: boolean; error?: string }> {
-  if (!supabaseAdmin) {
-    return { success: false, error: "数据库连接失败" };
-  }
-
-  try {
-    const { error } = await supabaseAdmin.from("user_analytics").insert({
-      user_id: params.userId,
-      source: params.source,
-      event_type: params.eventType,
-      device_type: params.deviceType,
-      os: params.os,
-      browser: params.browser,
-      app_version: params.appVersion,
-      event_data: params.eventData || {},
-      session_id: params.sessionId,
-    });
-
-    if (error) {
-      console.error("[trackAnalyticsEvent] Error:", error);
-      return { success: false, error: "记录事件失败" };
-    }
-
-    return { success: true };
-  } catch (err) {
-    console.error("[trackAnalyticsEvent] Error:", err);
-    return { success: false, error: "记录事件失败" };
-  }
-}
-
 // =============================================================================
 // CloudBase (国内版) 数据查询
 // =============================================================================
@@ -580,27 +497,30 @@ async function getCloudBaseStats(): Promise<CloudBaseStatsData | null> {
     let subscriptions: any[] = [];
     let analytics: any[] = [];
 
-    // 查询用户
+    // 查询用户（CloudBase 需要 where 条件才能正常查询）
     try {
-      const usersResult = await db.collection("users").get();
+      const usersResult = await db.collection("users").where({}).limit(1000).get();
       users = usersResult.data || [];
     } catch (err) {
       console.warn("[getCloudBaseStats] users collection query failed:", err);
     }
 
-    // 查询支付
+    // 查���支付（获取所有记录后在内存中过滤）
     try {
-      const paymentsResult = await db.collection("payments")
-        .where({ status: db.command.in(["COMPLETED", "success", "completed"]) })
-        .get();
-      payments = paymentsResult.data || [];
+      const paymentsResult = await db.collection("payments").where({}).limit(1000).get();
+      const allPayments = paymentsResult.data || [];
+      // 在内存中过滤已完成的支付
+      payments = allPayments.filter((p: any) => {
+        const status = (p.status || "").toString().toUpperCase();
+        return status === "COMPLETED" || status === "SUCCESS";
+      });
     } catch (err) {
       console.warn("[getCloudBaseStats] payments collection query failed:", err);
     }
 
     // 查询订阅
     try {
-      const subscriptionsResult = await db.collection("subscriptions").get();
+      const subscriptionsResult = await db.collection("subscriptions").where({}).limit(1000).get();
       subscriptions = subscriptionsResult.data || [];
     } catch (err) {
       console.warn("[getCloudBaseStats] subscriptions collection query failed:", err);
@@ -610,6 +530,7 @@ async function getCloudBaseStats(): Promise<CloudBaseStatsData | null> {
     try {
       const analyticsResult = await db.collection("user_analytics")
         .where({ created_at: db.command.gte(monthAgo) })
+        .limit(1000)
         .get();
       analytics = analyticsResult.data || [];
     } catch (err) {
@@ -624,18 +545,22 @@ async function getCloudBaseStats(): Promise<CloudBaseStatsData | null> {
       newThisMonth: users.filter((u: any) => u.createdAt >= monthAgo).length,
     };
 
-    // 处理支付统计
-    const payingUserIds = new Set(payments.map((p: any) => p.userId));
+    // 处理支付统计（单次遍历优化）
+    const payingUserIds = new Set<string>();
+    let totalAmount = 0, todayAmount = 0, thisMonthAmount = 0;
+    for (const p of payments) {
+      const amount = Number(p.amount) || 0;
+      totalAmount += amount;
+      if (p.userId) payingUserIds.add(p.userId);
+      if (p.createdAt?.startsWith(today)) todayAmount += amount;
+      if (p.createdAt >= monthAgo) thisMonthAmount += amount;
+    }
     const paymentStats = {
-      totalAmount: payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0),
+      totalAmount,
       totalCount: payments.length,
       payingUsers: payingUserIds.size,
-      todayAmount: payments
-        .filter((p: any) => p.createdAt?.startsWith(today))
-        .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0),
-      thisMonthAmount: payments
-        .filter((p: any) => p.createdAt >= monthAgo)
-        .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0),
+      todayAmount,
+      thisMonthAmount,
     };
 
     // 处理订阅统计
@@ -689,25 +614,28 @@ async function getCloudBaseDailyStats(days: number): Promise<Array<{
     let payments: any[] = [];
     let analytics: any[] = [];
 
-    // 查询用户
+    // 查询用户（CloudBase 默认只返回 20 条，需要设置 limit）
     try {
       const usersResult = await db.collection("users")
         .where({ createdAt: db.command.gte(startDateStr) })
+        .limit(1000)
         .get();
       users = usersResult.data || [];
     } catch (err) {
       console.warn("[getCloudBaseDailyStats] users collection query failed:", err);
     }
 
-    // 查询支付
+    // 查询支付（不使用 where 条件，获取所有记录后在内存中过滤）
     try {
-      const paymentsResult = await db.collection("payments")
-        .where({
-          createdAt: db.command.gte(startDateStr),
-          status: db.command.in(["COMPLETED", "success", "completed"]),
-        })
-        .get();
-      payments = paymentsResult.data || [];
+      const paymentsResult = await db.collection("payments").limit(1000).get();
+      const allPayments = paymentsResult.data || [];
+      // 在内存中过滤：时间范围内且已完成的支付
+      payments = allPayments.filter((p: any) => {
+        const status = (p.status || "").toString().toUpperCase();
+        const isCompleted = status === "COMPLETED" || status === "SUCCESS";
+        const inRange = p.createdAt && p.createdAt >= startDateStr;
+        return isCompleted && inRange;
+      });
     } catch (err) {
       console.warn("[getCloudBaseDailyStats] payments collection query failed:", err);
     }
@@ -716,6 +644,7 @@ async function getCloudBaseDailyStats(days: number): Promise<Array<{
     try {
       const analyticsResult = await db.collection("user_analytics")
         .where({ created_at: db.command.gte(startDateStr) })
+        .limit(1000)
         .get();
       analytics = analyticsResult.data || [];
     } catch (err) {

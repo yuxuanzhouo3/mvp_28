@@ -17,17 +17,7 @@ import {
 } from "@/services/wallet";
 import { trackPaymentEvent, trackSubscriptionEvent } from "@/services/analytics";
 import { isAfter } from "date-fns";
-
-const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
-
-// 统一套餐名称，兼容中文/英文，返回英文 canonical key
-const normalizePlanName = (p?: string) => {
-  const lower = (p || "").toLowerCase();
-  if (lower === "basic" || lower === "基础版") return "Basic";
-  if (lower === "pro" || lower === "专业版") return "Pro";
-  if (lower === "enterprise" || lower === "企业版") return "Enterprise";
-  return p || "";
-};
+import { PLAN_RANK, normalizePlanName } from "@/utils/plan-utils";
 
 export async function POST(request: NextRequest) {
   try {

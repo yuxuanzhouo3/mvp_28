@@ -725,7 +725,7 @@ export default function ReleasesManagementPage() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>确认删除</AlertDialogTitle>
                               <AlertDialogDescription>
-                                确定要删除版本 "v{release.version}" ({getPlatformLabel(release.platform)}) 吗？此操作不可恢复。
+                                确定要删除版本 v{release.version} ({getPlatformLabel(release.platform)}) 吗？此操作不可恢复。
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>

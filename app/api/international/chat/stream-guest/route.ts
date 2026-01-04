@@ -17,7 +17,7 @@ import {
   consumeSupabaseDailyExternalQuota,
   getSupabaseUserWallet,
 } from "@/services/wallet-supabase";
-import { isAfter } from "date-fns";
+import { getPlanInfo, truncateContextMessages } from "@/utils/plan-utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,32 +99,6 @@ const extractDelta = (data: any): string => {
   }
   return delta || "";
 };
-
-/**
- * 截断消息历史
- */
-function truncateContextMessages<T>(messages: T[], limit: number): T[] {
-  if (messages.length <= limit) return messages;
-  return messages.slice(-limit);
-}
-
-/**
- * 获取用户计划信息
- */
-function getPlanInfo(userMeta: any, wallet: any) {
-  const rawPlan =
-    wallet?.plan ||
-    wallet?.subscription_tier ||
-    (userMeta?.plan as string | undefined) ||
-    (userMeta?.subscriptionTier as string | undefined) ||
-    "";
-  const rawPlanLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
-  const planExp = wallet?.plan_exp ? new Date(wallet.plan_exp) : 
-                  userMeta?.plan_exp ? new Date(userMeta.plan_exp) : null;
-  const planActive = planExp ? isAfter(planExp, new Date()) : true;
-  const planLower = planActive ? rawPlanLower : "free";
-  return { planLower, planActive };
-}
 
 export async function POST(req: Request) {
   try {

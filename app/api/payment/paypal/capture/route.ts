@@ -18,20 +18,17 @@ import {
   updateSupabaseSubscription,
 } from "@/services/wallet-supabase";
 import { type ProductType } from "@/constants/addon-packages";
+import { PLAN_RANK, normalizePlanName } from "@/utils/plan-utils";
+import {
+  checkPaymentExists,
+  insertPaymentRecord,
+  validatePaymentAmountCents,
+} from "@/lib/payment/payment-record-helper";
+import { trackPayment, trackPaymentAndSubscription } from "@/lib/payment/analytics-helper";
 
-const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
 const CYCLE_DAYS: Record<"monthly" | "annual", number> = {
   monthly: 30,
   annual: 365,
-};
-
-// 统一套餐名称，兼容中文/英文，返回英文 canonical key
-const normalizePlanName = (p?: string) => {
-  const lower = (p || "").toLowerCase();
-  if (lower === "basic" || lower === "基础版") return "Basic";
-  if (lower === "pro" || lower === "专业版") return "Pro";
-  if (lower === "enterprise" || lower === "企业版") return "Enterprise";
-  return p || "";
 };
 
 /**
@@ -242,143 +239,52 @@ export async function POST(request: NextRequest) {
       (capture?.custom_id && capture.custom_id.split("|")[0]) ||
       null;
 
-    // 金额一致性校验：期望金额写入 customId（create 阶段），capture 阶段严格对齐
+    // 金额一致性校验
     if (parsed.expectedAmount != null) {
       const expectedCents = Math.round(parsed.expectedAmount * 100);
       const actualCents = Math.round(amountValue * 100);
-      if (expectedCents !== actualCents) {
-        console.error("[paypal][amount-mismatch]", {
-          orderId,
-          expectedAmount: parsed.expectedAmount,
-          actualAmount: amountValue,
-          currency,
-          customId,
-        });
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Amount mismatch",
-            expectedAmount: parsed.expectedAmount,
-            actualAmount: amountValue,
-            currency,
-          },
-          { status: 400 },
-        );
+      if (!validatePaymentAmountCents(expectedCents, actualCents)) {
+        console.error("[paypal][amount-mismatch]", { orderId, expectedAmount: parsed.expectedAmount, actualAmount: amountValue });
+        return NextResponse.json({ success: false, error: "Amount mismatch" }, { status: 400 });
       }
     }
 
     // ========================================
     // 加油包 (ADDON) 处理分支
-    // 注意：加油包购买不影响用户的 tier 和 expired_at
     // ========================================
     if (parsed.productType === "ADDON" && userId) {
-      console.log("[paypal][addon-capture]", {
-        userId,
-        packageId: parsed.addonPackageId,
-        imageCredits: parsed.imageCredits,
-        videoAudioCredits: parsed.videoAudioCredits,
-        amount: amountValue,
-        currency,
-        orderId,
-      });
+      console.log("[paypal][addon-capture]", { userId, packageId: parsed.addonPackageId, amount: amountValue, orderId });
 
-      // 记录支付 (payments 集合)
-      if (IS_DOMESTIC_VERSION) {
-        const connector = new CloudBaseConnector();
-        await connector.initialize();
-        const db = connector.getClient();
-        
-        await db.collection("payments").add({
-          userId,
-          provider: "paypal",
-          providerOrderId: orderId,
-          amount: amountValue,
-          currency,
-          status: status || "COMPLETED",
-          type: "ADDON",
-          addonPackageId: parsed.addonPackageId,
-          imageCredits: parsed.imageCredits,
-          videoAudioCredits: parsed.videoAudioCredits,
-          createdAt: new Date().toISOString(),
-          source: "cn", // 国内版数据标识
-        });
-
-        // 国内版：使用原子操作增加加油包额度
-        const addResult = await addAddonCredits(
-          userId,
-          parsed.imageCredits || 0,
-          parsed.videoAudioCredits || 0
-        );
-
-        if (!addResult.success) {
-          console.error("[paypal][addon-credit-error]", addResult.error);
-          return NextResponse.json({
-            success: true,
-            status,
-            productType: "ADDON",
-            addonPackageId: parsed.addonPackageId,
-            imageCredits: parsed.imageCredits,
-            videoAudioCredits: parsed.videoAudioCredits,
-            creditError: addResult.error,
-            raw: result,
-          });
-        }
-      } else if (supabaseAdmin) {
-        // 国际版：使用 Supabase 新表结构
-        const { data: existingPayment } = await supabaseAdmin
-          .from("payments")
-          .select("id")
-          .eq("provider_order_id", orderId)
-          .eq("provider", "paypal")
-          .maybeSingle();
-
-        if (!existingPayment) {
-          await supabaseAdmin.from("payments").insert({
-            user_id: userId,
-            provider: "paypal",
-            provider_order_id: orderId,
-            amount: amountValue,
-            currency,
-            status: status || "COMPLETED",
-            type: "ADDON",
-            addon_package_id: parsed.addonPackageId,
-            image_credits: parsed.imageCredits,
-            video_audio_credits: parsed.videoAudioCredits,
-            source: "global", // 国际版数据标识
-          });
-
-          // 国际版：使用 Supabase 钱包服务增加加油包额度
-          const addResult = await addSupabaseAddonCredits(
-            userId,
-            parsed.imageCredits || 0,
-            parsed.videoAudioCredits || 0
-          );
-
-          if (!addResult.success) {
-            console.error("[paypal][addon-credit-error]", addResult.error);
-            return NextResponse.json({
-              success: true,
-              status,
-              productType: "ADDON",
-              addonPackageId: parsed.addonPackageId,
-              imageCredits: parsed.imageCredits,
-              videoAudioCredits: parsed.videoAudioCredits,
-              creditError: addResult.error,
-              raw: result,
-            });
-          }
-        } else {
-          console.log("[paypal][addon-capture] already processed:", {
-            orderId,
-            userId,
-          });
-        }
+      // 幂等性检查
+      const existingAddon = await checkPaymentExists("paypal", orderId);
+      if (existingAddon) {
+        console.log("[paypal][addon-capture] already processed:", { orderId, userId });
+        return NextResponse.json({ success: true, status, productType: "ADDON", raw: result });
       }
 
+      // 插入支付记录
+      await insertPaymentRecord({
+        userId, provider: "paypal", providerOrderId: orderId,
+        amount: amountValue, currency, status: status || "COMPLETED", type: "ADDON",
+        addonPackageId: parsed.addonPackageId,
+        imageCredits: parsed.imageCredits || 0,
+        videoAudioCredits: parsed.videoAudioCredits || 0,
+      });
+
+      // 增加额度
+      const addResult = IS_DOMESTIC_VERSION
+        ? await addAddonCredits(userId, parsed.imageCredits || 0, parsed.videoAudioCredits || 0)
+        : await addSupabaseAddonCredits(userId, parsed.imageCredits || 0, parsed.videoAudioCredits || 0);
+
+      if (!addResult.success) {
+        console.error("[paypal][addon-credit-error]", addResult.error);
+      }
+
+      // 埋点
+      trackPayment({ userId, amount: amountValue, currency, plan: "ADDON", provider: "paypal", orderId });
+
       return NextResponse.json({
-        success: true,
-        status,
-        productType: "ADDON",
+        success: true, status, productType: "ADDON",
         addonPackageId: parsed.addonPackageId,
         imageCredits: parsed.imageCredits,
         videoAudioCredits: parsed.videoAudioCredits,
@@ -401,14 +307,8 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const nowIso = now.toISOString();
 
-    // 幂等：防止重复 capture 导致重复发放权益
-    const { data: existingPayment } = await supabaseAdmin
-      .from("payments")
-      .select("id")
-      .eq("provider_order_id", orderId)
-      .eq("provider", "paypal")
-      .maybeSingle();
-    const skipPaymentInsert = !!existingPayment;
+    // 幂等性检查
+    const skipPaymentInsert = await checkPaymentExists("paypal", orderId);
 
     // 获取用户当前钱包和订阅信息
     const { data: walletRow } = await supabaseAdmin
@@ -452,15 +352,9 @@ export async function POST(request: NextRequest) {
 
     // 记录支付
     if (!skipPaymentInsert) {
-      await supabaseAdmin.from("payments").insert({
-        user_id: userId,
-        provider: "paypal",
-        provider_order_id: orderId,
-        amount: amountValue,
-        currency,
-        status: status || "COMPLETED",
-        type: "SUBSCRIPTION",
-        source: "global", // 国际版数据标识
+      await insertPaymentRecord({
+        userId, provider: "paypal", providerOrderId: orderId,
+        amount: amountValue, currency, status: status || "COMPLETED", type: "SUBSCRIPTION",
       });
     }
 
@@ -614,6 +508,12 @@ export async function POST(request: NextRequest) {
       await seedSupabaseWalletForPlan(userId, plan.toLowerCase(), {
         forceReset: isUpgrade || isNewOrExpired,
       });
+
+      // 埋点追踪
+      trackPaymentAndSubscription(
+        { userId, amount: amountValue, currency, plan, provider: "paypal", orderId },
+        { action: isUpgrade ? "upgrade" : isNewOrExpired ? "subscribe" : "renew", fromPlan: currentPlanKey || "Free", toPlan: plan, period }
+      );
     }
   }
 
@@ -807,6 +707,12 @@ export async function POST(request: NextRequest) {
       await seedWalletForPlan(userId, purchasePlanLower, {
         forceReset: isUpgrade || isNewOrExpired,
       });
+
+      // 埋点追踪
+      trackPaymentAndSubscription(
+        { userId, amount: amountValue, currency, plan, provider: "paypal", orderId },
+        { action: isUpgrade ? "upgrade" : isNewOrExpired ? "subscribe" : "renew", fromPlan: currentPlanKey || "Free", toPlan: plan, period }
+      );
     }
   }
 

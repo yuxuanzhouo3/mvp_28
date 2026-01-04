@@ -18,17 +18,8 @@ import {
   updateSupabaseSubscription,
 } from "@/services/wallet-supabase";
 import { type ProductType } from "@/constants/addon-packages";
-
-const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
-
-// 统一套餐名称，兼容中文/英文，返回英文 canonical key
-const normalizePlanName = (p?: string) => {
-  const lower = (p || "").toLowerCase();
-  if (lower === "basic" || lower === "基础版") return "Basic";
-  if (lower === "pro" || lower === "专业版") return "Pro";
-  if (lower === "enterprise" || lower === "企业版") return "Enterprise";
-  return p || "";
-};
+import { trackPaymentEvent, trackSubscriptionEvent } from "@/services/analytics";
+import { PLAN_RANK, normalizePlanName } from "@/utils/plan-utils";
 
 /**
  * POST /api/payment/stripe/confirm
@@ -202,6 +193,15 @@ export async function POST(request: NextRequest) {
             creditError: addResult.error,
           });
         }
+
+        // 埋点：记录加油包支付事件（国内版）
+        trackPaymentEvent(userId, {
+          amount,
+          currency,
+          plan: "ADDON",
+          provider: "stripe",
+          orderId: sessionId,
+        }).catch((err) => console.warn("[stripe confirm][addon] trackPaymentEvent error:", err));
       } else if (supabaseAdmin) {
         // 国际版：使用 Supabase 新表结构
         // 检查是否已处理过
@@ -254,6 +254,15 @@ export async function POST(request: NextRequest) {
             creditError: addResult.error,
           });
         }
+
+        // 埋点：记录加油包支付事件（国际版）
+        trackPaymentEvent(userId, {
+          amount,
+          currency,
+          plan: "ADDON",
+          provider: "stripe",
+          orderId: sessionId,
+        }).catch((err) => console.warn("[stripe confirm][addon] trackPaymentEvent error:", err));
       }
 
       return NextResponse.json({
@@ -510,6 +519,22 @@ export async function POST(request: NextRequest) {
         await seedSupabaseWalletForPlan(userId, plan.toLowerCase(), {
           forceReset: isUpgrade || isNewOrExpired,
         });
+
+        // 埋点：记录订阅支付和订阅变更事件（国际版）
+        trackPaymentEvent(userId, {
+          amount,
+          currency,
+          plan: effectivePlan,
+          provider: "stripe",
+          orderId: sessionId,
+        }).catch((err) => console.warn("[stripe confirm] trackPaymentEvent error:", err));
+
+        trackSubscriptionEvent(userId, {
+          action: isUpgrade ? "upgrade" : isNewOrExpired ? "subscribe" : "renew",
+          fromPlan: currentPlanKey || "Free",
+          toPlan: plan,
+          period,
+        }).catch((err) => console.warn("[stripe confirm] trackSubscriptionEvent error:", err));
       }
     }
 
@@ -704,6 +729,22 @@ export async function POST(request: NextRequest) {
         await seedWalletForPlan(userId, purchasePlanLower, {
           forceReset: isUpgrade || isNewOrExpired,
         });
+
+        // 埋点：记录订阅支付和订阅变更事件（国内版）
+        trackPaymentEvent(userId, {
+          amount,
+          currency,
+          plan: effectivePlan,
+          provider: "stripe",
+          orderId: sessionId,
+        }).catch((err) => console.warn("[stripe confirm] trackPaymentEvent error:", err));
+
+        trackSubscriptionEvent(userId, {
+          action: isUpgrade ? "upgrade" : isNewOrExpired ? "subscribe" : "renew",
+          fromPlan: currentPlanKey || "Free",
+          toPlan: plan,
+          period,
+        }).catch((err) => console.warn("[stripe confirm] trackSubscriptionEvent error:", err));
       }
     }
 

@@ -25,6 +25,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { DEFAULT_LANGUAGE } from "@/config";
 import { signInWithGoogle } from "@/actions/oauth";
 import { PrivacyPolicyContent } from "@/components/legal";
+import { validateEmail } from "@/lib/validation/email";
 
 export function SignUpForm({
   className,
@@ -40,9 +41,22 @@ export function SignUpForm({
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [agreePrivacy, setAgreePrivacy] = useState(false);
   const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
+
+  // 邮箱校验
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setEmail(value);
+    if (value) {
+      const result = validateEmail(value, isZhText);
+      setEmailError(result.isValid ? null : result.error || null);
+    } else {
+      setEmailError(null);
+    }
+  };
 
   const handleOAuth = async () => {
     if (isDomestic) return;
@@ -63,14 +77,21 @@ export function SignUpForm({
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setError(null);
+
+    // 邮箱格式校验
+    const emailValidation = validateEmail(email, isZhText);
+    if (!emailValidation.isValid) {
+      setEmailError(emailValidation.error || null);
+      return;
+    }
 
     if (password !== repeatPassword) {
       setError(isZhText ? "两次密码不一致" : "Passwords do not match");
-      setIsLoading(false);
       return;
     }
+
+    setIsLoading(true);
 
     try {
       if (isDomestic) {
@@ -145,8 +166,10 @@ export function SignUpForm({
                   placeholder="m@example.com"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={handleEmailChange}
+                  className={emailError ? "border-red-500 focus-visible:ring-red-500" : ""}
                 />
+                {emailError && <p className="text-sm text-red-500">{emailError}</p>}
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="password">{isZhText ? "密码" : "Password"}</Label>

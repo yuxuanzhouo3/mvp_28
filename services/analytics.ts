@@ -1,6 +1,8 @@
 /**
  * 用户分析服务 - 统一支持国内版 (CloudBase) 和国际版 (Supabase)
  * 用于记录用户行为、登录、注册等事件
+ *
+ * 优化：使用内存批量聚合，减少数据库写入次数
  */
 
 import { IS_DOMESTIC_VERSION } from "@/config";
@@ -42,6 +44,129 @@ export interface AnalyticsEventParams {
 export interface TrackResult {
   success: boolean;
   error?: string;
+}
+
+// =============================================================================
+// 批量聚合配置
+// =============================================================================
+
+const FLUSH_INTERVAL = 5000;  // 5秒刷新一次
+const FLUSH_SIZE = 50;        // 达到50条立即刷新
+const eventBuffer: Array<AnalyticsEventParams & { created_at: string }> = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+// 重要事件类型（立即写入，不缓冲）
+const IMMEDIATE_EVENT_TYPES: AnalyticsEventType[] = ["register", "payment", "subscription"];
+
+/**
+ * 启动定时刷新
+ */
+function ensureFlushTimer() {
+  if (flushTimer) return;
+  flushTimer = setTimeout(async () => {
+    flushTimer = null;
+    await flushEvents();
+  }, FLUSH_INTERVAL);
+}
+
+/**
+ * 批量刷新事件到数据库
+ */
+async function flushEvents(): Promise<void> {
+  if (eventBuffer.length === 0) return;
+
+  const batch = eventBuffer.splice(0, eventBuffer.length);
+
+  // 按 source 分组
+  const globalEvents = batch.filter(e => e.source === "global");
+  const cnEvents = batch.filter(e => e.source === "cn");
+
+  // 并行写入
+  const promises: Promise<void>[] = [];
+
+  if (globalEvents.length > 0) {
+    promises.push(flushSupabaseBatch(globalEvents));
+  }
+  if (cnEvents.length > 0) {
+    promises.push(flushCloudBaseBatch(cnEvents));
+  }
+
+  await Promise.allSettled(promises);
+}
+
+/**
+ * 批量写入 Supabase
+ */
+async function flushSupabaseBatch(events: Array<AnalyticsEventParams & { created_at: string }>): Promise<void> {
+  if (!supabaseAdmin || events.length === 0) return;
+
+  try {
+    const insertData = events.map(params => ({
+      user_id: params.userId,
+      source: params.source || "global",
+      event_type: params.eventType,
+      device_type: params.deviceType || null,
+      os: params.os || null,
+      browser: params.browser || null,
+      app_version: params.appVersion || null,
+      screen_resolution: params.screenResolution || null,
+      language: params.language || null,
+      country: params.country || null,
+      region: params.region || null,
+      city: params.city || null,
+      event_data: params.eventData || {},
+      session_id: params.sessionId || null,
+      referrer: params.referrer || null,
+      created_at: params.created_at,
+    }));
+
+    const { error } = await supabaseAdmin.from("user_analytics").insert(insertData);
+    if (error) {
+      console.error("[analytics] Supabase batch insert error:", error);
+    }
+  } catch (error) {
+    console.error("[analytics] Supabase batch flush error:", error);
+  }
+}
+
+/**
+ * 批量写入 CloudBase
+ */
+async function flushCloudBaseBatch(events: Array<AnalyticsEventParams & { created_at: string }>): Promise<void> {
+  if (events.length === 0) return;
+
+  try {
+    const connector = new CloudBaseConnector();
+    await connector.initialize();
+    const db = connector.getClient();
+
+    // CloudBase 批量插入
+    const insertData = events.map(params => ({
+      user_id: params.userId,
+      source: params.source || "cn",
+      event_type: params.eventType,
+      device_type: params.deviceType || null,
+      os: params.os || null,
+      browser: params.browser || null,
+      app_version: params.appVersion || null,
+      screen_resolution: params.screenResolution || null,
+      language: params.language || null,
+      country: params.country || null,
+      region: params.region || null,
+      city: params.city || null,
+      event_data: params.eventData || {},
+      session_id: params.sessionId || null,
+      referrer: params.referrer || null,
+      created_at: params.created_at,
+    }));
+
+    // CloudBase 使用循环插入（不支持原生批量）
+    for (const data of insertData) {
+      await db.collection("user_analytics").add(data);
+    }
+  } catch (error) {
+    console.error("[analytics] CloudBase batch flush error:", error);
+  }
 }
 
 // =============================================================================
@@ -95,48 +220,53 @@ export function generateSessionId(): string {
 }
 
 // =============================================================================
-// CloudBase (国内版) 实现
+// 统一导出函数
 // =============================================================================
 
-async function trackCloudBaseEvent(params: AnalyticsEventParams): Promise<TrackResult> {
-  try {
-    const connector = new CloudBaseConnector();
-    await connector.initialize();
-    const db = connector.getClient();
-
-    const eventData = {
-      user_id: params.userId,
-      source: params.source || "cn",
-      event_type: params.eventType,
-      device_type: params.deviceType || null,
-      os: params.os || null,
-      browser: params.browser || null,
-      app_version: params.appVersion || null,
-      screen_resolution: params.screenResolution || null,
-      language: params.language || null,
-      country: params.country || null,
-      region: params.region || null,
-      city: params.city || null,
-      event_data: params.eventData || {},
-      session_id: params.sessionId || null,
-      referrer: params.referrer || null,
-      created_at: new Date().toISOString(),
-    };
-
-    await db.collection("user_analytics").add(eventData);
-
-    return { success: true };
-  } catch (error) {
-    console.error("[analytics] CloudBase track error:", error);
-    return { success: false, error: error instanceof Error ? error.message : "记录事件失败" };
+/**
+ * 记录用户分析事件
+ * 自动根据版本选择 CloudBase 或 Supabase
+ *
+ * 优化策略：
+ * - 重要事件（注册、支付、订阅）立即写入
+ * - 普通事件（页面访问、功能使用等）批量聚合后写入
+ */
+export async function trackAnalyticsEvent(params: AnalyticsEventParams): Promise<TrackResult> {
+  // 根据版本自动设置 source
+  if (!params.source) {
+    params.source = IS_DOMESTIC_VERSION ? "cn" : "global";
   }
+
+  const eventWithTimestamp = {
+    ...params,
+    created_at: new Date().toISOString(),
+  };
+
+  // 重要事件立即写入
+  if (IMMEDIATE_EVENT_TYPES.includes(params.eventType)) {
+    if (IS_DOMESTIC_VERSION) {
+      return trackCloudBaseEventDirect(eventWithTimestamp);
+    } else {
+      return trackSupabaseEventDirect(eventWithTimestamp);
+    }
+  }
+
+  // 普通事件加入缓冲区
+  eventBuffer.push(eventWithTimestamp);
+  ensureFlushTimer();
+
+  // 达到阈值立即刷新
+  if (eventBuffer.length >= FLUSH_SIZE) {
+    flushEvents().catch(err => console.error("[analytics] Flush error:", err));
+  }
+
+  return { success: true };
 }
 
-// =============================================================================
-// Supabase (国际版) 实现
-// =============================================================================
-
-async function trackSupabaseEvent(params: AnalyticsEventParams): Promise<TrackResult> {
+/**
+ * 直接写入 Supabase（用于重要事件）
+ */
+async function trackSupabaseEventDirect(params: AnalyticsEventParams & { created_at: string }): Promise<TrackResult> {
   if (!supabaseAdmin) {
     return { success: false, error: "supabaseAdmin not available" };
   }
@@ -158,13 +288,13 @@ async function trackSupabaseEvent(params: AnalyticsEventParams): Promise<TrackRe
       event_data: params.eventData || {},
       session_id: params.sessionId || null,
       referrer: params.referrer || null,
+      created_at: params.created_at,
     });
 
     if (error) {
-      console.error("[analytics] Supabase track error:", error);
+      console.error("[analytics] Supabase insert error:", error);
       return { success: false, error: error.message };
     }
-
     return { success: true };
   } catch (error) {
     console.error("[analytics] Supabase track error:", error);
@@ -172,24 +302,38 @@ async function trackSupabaseEvent(params: AnalyticsEventParams): Promise<TrackRe
   }
 }
 
-// =============================================================================
-// 统一导出函数
-// =============================================================================
-
 /**
- * 记录用户分析事件
- * 自动根据版本选择 CloudBase 或 Supabase
+ * 直接写入 CloudBase（用于重要事件）
  */
-export async function trackAnalyticsEvent(params: AnalyticsEventParams): Promise<TrackResult> {
-  // 根据版本自动设置 source
-  if (!params.source) {
-    params.source = IS_DOMESTIC_VERSION ? "cn" : "global";
-  }
+async function trackCloudBaseEventDirect(params: AnalyticsEventParams & { created_at: string }): Promise<TrackResult> {
+  try {
+    const connector = new CloudBaseConnector();
+    await connector.initialize();
+    const db = connector.getClient();
 
-  if (IS_DOMESTIC_VERSION) {
-    return trackCloudBaseEvent(params);
-  } else {
-    return trackSupabaseEvent(params);
+    await db.collection("user_analytics").add({
+      user_id: params.userId,
+      source: params.source || "cn",
+      event_type: params.eventType,
+      device_type: params.deviceType || null,
+      os: params.os || null,
+      browser: params.browser || null,
+      app_version: params.appVersion || null,
+      screen_resolution: params.screenResolution || null,
+      language: params.language || null,
+      country: params.country || null,
+      region: params.region || null,
+      city: params.city || null,
+      event_data: params.eventData || {},
+      session_id: params.sessionId || null,
+      referrer: params.referrer || null,
+      created_at: params.created_at,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("[analytics] CloudBase track error:", error);
+    return { success: false, error: error instanceof Error ? error.message : "记录事件失败" };
   }
 }
 

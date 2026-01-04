@@ -4,59 +4,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { createStripeCheckoutSession, stripeErrorResponse } from "@/lib/stripe";
 import { pricingPlans, type PricingPlan } from "@/constants/pricing";
 import { IS_DOMESTIC_VERSION } from "@/config";
-import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
-import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import {
-  getAddonPackageById,
-  getAddonDescription,
-  type ProductType,
-} from "@/constants/addon-packages";
+import { getAddonPackageById, getAddonDescription, type ProductType } from "@/constants/addon-packages";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
 import { isAfter } from "date-fns";
 import { calculateUpgradePrice } from "@/services/wallet";
 import { calculateSupabaseUpgradePrice } from "@/services/wallet-supabase";
-
-const PLAN_RANK: Record<string, number> = { Basic: 1, Pro: 2, Enterprise: 3 };
-
-// 统一套餐名称，兼容中文/英文，返回英文 canonical key
-const normalizePlanName = (p?: string) => {
-  const lower = (p || "").toLowerCase();
-  if (lower === "basic" || lower === "基础版") return "Basic";
-  if (lower === "pro" || lower === "专业版") return "Pro";
-  if (lower === "enterprise" || lower === "企业版") return "Enterprise";
-  return p || "";
-};
-
-const extractPlanAmount = (
-  plan: PricingPlan,
-  period: "monthly" | "annual",
-  useDomesticPrice: boolean
-) => {
-  const priceLabel =
-    period === "annual"
-      ? useDomesticPrice
-        ? plan.annualPriceZh || plan.annualPrice
-        : plan.annualPrice
-      : useDomesticPrice
-        ? plan.priceZh || plan.price
-        : plan.price;
-  const numeric = parseFloat(priceLabel.replace(/[^0-9.]/g, "") || "0");
-  return period === "annual" ? numeric * 12 : numeric;
-};
-
-// 根据英文/中文名称解析套餐，始终返回英文 name 作为 canonical key
-function resolvePlan(planName?: string) {
-  if (!planName) return pricingPlans[1]; // 默认 Pro
-  const lower = planName.toLowerCase();
-  const found = pricingPlans.find(
-    (p) =>
-      p.name.toLowerCase() === lower ||
-      (p.nameZh && p.nameZh.toLowerCase() === lower),
-  );
-  return found || pricingPlans[1];
-}
+import { PLAN_RANK, normalizePlanName } from "@/utils/plan-utils";
+import { extractPlanAmount, resolvePlan } from "@/lib/payment/plan-resolver";
+import { resolveUserId } from "@/lib/payment/auth-resolver";
+import { handleAddonPurchase, isAddonPurchase } from "@/lib/payment/addon-handler";
 
 export async function POST(request: NextRequest) {
   try {
@@ -78,23 +36,7 @@ export async function POST(request: NextRequest) {
 
     // 如果前端未传 userId，尝试从会话自动获取
     if (!userId) {
-      if (IS_DOMESTIC_VERSION) {
-        const cookieStore = await cookies();
-        const token = cookieStore.get("auth-token")?.value;
-        if (token) {
-          const auth = new CloudBaseAuthService();
-          const user = await auth.validateToken(token);
-          if (user?.id) {
-            userId = user.id;
-          }
-        }
-      } else {
-        const supabase = await createClient();
-        const { data } = await supabase.auth.getUser();
-        if (data?.user?.id) {
-          userId = data.user.id;
-        }
-      }
+      userId = await resolveUserId(request) || undefined;
     }
 
     // 构建回调URL

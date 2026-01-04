@@ -2,6 +2,7 @@ import { type EmailOtpType } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getSupabaseAnonKeyFromEnv, getSupabaseUrlFromEnv } from "@/lib/supabase/env";
+import { trackAnalyticsEvent, parseUserAgent, generateSessionId } from "@/services/analytics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -97,6 +98,30 @@ export async function GET(request: NextRequest) {
     }
 
     console.info("[auth/confirm] verifyOtp success");
+
+    // 注册成功后记录埋点
+    if (type === "signup") {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.id) {
+          const userAgent = request.headers.get("user-agent") || undefined;
+          const deviceInfo = parseUserAgent(userAgent);
+          await trackAnalyticsEvent({
+            userId: user.id,
+            eventType: "register",
+            ...deviceInfo,
+            language: request.headers.get("accept-language")?.split(",")[0] || undefined,
+            referrer: request.headers.get("referer") || undefined,
+            sessionId: generateSessionId(),
+            eventData: { registerMethod: "email" },
+          });
+          console.info("[auth/confirm] Register event tracked for user:", user.id);
+        }
+      } catch (trackError) {
+        console.warn("[auth/confirm] Failed to track register event:", trackError);
+      }
+    }
+
     return redirectWithCookies(new URL(next, origin));
   }
 

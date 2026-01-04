@@ -939,7 +939,7 @@ export default function SocialLinksManagementPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除社交链接"{deleteTarget?.title}"吗？此操作不可恢复。
+              确定要删除社交链接「{deleteTarget?.title}」吗？此操作不可恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

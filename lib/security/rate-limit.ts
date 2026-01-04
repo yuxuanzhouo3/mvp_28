@@ -3,6 +3,53 @@ import rateLimit from "express-rate-limit";
 import { ipKeyGenerator } from "express-rate-limit";
 import { logWarn, logSecurityEvent } from "../utils/logger";
 
+/**
+ * 从请求中提取客户端 IP 地址（支持 Next.js/Vercel 环境）
+ * @param req 请求对象（支持 Express 和 Fetch API 风格）
+ * @returns IP 地址字符串
+ */
+export function extractClientIp(req: any): string {
+  return (
+    req.headers?.get?.("x-forwarded-for") ||
+    req.headers?.get?.("x-real-ip") ||
+    req.headers?.["x-forwarded-for"] ||
+    req.headers?.["x-real-ip"] ||
+    req.ip ||
+    "unknown"
+  );
+}
+
+/**
+ * 从请求中提取 IP 并返回用于速率限制的 key
+ * @param req 请求对象
+ * @returns 用于速率限制的 key
+ */
+function extractIpKey(req: any): string {
+  const forwardedFor =
+    req.headers?.get?.("x-forwarded-for") || req.headers?.["x-forwarded-for"];
+  if (forwardedFor) {
+    return ipKeyGenerator(forwardedFor.split(",")[0].trim());
+  }
+  const realIp =
+    req.headers?.get?.("x-real-ip") ||
+    req.headers?.["x-real-ip"] ||
+    req.ip ||
+    "unknown";
+  return ipKeyGenerator(realIp);
+}
+
+/**
+ * 检查是否应跳过速率限制（健康检查或内部请求）
+ */
+function shouldSkipRateLimit(req: any): boolean {
+  return (
+    req.url?.includes("/health") ||
+    req.originalUrl?.includes("/health") ||
+    req.headers?.get?.("x-internal-request") === "true" ||
+    req.headers?.["x-internal-request"] === "true"
+  );
+}
+
 // In-memory store for Edge Runtime rate limiting
 class MemoryStore {
   private store = new Map<string, { count: number; resetTime: number }>();
@@ -108,53 +155,20 @@ export const authRateLimit = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Configure for Next.js/Vercel environment with IPv6 support
-  keyGenerator: (req: any) => {
-    // Extract IP from headers for Vercel/Next.js
-    const forwardedFor =
-      req.headers?.get?.("x-forwarded-for") || req.headers?.["x-forwarded-for"];
-    if (forwardedFor) {
-      // Use ipKeyGenerator for proper IPv6 handling
-      return ipKeyGenerator(forwardedFor.split(",")[0].trim());
-    }
-
-    const realIp =
-      req.headers?.get?.("x-real-ip") ||
-      req.headers?.["x-real-ip"] ||
-      req.ip ||
-      "unknown";
-
-    return ipKeyGenerator(realIp);
-  },
+  keyGenerator: extractIpKey,
   handler: (req: any, res: any) => {
-    const ip =
-      req.headers?.get?.("x-forwarded-for") ||
-      req.headers?.get?.("x-real-ip") ||
-      req.headers?.["x-forwarded-for"] ||
-      req.headers?.["x-real-ip"] ||
-      req.ip ||
-      "unknown";
-
+    const ip = extractClientIp(req);
     logSecurityEvent("auth_rate_limit_exceeded", undefined, ip, {
       endpoint: req.url || req.originalUrl,
       method: req.method,
       userAgent: req.headers?.get?.("user-agent") || req.get?.("User-Agent"),
     });
-
     res.status(429).json({
       error: "Too many authentication attempts, please try again later.",
       retryAfter: "15 minutes",
     });
   },
-  skip: (req: any) => {
-    // Skip rate limiting for health checks or internal requests
-    return (
-      req.url?.includes("/health") ||
-      req.originalUrl?.includes("/health") ||
-      req.headers?.get?.("x-internal-request") === "true" ||
-      req.headers?.["x-internal-request"] === "true"
-    );
-  },
+  skip: shouldSkipRateLimit,
 });
 
 export const apiRateLimit = rateLimit({
@@ -166,54 +180,21 @@ export const apiRateLimit = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Configure for Next.js/Vercel environment with IPv6 support
-  keyGenerator: (req: any) => {
-    // Extract IP from headers for Vercel/Next.js
-    const forwardedFor =
-      req.headers?.get?.("x-forwarded-for") || req.headers?.["x-forwarded-for"];
-    if (forwardedFor) {
-      // Use ipKeyGenerator for proper IPv6 handling
-      return ipKeyGenerator(forwardedFor.split(",")[0].trim());
-    }
-
-    const realIp =
-      req.headers?.get?.("x-real-ip") ||
-      req.headers?.["x-real-ip"] ||
-      req.ip ||
-      "unknown";
-
-    return ipKeyGenerator(realIp);
-  },
+  keyGenerator: extractIpKey,
   handler: (req: any, res: any) => {
-    const ip =
-      req.headers?.get?.("x-forwarded-for") ||
-      req.headers?.get?.("x-real-ip") ||
-      req.headers?.["x-forwarded-for"] ||
-      req.headers?.["x-real-ip"] ||
-      req.ip ||
-      "unknown";
-
+    const ip = extractClientIp(req);
     logWarn("api_rate_limit_exceeded", {
       endpoint: req.url || req.originalUrl,
       method: req.method,
       ip,
       userAgent: req.headers?.get?.("user-agent") || req.get?.("User-Agent"),
     });
-
     res.status(429).json({
       error: "Too many API requests, please try again later.",
       retryAfter: "15 minutes",
     });
   },
-  skip: (req: any) => {
-    // Skip rate limiting for health checks or internal requests
-    return (
-      req.url?.includes("/health") ||
-      req.originalUrl?.includes("/health") ||
-      req.headers?.get?.("x-internal-request") === "true" ||
-      req.headers?.["x-internal-request"] === "true"
-    );
-  },
+  skip: shouldSkipRateLimit,
 });
 
 export const chatRateLimit = rateLimit({
@@ -225,40 +206,15 @@ export const chatRateLimit = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Configure for Next.js/Vercel environment with IPv6 support
-  keyGenerator: (req: any) => {
-    // Extract IP from headers for Vercel/Next.js
-    const forwardedFor =
-      req.headers?.get?.("x-forwarded-for") || req.headers?.["x-forwarded-for"];
-    if (forwardedFor) {
-      // Use ipKeyGenerator for proper IPv6 handling
-      return ipKeyGenerator(forwardedFor.split(",")[0].trim());
-    }
-
-    const realIp =
-      req.headers?.get?.("x-real-ip") ||
-      req.headers?.["x-real-ip"] ||
-      req.ip ||
-      "unknown";
-
-    return ipKeyGenerator(realIp);
-  },
+  keyGenerator: extractIpKey,
   handler: (req: any, res: any) => {
-    const ip =
-      req.headers?.get?.("x-forwarded-for") ||
-      req.headers?.get?.("x-real-ip") ||
-      req.headers?.["x-forwarded-for"] ||
-      req.headers?.["x-real-ip"] ||
-      req.ip ||
-      "unknown";
-
+    const ip = extractClientIp(req);
     logWarn("chat_rate_limit_exceeded", {
       endpoint: req.url || req.originalUrl,
       method: req.method,
       ip,
       userAgent: req.headers?.get?.("user-agent") || req.get?.("User-Agent"),
     });
-
     res.status(429).json({
       error: "Too many chat requests, please slow down.",
       retryAfter: "1 minute",
@@ -275,56 +231,22 @@ export const paymentRateLimit = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Configure for Next.js/Vercel environment with IPv6 support
-  keyGenerator: (req: any) => {
-    // Extract IP from headers for Vercel/Next.js
-    const forwardedFor =
-      req.headers?.get?.("x-forwarded-for") || req.headers?.["x-forwarded-for"];
-    if (forwardedFor) {
-      // Use ipKeyGenerator for proper IPv6 handling
-      return ipKeyGenerator(forwardedFor.split(",")[0].trim());
-    }
-
-    const realIp =
-      req.headers?.get?.("x-real-ip") ||
-      req.headers?.["x-real-ip"] ||
-      req.ip ||
-      "unknown";
-
-    return ipKeyGenerator(realIp);
-  },
+  keyGenerator: extractIpKey,
   handler: (req: any, res: any) => {
-    const ip =
-      req.headers?.get?.("x-forwarded-for") ||
-      req.headers?.get?.("x-real-ip") ||
-      req.headers?.["x-forwarded-for"] ||
-      req.headers?.["x-real-ip"] ||
-      req.ip ||
-      "unknown";
-
+    const ip = extractClientIp(req);
     logSecurityEvent("payment_rate_limit_exceeded", undefined, ip, {
       endpoint: req.url || req.originalUrl,
       method: req.method,
       userAgent: req.headers?.get?.("user-agent") || req.get?.("User-Agent"),
     });
-
     res.status(429).json({
       error: "Too many payment operations, please try again later.",
       retryAfter: "1 minute",
     });
   },
   skip: (req: any) => {
-    // Skip rate limiting in development environment
-    if (process.env.NODE_ENV === "development") {
-      return true;
-    }
-    // Skip for health checks or internal requests
-    return (
-      req.url?.includes("/health") ||
-      req.originalUrl?.includes("/health") ||
-      req.headers?.get?.("x-internal-request") === "true" ||
-      req.headers?.["x-internal-request"] === "true"
-    );
+    if (process.env.NODE_ENV === "development") return true;
+    return shouldSkipRateLimit(req);
   },
 });
 
@@ -338,39 +260,14 @@ export const webhookRateLimit = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Configure for Next.js/Vercel environment with IPv6 support
-  keyGenerator: (req: any) => {
-    // Extract IP from headers for Vercel/Next.js
-    const forwardedFor =
-      req.headers?.get?.("x-forwarded-for") || req.headers?.["x-forwarded-for"];
-    if (forwardedFor) {
-      // Use ipKeyGenerator for proper IPv6 handling
-      return ipKeyGenerator(forwardedFor.split(",")[0].trim());
-    }
-
-    const realIp =
-      req.headers?.get?.("x-real-ip") ||
-      req.headers?.["x-real-ip"] ||
-      req.ip ||
-      "unknown";
-
-    return ipKeyGenerator(realIp);
-  },
+  keyGenerator: extractIpKey,
   handler: (req: any, res: any) => {
-    const ip =
-      req.headers?.get?.("x-forwarded-for") ||
-      req.headers?.get?.("x-real-ip") ||
-      req.headers?.["x-forwarded-for"] ||
-      req.headers?.["x-real-ip"] ||
-      req.ip ||
-      "unknown";
-
+    const ip = extractClientIp(req);
     logSecurityEvent("webhook_rate_limit_exceeded", undefined, ip, {
       endpoint: req.url || req.originalUrl,
       method: req.method,
       userAgent: req.headers?.get?.("user-agent") || req.get?.("User-Agent"),
     });
-
     res.status(429).json({
       error: "Too many webhook requests",
       retryAfter: "1 minute",

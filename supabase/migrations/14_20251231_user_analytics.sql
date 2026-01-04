@@ -83,9 +83,16 @@ ALTER TABLE public.user_analytics ENABLE ROW LEVEL SECURITY;
 -- 用户只能查看自己的分析数据
 CREATE POLICY "Users can view own analytics"
 ON public.user_analytics FOR SELECT
+TO authenticated
 USING (auth.uid() = user_id);
 
--- Service Role (后台管理) 拥有完全访问权限，无需额外策略
+-- Service Role (后台管理) 拥有完全访问权限
+-- 注意：service_role 默认绑定 BYPASSRLS，此策略作为显式声明
+CREATE POLICY "Allow service role full access"
+ON public.user_analytics FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
 
 -- =============================================================================
 -- 4. 为现有表添加 source 字段 (区分数据来源)

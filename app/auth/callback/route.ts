@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { getSupabaseAnonKeyFromEnv, getSupabaseUrlFromEnv } from "@/lib/supabase/env";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { trackLoginEvent, trackRegisterEvent } from "@/services/analytics";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -186,8 +187,31 @@ export async function GET(request: NextRequest) {
   // 记录登录/注册事件到 user_analytics
   if (data?.session?.user) {
     const user = data.session.user;
-    const isNewUser = user.created_at &&
-      (new Date().getTime() - new Date(user.created_at).getTime()) < 5 * 60 * 1000;
+
+    // 使用 profiles 表检查是否为新用户（更可靠的判断方式）
+    let isNewUser = false;
+    if (supabaseAdmin) {
+      try {
+        const { data: profile, error: profileError } = await supabaseAdmin
+          .from("profiles")
+          .select("id")
+          .eq("id", user.id)
+          .single();
+
+        // 如果 profiles 表中不存在该用户记录，则为新用户
+        isNewUser = !profile || !!profileError;
+        console.info("[auth/callback] Profile check:", { userId: user.id, isNewUser, profileError: profileError?.message });
+      } catch (err) {
+        console.warn("[auth/callback] Profile check failed, falling back to time-based check:", err);
+        // 降级到基于时间的判断
+        isNewUser = !!(user.created_at &&
+          (new Date().getTime() - new Date(user.created_at).getTime()) < 5 * 60 * 1000);
+      }
+    } else {
+      // 如果 supabaseAdmin 不可用，降级到基于时间的判断
+      isNewUser = !!(user.created_at &&
+        (new Date().getTime() - new Date(user.created_at).getTime()) < 5 * 60 * 1000);
+    }
 
     const trackFn = isNewUser ? trackRegisterEvent : trackLoginEvent;
     trackFn(user.id, {

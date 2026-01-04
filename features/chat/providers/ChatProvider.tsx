@@ -3010,6 +3010,20 @@ const loadMessagesForConversation = useCallback(
             throw error;
           }
           console.info("[ChatProvider] EN login success", { userId: data.user?.id, email: data.user?.email });
+
+          // 记录登录埋点
+          if (data.user?.id) {
+            fetch("/api/analytics/track", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId: data.user.id,
+                eventType: "session_start",
+                eventData: { loginMethod: "email", source: "ChatProvider" },
+              }),
+            }).catch((err) => console.warn("[ChatProvider] Analytics track error:", err));
+          }
+
           if (data.user) {
             // 检查邮箱是否已验证
             if (!data.user.email_confirmed_at) {

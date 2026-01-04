@@ -26,6 +26,8 @@ import { useLanguage } from "@/context/LanguageContext";
 import { DEFAULT_LANGUAGE } from "@/config";
 import { signInWithGoogle } from "@/actions/oauth";
 import { PrivacyPolicyContent } from "@/components/legal";
+import { trackLoginEventClient } from "@/services/analytics-client";
+import { validateEmail } from "@/lib/validation/email";
 
 export function LoginForm({
   className,
@@ -41,9 +43,22 @@ export function LoginForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [agreePrivacy, setAgreePrivacy] = useState(false);
   const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
+
+  // 邮箱校验
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setEmail(value);
+    if (value) {
+      const result = validateEmail(value, isZhText);
+      setEmailError(result.isValid ? null : result.error || null);
+    } else {
+      setEmailError(null);
+    }
+  };
 
   const supabase = createClient();
 
@@ -66,8 +81,16 @@ export function LoginForm({
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setError(null);
+
+    // 邮箱格式校验
+    const emailValidation = validateEmail(email, isZhText);
+    if (!emailValidation.isValid) {
+      setEmailError(emailValidation.error || null);
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
       if (isDomestic) {
@@ -88,12 +111,28 @@ export function LoginForm({
         // 全页刷新，确保后续请求带上 cookie
         window.location.href = next || "/";
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        // 国际版：使用 Supabase 客户端登录
+        console.log("[login-form] Using Supabase client login (international version)");
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
+
+        console.log("[login-form] Supabase login success, user:", data?.user?.id);
+
+        // 登录成功后记录埋点（等待完成，避免页面跳转中断请求）
+        if (data?.user?.id) {
+          console.log("[login-form] Calling trackLoginEventClient...");
+          await trackLoginEventClient(data.user.id).catch((err) =>
+            console.warn("[login-form] trackLoginEventClient error:", err)
+          );
+          console.log("[login-form] trackLoginEventClient completed");
+        } else {
+          console.warn("[login-form] No user ID found, skipping analytics");
+        }
       }
+      console.log("[login-form] Navigating to:", next);
       router.push(next);
     } catch (err: unknown) {
       setError(
@@ -130,8 +169,10 @@ export function LoginForm({
                   placeholder="m@example.com"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={handleEmailChange}
+                  className={emailError ? "border-red-500 focus-visible:ring-red-500" : ""}
                 />
+                {emailError && <p className="text-sm text-red-500">{emailError}</p>}
               </div>
               <div className="grid gap-2">
                 <div className="flex items-center">

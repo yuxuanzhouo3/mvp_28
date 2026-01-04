@@ -366,13 +366,7 @@ export const useMessageSubmission = (
           }
         }, 100);
 
-        // Free 用户：强制进入新一轮对话，并清除上一轮记录（不落库）
-        if (isFreeUser && currentChatId) {
-          setChatSessions((prev) => prev.filter((c) => c.id !== currentChatId));
-          setMessages([]);
-          setCurrentChatId("");
-        }
-
+        // 不再删除对话，让用户可以查看历史记录并自行决定是否新建对话
         releaseLock();
         return;
       }

@@ -5,7 +5,7 @@ import { isMiniProgram, getWxMiniProgram } from "@/lib/wechat-mp";
 
 /**
  * 微信小程序外部链接拦截器
- * 在微信小程序环境下拦截外部链接，直接跳转到小程序二维码页面
+ * 在微信小程序环境下拦截外部链接，跳转到小程序链接复制页面
  */
 export function MpLinkInterceptor() {
   // 判断是否为外部链接
@@ -24,15 +24,15 @@ export function MpLinkInterceptor() {
     }
   }, []);
 
-  // 跳转到小程序二维码页面
-  const navigateToQrcodePage = useCallback((url: string) => {
+  // 跳转到小程序链接复制页面
+  const navigateToLinkCopyPage = useCallback((url: string) => {
     const mp = getWxMiniProgram();
     if (!mp || typeof mp.navigateTo !== "function") return;
 
-    // 直接跳转到小程序的二维码页面，通过 URL 参数传递链接
-    const qrcodePageUrl = "/pages/qrcode/qrcode?url=" + encodeURIComponent(url);
-    console.log("[mp-link-interceptor] 跳转到二维码页面:", qrcodePageUrl);
-    mp.navigateTo({ url: qrcodePageUrl });
+    // 跳转到小程序的链接复制页面，通过 URL 参数传递链接
+    const linkCopyPageUrl = "/pages/qrcode/qrcode?url=" + encodeURIComponent(url);
+    console.log("[mp-link-interceptor] 跳转到链接复制页面:", linkCopyPageUrl);
+    mp.navigateTo({ url: linkCopyPageUrl });
   }, []);
 
   useEffect(() => {
@@ -65,7 +65,7 @@ export function MpLinkInterceptor() {
         e.preventDefault();
         e.stopPropagation();
         console.log("[mp-link-interceptor] 拦截外部链接:", href);
-        navigateToQrcodePage(href);
+        navigateToLinkCopyPage(href);
       }
     };
 
@@ -78,7 +78,7 @@ export function MpLinkInterceptor() {
       const urlStr = url?.toString() || "";
       if (isExternalUrl(urlStr)) {
         console.log("[mp-link-interceptor] 拦截 window.open:", urlStr);
-        navigateToQrcodePage(urlStr);
+        navigateToLinkCopyPage(urlStr);
         return null;
       }
       return originalOpen.call(this, url, ...args);
@@ -88,7 +88,7 @@ export function MpLinkInterceptor() {
       document.removeEventListener("click", handleClick, true);
       window.open = originalOpen;
     };
-  }, [isExternalUrl, navigateToQrcodePage]);
+  }, [isExternalUrl, navigateToLinkCopyPage]);
 
   // 不需要渲染任何内容
   return null;

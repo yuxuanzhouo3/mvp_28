@@ -476,7 +476,7 @@ function ChatInterface({
 
                     const bubble = (
                       <div
-                        className={`max-w-[calc(100%-2.5rem)] sm:max-w-3xl p-3 sm:p-4 rounded-xl sm:rounded-2xl relative group shadow-lg ${
+                        className={`w-full sm:max-w-3xl p-3 sm:p-4 rounded-xl sm:rounded-2xl relative group shadow-lg ${
                           isUser
                             ? "bg-gradient-to-br from-indigo-500 via-blue-500 to-blue-600 text-white shadow-blue-500/25"
                             : "bg-white/90 dark:bg-[#2f3039] border border-white/70 dark:border-[#3f4150] text-gray-900 dark:text-[#e7e9f3] backdrop-blur"
@@ -668,25 +668,26 @@ function ChatInterface({
                         )}
                         <div
                           id={`message-${message.id}`}
-                          className={`flex items-start gap-2 sm:gap-3 ${
-                            isUser ? "flex-row-reverse" : "flex-row"
+                          className={`flex flex-col sm:flex-row sm:items-start gap-1.5 sm:gap-3 ${
+                            isUser ? "items-end sm:flex-row-reverse" : "items-start sm:flex-row"
                           } transition-colors duration-500`}
                         >
+                        {/* 头像：移动端在上方小尺寸，桌面端在侧边 */}
                         {isUser && appUser?.avatar ? (
                           <img
                             src={appUser.avatar}
                             alt={appUser.name || "User"}
-                            className="mt-1 h-7 w-7 sm:h-10 sm:w-10 min-w-[1.75rem] sm:min-w-[2.5rem] min-h-[1.75rem] sm:min-h-[2.5rem] flex-shrink-0 rounded-lg sm:rounded-xl object-cover shadow-md shadow-blue-400/30"
+                            className="h-6 w-6 sm:mt-1 sm:h-10 sm:w-10 sm:min-w-[2.5rem] sm:min-h-[2.5rem] flex-shrink-0 rounded-full sm:rounded-xl object-cover shadow-md shadow-blue-400/30"
                           />
                         ) : (
                           <div
-                            className={`mt-1 h-7 w-7 sm:h-10 sm:w-10 min-w-[1.75rem] sm:min-w-[2.5rem] min-h-[1.75rem] sm:min-h-[2.5rem] flex-shrink-0 rounded-lg sm:rounded-xl flex items-center justify-center text-white shadow-md ${
+                            className={`h-6 w-6 sm:mt-1 sm:h-10 sm:w-10 sm:min-w-[2.5rem] sm:min-h-[2.5rem] flex-shrink-0 rounded-full sm:rounded-xl flex items-center justify-center text-white shadow-md ${
                               isUser
                                 ? "bg-gradient-to-br from-indigo-500 to-blue-600 shadow-blue-400/30"
                                 : "bg-gradient-to-br from-emerald-500 to-teal-500 shadow-emerald-400/30"
                             }`}
                           >
-                            {isUser ? <User className="w-4 h-4 sm:w-5 sm:h-5" /> : <Bot className="w-4 h-4 sm:w-5 sm:h-5" />}
+                            {isUser ? <User className="w-3.5 h-3.5 sm:w-5 sm:h-5" /> : <Bot className="w-3.5 h-3.5 sm:w-5 sm:h-5" />}
                           </div>
                         )}
 

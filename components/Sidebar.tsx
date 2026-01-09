@@ -360,7 +360,7 @@ export default function Sidebar({
         )}
         {!sidebarCollapsed && (
           <div className="relative h-full flex flex-col">
-            <div className="p-3 border-b border-gray-200 dark:border-[#565869] space-y-2">
+            <div className="p-2 sm:p-3 border-b border-gray-200 dark:border-[#565869] space-y-2">
               <div className="flex items-center justify-between">
                 <Button
                   onClick={() => createNewChat()}
@@ -384,13 +384,13 @@ export default function Sidebar({
                   placeholder={getLocalizedText("searchChats")}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 h-8 text-sm bg-white dark:bg-[#565869] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869]"
+                  className="pl-10 h-9 sm:h-8 text-sm bg-white dark:bg-[#565869] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869]"
                 />
               </div>
             </div>
 
-            <ScrollArea className="flex-1 max-h-[calc(100vh-180px)] relative">
-              <div className="p-2 relative">
+            <ScrollArea className="flex-1 max-h-[calc(100vh-200px)] relative">
+              <div className="p-1.5 sm:p-2 relative">
                 {isSidebarLoading ? (
                   <div className="space-y-2 w-full px-2 py-3 animate-pulse">
                     {Array.from({ length: 10 }).map((_, idx) => (
@@ -441,12 +441,12 @@ export default function Sidebar({
                     </ContextMenuContent>
                   </ContextMenu>
                   {expandedFolders.includes("general") && (
-                    <div className="ml-5 space-y-0.5">
+                    <div className="ml-3 sm:ml-5 space-y-0.5">
                       {(groupedChats.general || []).map((chat) => (
                         <ContextMenu key={chat.id}>
                           <ContextMenuTrigger>
                             <div
-                              className={`group p-1.5 rounded cursor-pointer text-xs hover:bg-gray-100 dark:hover:bg-[#565869] ${
+                              className={`group p-2 sm:p-1.5 rounded cursor-pointer text-xs hover:bg-gray-100 dark:hover:bg-[#565869] ${
                                 currentChatId === chat.id
                                   ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
                                   : "text-gray-700 dark:text-gray-300"

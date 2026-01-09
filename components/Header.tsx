@@ -806,12 +806,12 @@ export default function Header({
               variant="ghost"
               size="sm"
               onClick={toggleTheme}
-              className="h-7 w-7 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] flex-shrink-0"
+              className="h-8 w-8 sm:h-7 sm:w-7 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] flex-shrink-0"
             >
               {isDarkMode ? (
-                <Sun className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                <Sun className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
               ) : (
-                <Moon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                <Moon className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
               )}
             </Button>
 
@@ -821,14 +821,14 @@ export default function Header({
                 variant="outline"
                 size="sm"
                 onClick={() => setShowUpgradeDialog(true)}
-                className="flex bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 h-7 sm:h-8 w-7 sm:w-auto px-0 sm:px-2 flex-shrink-0"
+                className="flex bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 h-8 sm:h-8 w-8 sm:w-auto px-0 sm:px-2 flex-shrink-0"
                 title={
                   selectedLanguage === "zh"
                     ? "开通订阅，解锁更多用量与高级模型"
                     : getLocalizedText("Choose Your MornGPT Plan")
                 }
               >
-                <Crown className="w-3 h-3 sm:w-4 sm:h-4" />
+                <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 <span className="ml-1 text-[10px] sm:text-xs hidden sm:inline">
                   {selectedLanguage === "zh" ? "订阅" : "Pro"}
                 </span>
@@ -842,19 +842,19 @@ export default function Header({
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className="w-16 sm:w-20 md:w-28 lg:w-36 h-7 sm:h-8 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869] text-xs px-1 sm:px-2"
+                      className="w-20 sm:w-20 md:w-28 lg:w-36 h-8 sm:h-8 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869] text-xs px-1.5 sm:px-2"
                     >
                       <div className="flex items-center space-x-0.5 sm:space-x-1 w-full justify-center">
                         {appUser.isPro && (
                           <Crown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-900 dark:text-gray-100 flex-shrink-0 hidden sm:block" />
                         )}
-                        <User className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
-                        <span className="truncate text-[9px] sm:text-[10px] md:text-xs max-w-[30px] sm:max-w-[40px] md:max-w-[60px]">{appUser.name}</span>
-                        <ChevronDown className="w-2 h-2 sm:w-2.5 sm:h-2.5 flex-shrink-0" />
+                        <User className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
+                        <span className="truncate text-[10px] sm:text-[10px] md:text-xs max-w-[40px] sm:max-w-[40px] md:max-w-[60px]">{appUser.name}</span>
+                        <ChevronDown className="w-2.5 h-2.5 sm:w-2.5 sm:h-2.5 flex-shrink-0" />
                       </div>
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-36 sm:w-40 md:w-48 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] p-1">
+                  <PopoverContent className="w-40 sm:w-40 md:w-48 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] p-1">
                     <div className="space-y-1">
                       <Button
                         variant="ghost"

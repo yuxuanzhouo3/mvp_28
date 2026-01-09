@@ -724,7 +724,7 @@ const InputArea = React.memo(function InputArea({
                 </div>
 
                 {/* Right Side - Input Controls - 移动端全宽，桌面端占一半 */}
-                <div className="flex items-center gap-0.5 sm:gap-1 w-full lg:w-1/2 justify-end flex-wrap sm:flex-nowrap">
+                <div className="flex items-center gap-1 sm:gap-1.5 w-full lg:w-1/2 justify-end flex-wrap sm:flex-nowrap">
                   {/* File Upload */}
                   <input
                     type="file"
@@ -738,7 +738,7 @@ const InputArea = React.memo(function InputArea({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className={`h-7 w-7 sm:h-8 sm:w-8 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
+                    className={`h-8 w-8 sm:h-8 sm:w-8 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
                       isUploading ? "animate-pulse" : ""
                     }`}
                     title={attachmentButtonTitle}
@@ -757,9 +757,9 @@ const InputArea = React.memo(function InputArea({
                     }}
                   >
                     {isUploading ? (
-                      <div className="animate-spin rounded-full h-3 w-3 sm:h-3.5 sm:w-3.5 border-b-2 border-current"></div>
+                      <div className="animate-spin rounded-full h-3.5 w-3.5 sm:h-3.5 sm:w-3.5 border-b-2 border-current"></div>
                     ) : (
-                      <Paperclip className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                      <Paperclip className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
                     )}
                   </Button>
 
@@ -767,7 +767,7 @@ const InputArea = React.memo(function InputArea({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className={`h-7 w-7 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
+                    className={`h-8 w-8 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
                       isAudioPanelActive
                         ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20"
                         : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869]"
@@ -776,7 +776,7 @@ const InputArea = React.memo(function InputArea({
                     type="button"
                     onClick={() => setIsAudioPanelActive(!isAudioPanelActive)}
                   >
-                    <Circle className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${isAudioPanelActive ? "fill-current" : ""}`} />
+                    <Circle className={`w-3.5 h-3.5 sm:w-3.5 sm:h-3.5 ${isAudioPanelActive ? "fill-current" : ""}`} />
                   </Button>
 
                   {/* Reset Voice Recording Button (shown when stuck) - 仅国际版 */}
@@ -784,12 +784,12 @@ const InputArea = React.memo(function InputArea({
                     <Button
                       size="sm"
                       variant="ghost"
-                    className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all duration-200 rounded-full border border-orange-300 dark:border-orange-600"
+                    className="h-8 w-8 sm:h-8 sm:w-8 p-0 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all duration-200 rounded-full border border-orange-300 dark:border-orange-600"
                       title={getLocalizedText("resetVoiceRecording")}
                       type="button"
                       onClick={resetVoiceRecording}
                     >
-                      <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                      <X className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
                     </Button>
                   )}
 
@@ -797,7 +797,7 @@ const InputArea = React.memo(function InputArea({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className={`h-7 w-7 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
+                    className={`h-8 w-8 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
                       !isCameraSupported
                         ? "text-gray-400 dark:text-gray-500 cursor-not-allowed"
                         : isCameraActive
@@ -815,7 +815,7 @@ const InputArea = React.memo(function InputArea({
                     onClick={isCameraSupported ? toggleCamera : undefined}
                     disabled={!isCameraSupported}
                   >
-                    <Camera className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                    <Camera className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
                   </Button>
 
                   {/* Location Button - 移动端保留显示 */}
@@ -824,7 +824,7 @@ const InputArea = React.memo(function InputArea({
                     variant="ghost"
                     onClick={getCurrentLocation}
                     disabled={isGettingLocation}
-                    className={`h-7 w-7 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
+                    className={`h-8 w-8 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
                       currentLocation
                         ? "text-green-600 dark:text-green-400"
                         : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869]"
@@ -836,9 +836,9 @@ const InputArea = React.memo(function InputArea({
                     }
                   >
                     {isGettingLocation ? (
-                      <div className="animate-spin rounded-full h-3 w-3 sm:h-3.5 sm:w-3.5 border-b-2 border-current"></div>
+                      <div className="animate-spin rounded-full h-3.5 w-3.5 sm:h-3.5 sm:w-3.5 border-b-2 border-current"></div>
                     ) : (
-                      <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                      <MapPin className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
                     )}
                   </Button>
 
@@ -848,15 +848,15 @@ const InputArea = React.memo(function InputArea({
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full border border-gray-300 dark:border-[#565869]"
+                        className="h-8 w-8 sm:h-8 sm:w-8 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full border border-gray-300 dark:border-[#565869]"
                         title={getLocalizedText("navigateConversation")}
                         disabled={!appUser}
                       >
-                        <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                        <Clock className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent
-                      className="w-80 p-2 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]"
+                      className="w-[calc(100vw-2rem)] sm:w-80 p-2 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]"
                       align="end"
                     >
                       <Tabs defaultValue="messages" className="w-full">

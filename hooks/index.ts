@@ -10,6 +10,7 @@ export { useResetState } from "./state/useResetState";
 
 export { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 export { useVoiceRecording } from "./useVoiceRecording";
+export { useAudioRecording } from "./useAudioRecording";
 export { useCamera } from "./useCamera";
 export { useMessageSubmission } from "./useMessageSubmission";
 export { useMobileGuestTrial } from "./useMobileGuestTrial";

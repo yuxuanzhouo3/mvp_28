@@ -253,17 +253,14 @@ export const useMessageSubmission = (
     // Keep text clean; media previews are shown separately in the UI
     const messageContent = prompt || uploadedFiles.map((f) => f.name).join(", ");
     const imagePreviews = uploadedFiles
-      .filter((f) => f.kind === "image")
-      .map((f) => f.preview || f.fileId || "")
-      .filter(Boolean);
+      .filter((f) => f.kind === "image" && f.preview)
+      .map((f) => f.preview as string);
     const videoPreviews = uploadedFiles
-      .filter((f) => f.kind === "video")
-      .map((f) => f.preview || f.fileId || "")
-      .filter(Boolean);
+      .filter((f) => f.kind === "video" && f.preview)
+      .map((f) => f.preview as string);
     const audioPreviews = uploadedFiles
-      .filter((f) => f.kind === "audio")
-      .map((f) => f.preview || f.fileId || "")
-      .filter(Boolean);
+      .filter((f) => f.kind === "audio" && f.preview)
+      .map((f) => f.preview as string);
 
     const userMessage: Message = {
       id: Date.now().toString(),

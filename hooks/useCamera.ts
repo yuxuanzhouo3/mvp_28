@@ -1,4 +1,12 @@
 import { useState, useRef, useCallback } from "react";
+import { checkMediaCapability, isWeChatBrowser } from "@/utils/platform";
+
+export interface CapturedMedia {
+  type: "image" | "video";
+  data: string;
+  blob?: Blob;
+  name: string;
+}
 
 export const useCamera = () => {
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -6,17 +14,56 @@ export const useCamera = () => {
   const [cameraError, setCameraError] = useState<string>("");
   const [isCameraSupported, setIsCameraSupported] = useState(true);
   const cameraErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [capturedMedia, setCapturedMedia] = useState<{
-    type: "image" | "video";
-    data: string;
-    name: string;
-  } | null>(null);
+  const [capturedMedia, setCapturedMedia] = useState<CapturedMedia | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [cameraMode, setCameraMode] = useState<"photo" | "video">("photo");
   const [recordingTime, setRecordingTime] = useState(0);
   const [isVideoRecording, setIsVideoRecording] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
+  const [convertProgress, setConvertProgress] = useState(0);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const videoChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 辅助函数：设置带超时的错误信息（必须在其他函数之前定义）
+  const setCameraErrorWithTimeout = useCallback((message: string, durationMs = 6000) => {
+    if (cameraErrorTimer.current) {
+      clearTimeout(cameraErrorTimer.current);
+    }
+    setCameraError(message);
+    cameraErrorTimer.current = setTimeout(() => {
+      setCameraError("");
+    }, durationMs);
+  }, []);
+
+  // 辅助函数：同时设置支持状态和错误信息
+  const setCameraSupportedAndError = useCallback(
+    (supported: boolean, message: string) => {
+      setIsCameraSupported(supported);
+      setCameraErrorWithTimeout(message, 7000);
+    },
+    [setCameraErrorWithTimeout]
+  );
 
   const initializeCamera = useCallback(async () => {
+    // 使用平台检测工具检查媒体功能可用性
+    const mediaCheck = checkMediaCapability();
+    if (!mediaCheck.supported) {
+      const isZh = typeof navigator !== "undefined" && navigator.language?.startsWith("zh");
+      const errorMsg = isZh
+        ? `摄像头不可用：${mediaCheck.reason}`
+        : `Camera unavailable: ${mediaCheck.reason}`;
+      setCameraSupportedAndError(false, errorMsg);
+      return null;
+    }
+
+    // 微信浏览器特殊提示
+    if (isWeChatBrowser()) {
+      const isZh = typeof navigator !== "undefined" && navigator.language?.startsWith("zh");
+      console.log(isZh ? "[Camera] 检测到微信浏览器环境" : "[Camera] WeChat browser detected");
+    }
+
     // Guard: browser + secure context required
     if (typeof window === "undefined" || !navigator?.mediaDevices?.getUserMedia) {
       setCameraSupportedAndError(false, "Camera is not available in this environment.");
@@ -127,8 +174,8 @@ export const useCamera = () => {
     }
   }, [isCameraActive, stopCamera, initializeCamera]);
 
-  const capturePhoto = useCallback(async () => {
-    if (!cameraStream) return;
+  const capturePhoto = useCallback(async (): Promise<CapturedMedia | null> => {
+    if (!cameraStream) return null;
 
     setIsCapturing(true);
     try {
@@ -149,73 +196,135 @@ export const useCamera = () => {
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
         const fileName = `photo-${timestamp}.jpg`;
 
-        setCapturedMedia({
+        // Convert data URL to Blob
+        const response = await fetch(imageData);
+        const blob = await response.blob();
+
+        const media: CapturedMedia = {
           type: "image",
           data: imageData,
+          blob,
           name: fileName,
-        });
+        };
+
+        setCapturedMedia(media);
+        return media;
       }
+      return null;
     } catch (error) {
-      console.error("Photo capture error:", error);
-      setCameraErrorWithTimeout("Failed to capture photo", 5000);
+      console.warn("[Camera] Photo capture error:", error);
+      setCameraErrorWithTimeout("拍照失败", 5000);
+      return null;
     } finally {
       setIsCapturing(false);
     }
-  }, [cameraStream]);
+  }, [cameraStream, setCameraErrorWithTimeout]);
 
   const startVideoRecording = useCallback(async () => {
     if (!cameraStream) return;
 
     try {
+      videoChunksRef.current = [];
+
+      // 只支持 mp4 格式（Safari 支持）
+      // Chrome/Firefox 录制的 webm 格式与 Qwen API 不兼容
+      const mimeType = MediaRecorder.isTypeSupported("video/mp4")
+        ? "video/mp4"
+        : "";
+
+      if (!mimeType) {
+        setCameraErrorWithTimeout(
+          "当前浏览器不支持视频录制，请使用 Safari 浏览器或从相册选择 mp4 视频",
+          7000
+        );
+        return;
+      }
+
+      const mediaRecorder = new MediaRecorder(cameraStream, { mimeType });
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          videoChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.start(1000);
       setIsVideoRecording(true);
       setRecordingTime(0);
 
-      // Start recording timer
-      const timer = setInterval(() => {
+      recordingTimerRef.current = setInterval(() => {
         setRecordingTime((prev) => prev + 1);
       }, 1000);
-
-      // Store timer reference for cleanup
-      (window as any).recordingTimer = timer;
     } catch (error) {
-      console.error("Video recording error:", error);
-      setCameraErrorWithTimeout("Failed to start video recording", 5000);
+      console.warn("[Camera] Video recording error:", error);
+      setCameraErrorWithTimeout("无法开始视频录制", 5000);
       setIsVideoRecording(false);
     }
-  }, [cameraStream]);
+  }, [cameraStream, setCameraErrorWithTimeout]);
 
-  const stopVideoRecording = useCallback(async () => {
-    if (!cameraStream) return;
-
-    try {
-      setIsVideoRecording(false);
-
-      // Clear timer
-      if ((window as any).recordingTimer) {
-        clearInterval((window as any).recordingTimer);
+  const stopVideoRecording = useCallback((): Promise<CapturedMedia | null> => {
+    return new Promise((resolve) => {
+      // 清理计时器
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
       }
 
-      // For now, we'll simulate video capture
-      // In a real implementation, you'd use MediaRecorder API
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const fileName = `video-${timestamp}.mp4`;
+      // 检查 MediaRecorder 状态
+      if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") {
+        setIsVideoRecording(false);
+        setRecordingTime(0);
+        resolve(null);
+        return;
+      }
 
-      setCapturedMedia({
-        type: "video",
-        data: `data:video/mp4;base64,simulated-video-data`, // Placeholder
-        name: fileName,
-      });
-    } catch (error) {
-      console.error("Video recording stop error:", error);
-      setCameraErrorWithTimeout("Failed to stop video recording", 5000);
-    }
-  }, [cameraStream]);
+      const recorder = mediaRecorderRef.current;
 
-  const toggleVideoRecording = useCallback(() => {
+      // 设置 onstop 回调处理录制完成
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || "video/webm";
+        const blob = new Blob(videoChunksRef.current, { type: mimeType });
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+
+        // 直接使用原始格式，服务器端会处理 webm 到 mp4 的转换
+        const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+        const name = `video-${timestamp}.${ext}`;
+        const url = URL.createObjectURL(blob);
+        const media: CapturedMedia = { type: "video", data: url, blob, name };
+        setCapturedMedia(media);
+        setIsVideoRecording(false);
+        setRecordingTime(0);
+        resolve(media);
+      };
+
+      // 设置错误处理
+      recorder.onerror = (event) => {
+        console.warn("[Camera] MediaRecorder error:", event);
+        setCameraErrorWithTimeout("视频录制出错，请重试", 5000);
+        setIsVideoRecording(false);
+        setRecordingTime(0);
+        resolve(null);
+      };
+
+      // 停止录制
+      try {
+        recorder.stop();
+      } catch (err) {
+        console.warn("[Camera] Failed to stop recorder:", err);
+        setIsVideoRecording(false);
+        setRecordingTime(0);
+        resolve(null);
+      }
+    });
+  }, [setCameraErrorWithTimeout]);
+
+  const toggleVideoRecording = useCallback(async () => {
     if (isVideoRecording) {
-      stopVideoRecording();
+      return await stopVideoRecording();
     } else {
-      startVideoRecording();
+      await startVideoRecording();
+      return null;
     }
   }, [isVideoRecording, startVideoRecording, stopVideoRecording]);
 
@@ -231,25 +340,6 @@ export const useCamera = () => {
     setCameraMode((prev) => (prev === "photo" ? "video" : "photo"));
   }, []);
 
-  const setCameraErrorWithTimeout = useCallback((message: string, durationMs = 6000) => {
-    if (cameraErrorTimer.current) {
-      clearTimeout(cameraErrorTimer.current);
-    }
-    setCameraError(message);
-    cameraErrorTimer.current = setTimeout(() => {
-      setCameraError("");
-    }, durationMs);
-  }, []);
-
-  // Helper to update support flag and error together
-  const setCameraSupportedAndError = useCallback(
-    (supported: boolean, message: string) => {
-      setIsCameraSupported(supported);
-      setCameraErrorWithTimeout(message, 7000);
-    },
-    [setCameraErrorWithTimeout]
-  );
-
   return {
     isCameraActive,
     cameraStream,
@@ -261,6 +351,8 @@ export const useCamera = () => {
     cameraMode,
     recordingTime,
     isVideoRecording,
+    isConverting,
+    convertProgress,
     initializeCamera,
     stopCamera,
     toggleCamera,

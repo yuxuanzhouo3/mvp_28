@@ -160,6 +160,24 @@ export class CloudBaseAuthService {
   async validateToken(token: string): Promise<CloudBaseAuthUser | null> {
     try {
       await this.ensureReady();
+
+      // 检测是否是 Supabase 格式的 token（包含 access_token、refresh_token 等字段）
+      // 这种情况通常是用户之前在国际版登录，cookie 没有被正确清除
+      if (token.startsWith("base64-") || token.includes("access_token") || token.includes("refresh_token")) {
+        try {
+          const decoded = token.startsWith("base64-")
+            ? Buffer.from(token.slice(7), "base64").toString("utf-8")
+            : token;
+          const parsed = JSON.parse(decoded);
+          if (parsed.access_token || parsed.refresh_token || parsed.user) {
+            console.warn("[cloudbase] validateToken: detected Supabase session format, rejecting");
+            return null;
+          }
+        } catch {
+          // 解析失败，继续正常验证
+        }
+      }
+
       const sessions = await this.db.collection("sessions").where({ token }).limit(1).get();
       const session = sessions.data[0] as { userId: string; expiresAt: number } | undefined;
       if (!session) {

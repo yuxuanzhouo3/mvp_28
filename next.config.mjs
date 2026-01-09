@@ -52,6 +52,14 @@ const nextConfig = {
           { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
         ],
       },
+      {
+        // 启用 SharedArrayBuffer 以支持 FFmpeg.wasm 视频转换
+        source: '/:path*',
+        headers: [
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
+        ],
+      },
     ];
   },
 }

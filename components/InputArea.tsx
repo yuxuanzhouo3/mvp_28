@@ -45,7 +45,7 @@ import {
   Check,
   Plus,
   Download,
-  Volume2,
+  Circle,
   Upload,
   MapPin,
   Code,
@@ -56,10 +56,11 @@ import {
   FileText,
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
-import { useCamera, useIsMobile } from "@/hooks";
+import { useCamera, useAudioRecording, useIsMobile } from "@/hooks";
 import { UploadedFilesList } from "@/features/chat/components/input/UploadedFilesList";
 import { StatusIndicators } from "@/features/chat/components/input/StatusIndicators";
 import { CameraPanel } from "@/features/chat/components/input/CameraPanel";
+import { AudioRecordingPanel } from "@/features/chat/components/input/AudioRecordingPanel";
 import type { AttachmentItem } from "@/types";
 import { GENERAL_MODEL_ID } from "@/utils/model-limits";
 import { IS_DOMESTIC_VERSION } from "@/config";
@@ -280,7 +281,79 @@ const InputArea = React.memo(function InputArea({
     capturedMedia,
     cameraError,
     isCapturing,
+    isConverting,
+    convertProgress,
   } = useCamera();
+
+  // 音频录制 hook（用于录制音频文件上传）
+  const {
+    isAudioRecording,
+    audioRecordingTime,
+    startAudioRecording,
+    stopAudioRecording,
+    formatRecordingTime: formatAudioTime,
+  } = useAudioRecording();
+
+  // 录音面板状态
+  const [isAudioPanelActive, setIsAudioPanelActive] = React.useState(false);
+
+  // 国际版功能开发中提示（必须在 handleMediaCaptured 之前定义）
+  const [featureInDevMessage, setFeatureInDevMessage] = React.useState<string>("");
+
+  const showFeatureInDevelopment = React.useCallback(() => {
+    const message = selectedLanguage === "zh"
+      ? "该功能正在开发中，敬请期待..."
+      : "This feature is under development, stay tuned...";
+    setFeatureInDevMessage(message);
+    setTimeout(() => setFeatureInDevMessage(""), 4000);
+  }, [selectedLanguage]);
+
+  // 辅助函数：模拟文件上传（复用 handleFileUpload 逻辑）
+  const triggerFileUpload = React.useCallback((file: File) => {
+    const input = document.getElementById("file-upload") as HTMLInputElement;
+    if (!input) return;
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    input.files = dataTransfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, []);
+
+  // 处理音频录制完成
+  const handleAudioRecordingComplete = React.useCallback(
+    (result: { blob: Blob; url: string; name: string }) => {
+      const file = new File([result.blob], result.name, { type: result.blob.type });
+      triggerFileUpload(file);
+    },
+    [triggerFileUpload]
+  );
+
+  // 切换音频录制状态
+  const toggleAudioRecording = React.useCallback(() => {
+    if (isAudioRecording) {
+      stopAudioRecording();
+    } else {
+      startAudioRecording(handleAudioRecordingComplete);
+    }
+  }, [isAudioRecording, startAudioRecording, stopAudioRecording, handleAudioRecordingComplete]);
+
+  // 处理摄像头捕获的媒体
+  const handleMediaCaptured = React.useCallback(
+    (media: { type: "image" | "video"; data: string; blob?: Blob; name: string }) => {
+      if (!media.blob) return;
+
+      // 国际版：显示功能开发中提示
+      if (!IS_DOMESTIC_VERSION) {
+        showFeatureInDevelopment();
+        return;
+      }
+
+      // 创建 File 对象并复用文件上传逻辑
+      const mimeType = media.type === "image" ? "image/jpeg" : "video/webm";
+      const file = new File([media.blob], media.name, { type: mimeType });
+      triggerFileUpload(file);
+    },
+    [showFeatureInDevelopment, triggerFileUpload]
+  );
 
   const allowedTypesHint =
     selectedLanguage === "zh"
@@ -690,32 +763,24 @@ const InputArea = React.memo(function InputArea({
                     )}
                   </Button>
 
-                  {/* Voice Input Button */}
+                  {/* Voice Input Button - 打开录音面板 */}
                   <Button
                     size="sm"
                     variant="ghost"
                     className={`h-7 w-7 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
-                      isRecording
-                        ? "text-red-600 dark:text-red-400 animate-pulse"
+                      isAudioPanelActive
+                        ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20"
                         : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869]"
                     }`}
-                    title={
-                      isRecording
-                        ? getLocalizedText("stopVoiceRecording")
-                        : getLocalizedText("startVoiceRecording")
-                    }
+                    title={selectedLanguage === "zh" ? "语音录制" : "Voice Recording"}
                     type="button"
-                    onClick={toggleVoiceRecording}
+                    onClick={() => setIsAudioPanelActive(!isAudioPanelActive)}
                   >
-                    {isRecording ? (
-                      <MicOff className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                    ) : (
-                      <Volume2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                    )}
+                    <Circle className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${isAudioPanelActive ? "fill-current" : ""}`} />
                   </Button>
 
-                  {/* Reset Voice Recording Button (shown when stuck) */}
-                  {isRecording && (
+                  {/* Reset Voice Recording Button (shown when stuck) - 仅国际版 */}
+                  {!IS_DOMESTIC_VERSION && isRecording && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -1127,65 +1192,28 @@ const InputArea = React.memo(function InputArea({
                     </PopoverContent>
                   </Popover>
 
-                  {/* Pro Voice Chat Button - 移动端隐藏，桌面端增大 */}
+                  {/* Pro Voice Chat Button - 暂时禁用 */}
                   <Button
                     size="sm"
                     variant="ghost"
-                    className={`hidden sm:flex h-7 w-7 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
-                      isProVoiceChatActive
-                        ? "text-purple-600 dark:text-purple-400 animate-pulse"
-                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869]"
-                    }`}
-                    title={
-                      isProVoiceChatActive
-                        ? getLocalizedText("stopProVoiceChat")
-                        : getLocalizedText("proVoiceChat")
-                    }
+                    className="hidden sm:flex h-7 w-7 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50"
+                    title={selectedLanguage === "zh" ? "专业语音对话（开发中）" : "Pro Voice Chat (Coming Soon)"}
                     type="button"
-                    onClick={
-                      isProVoiceChatActive
-                        ? stopProVoiceChat
-                        : () => {
-                            startProVoiceChat();
-                            scrollToInputArea();
-                          }
-                    }
-                    disabled={!appUser}
+                    disabled={true}
                   >
-                    {isProVoiceChatActive ? (
-                      <div className="animate-spin rounded-full h-3 w-3 sm:h-3.5 sm:w-3.5 border-b-2 border-current"></div>
-                    ) : (
-                      <Mic className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                    )}
+                    <Mic className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   </Button>
 
-                  {/* Pro Video Chat Button - 移动端隐藏，桌面端增大 */}
+                  {/* Pro Video Chat Button - 暂时禁用 */}
                   <Button
                     size="sm"
                     variant="ghost"
-                    className={`hidden sm:flex h-7 w-7 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
-                      isProVideoChatActive
-                        ? "text-purple-600 dark:text-purple-400 animate-pulse"
-                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869]"
-                    }`}
-                    title={
-                      isProVideoChatActive
-                        ? getLocalizedText("stopProVideoChat")
-                        : getLocalizedText("proVideoChat")
-                    }
+                    className="hidden sm:flex h-7 w-7 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50"
+                    title={selectedLanguage === "zh" ? "专业视频对话（开发中）" : "Pro Video Chat (Coming Soon)"}
                     type="button"
-                    onClick={
-                      isProVideoChatActive
-                        ? stopProVideoChat
-                        : startProVideoChat
-                    }
-                    disabled={!appUser}
+                    disabled={true}
                   >
-                    {isProVideoChatActive ? (
-                      <div className="animate-spin rounded-full h-3 w-3 sm:h-3.5 sm:w-3.5 border-b-2 border-current"></div>
-                    ) : (
-                      <Video className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                    )}
+                    <Video className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   </Button>
 
                   {/* Model Selector */}
@@ -1397,6 +1425,15 @@ const InputArea = React.memo(function InputArea({
               </div>
             )}
 
+            {/* 功能开发中提示 - 国际版 */}
+            {featureInDevMessage && (
+              <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                <p className="text-xs text-yellow-600 dark:text-yellow-400">
+                  ⚠️ {featureInDevMessage}
+                </p>
+              </div>
+            )}
+
             <StatusIndicators
               isRecording={isRecording}
               isProVoiceChatActive={isProVoiceChatActive}
@@ -1414,12 +1451,27 @@ const InputArea = React.memo(function InputArea({
               recordingTime={recordingTime}
               cameraMode={cameraMode}
               isCapturing={isCapturing}
-              capturedMedia={capturedMedia}
+              isConverting={isConverting}
+              convertProgress={convertProgress}
               switchCameraMode={switchCameraMode}
               capturePhoto={capturePhoto}
               toggleVideoRecording={toggleVideoRecording}
               stopCamera={stopCamera}
               formatRecordingTime={formatRecordingTime}
+              onMediaCaptured={handleMediaCaptured}
+              onFeatureInDev={showFeatureInDevelopment}
+              selectedLanguage={selectedLanguage}
+            />
+
+            <AudioRecordingPanel
+              isActive={isAudioPanelActive}
+              onClose={() => setIsAudioPanelActive(false)}
+              onUpload={(result) => {
+                const file = new File([result.blob], result.name, { type: result.blob.type });
+                triggerFileUpload(file);
+              }}
+              onFeatureInDev={showFeatureInDevelopment}
+              selectedLanguage={selectedLanguage}
             />
 
             <UploadedFilesList

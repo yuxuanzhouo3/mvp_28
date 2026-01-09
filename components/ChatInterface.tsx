@@ -9,6 +9,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Copy, Share, Download, Star, Zap, Bot, User } from "lucide-react";
+import { AudioPlayer } from "./AudioPlayer";
 import { Message } from "../types";
 import type { ReactNode } from "react";
 import { externalModels } from "@/constants";
@@ -559,14 +560,11 @@ function ChatInterface({
                                   </video>
                                 ))}
                                 {resolvedAudios.map((src, idx) => (
-                                  <audio
-                                    key={`${src}-${idx}`}
-                                    controls
+                                  <AudioPlayer
+                                    key={`audio-${src}-${idx}`}
                                     src={src}
-                                    className="w-64"
-                                  >
-                                    {getLocalizedText("audioNotSupported") || "Audio not supported"}
-                                  </audio>
+                                    className="w-72"
+                                  />
                                 ))}
                               </div>
                             )}

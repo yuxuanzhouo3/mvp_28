@@ -389,13 +389,13 @@ function ChatInterface({
           ref={scrollAreaRef}
         >
           <div
-            className={`p-4 transition-colors duration-500 ${
+            className={`p-2 sm:p-4 transition-colors duration-500 ${
               jumpToScrollPosition !== null && jumpToScrollPosition > 0
                 ? "bg-blue-50 dark:bg-blue-900/30"
                 : ""
             }`}
           >
-            <div className="max-w-4xl mx-auto space-y-4">
+            <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4">
               {showContextBanner && (
                 <div className="sticky top-0 z-10 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-50/90 to-orange-50/90 dark:from-amber-900/30 dark:to-orange-900/30 backdrop-blur-sm border border-amber-200/50 dark:border-amber-700/50 text-[11px] text-amber-700 dark:text-amber-200 flex items-center justify-center gap-2 shadow-sm mx-auto w-fit">
                   <span className="inline-flex items-center gap-1.5">
@@ -482,9 +482,9 @@ function ChatInterface({
                             : "bg-white/90 dark:bg-[#2f3039] border border-white/70 dark:border-[#3f4150] text-gray-900 dark:text-[#e7e9f3] backdrop-blur"
                         }`}
                       >
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
                           <span
-                            className={`px-2 py-1 text-[11px] font-semibold rounded-full ${
+                            className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-semibold rounded-full ${
                               isUser
                                 ? "bg-white/20 text-white"
                                 : "bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-100"
@@ -493,7 +493,7 @@ function ChatInterface({
                             {isUser ? userDisplayName : assistantDisplayName}
                           </span>
                           <span
-                            className={`ml-auto text-[11px] ${
+                            className={`ml-auto text-[10px] sm:text-[11px] ${
                               isUser ? "text-white/80" : "text-gray-500 dark:text-gray-400"
                             }`}
                           >

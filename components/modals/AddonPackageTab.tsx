@@ -37,7 +37,8 @@ export function AddonPackageTab({
 }: AddonPackageTabProps) {
   const { currentLanguage, isDomesticVersion } = useLanguage();
   const isZh = currentLanguage === "zh";
-  const [selectedPackage, setSelectedPackage] = useState<AddonPackage | null>(null);
+  // 默认选择中间的加油包（Standard）
+  const [selectedPackage, setSelectedPackage] = useState<AddonPackage | null>(ADDON_PACKAGES[1]);
   const [paymentMethod, setPaymentMethod] = useState<"stripe" | "paypal" | "alipay" | "wechat">(
     isDomesticVersion ? "alipay" : "stripe"
   );

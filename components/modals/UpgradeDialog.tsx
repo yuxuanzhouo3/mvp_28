@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -176,6 +176,16 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
       return isZh ? zh || en : en;
     }),
   }));
+
+  // 弹窗打开时自动选择中间的套餐（Pro）
+  useEffect(() => {
+    if (open && activeTab === "subscription" && !selectedPlanInDialog) {
+      const middlePlan = localizedPlans[1];
+      if (middlePlan) {
+        setSelectedPlanInDialog(middlePlan);
+      }
+    }
+  }, [open, activeTab]);
 
   const handleSubscribe = async () => {
     if (!selectedPlanInDialog) return;

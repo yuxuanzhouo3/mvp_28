@@ -2461,12 +2461,7 @@ const loadMessagesForConversation = useCallback(
       };
       const resolvedFamily = map[family] || map.default;
       const resolvedSize = /^\d+$/.test(sizePx) ? `${sizePx}px` : sizePx;
-      document.documentElement.style.setProperty("--app-font-family", resolvedFamily);
-      document.documentElement.style.setProperty("--app-font-size", resolvedSize);
-      document.documentElement.style.fontFamily = resolvedFamily;
-      document.documentElement.style.fontSize = resolvedSize;
-      document.body.style.fontFamily = resolvedFamily;
-      document.body.style.fontSize = resolvedSize;
+      document.documentElement.style.setProperty("--chat-font-size", resolvedSize);
     },
     []
   );

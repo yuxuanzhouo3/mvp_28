@@ -510,14 +510,14 @@ function ChatInterface({
                           </div>
                         )}
                         {isUser ? (
-                          <p className="whitespace-pre-wrap leading-relaxed">
+                          <p className="whitespace-pre-wrap leading-relaxed" style={{ fontSize: 'var(--chat-font-size, 14px)' }}>
                             {stripAttachmentSummary(message.content)}
                             {message.isStreaming && (
                               <span className="inline-block w-0.5 h-4 bg-white/90 ml-1 animate-pulse"></span>
                             )}
                           </p>
                         ) : (
-                          <div className="text-sm leading-relaxed space-y-2">
+                          <div className="text-sm leading-relaxed space-y-2" style={{ fontSize: 'var(--chat-font-size, 14px)' }}>
                             <ReactMarkdown
                               // math should run before gfm to avoid gfm eating backslashes/underscores
                               remarkPlugins={[remarkMath, remarkGfm]}

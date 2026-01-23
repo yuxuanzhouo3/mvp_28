@@ -1089,7 +1089,7 @@ const InputArea = React.memo(function InputArea({
           </Popover>
 
           {/* Multi-line Input (max 10 lines) */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-[120px]">
             <textarea
               ref={textareaRef}
               placeholder={getLocalizedText("placeholder")}
@@ -1126,13 +1126,13 @@ const InputArea = React.memo(function InputArea({
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-9 px-3 text-xs text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-9 px-2 sm:px-3 text-xs text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isModelLocked || !appUser}
                 title={!appUser ? (selectedLanguage === "zh" ? "请先登录后切换模型" : "Please login to switch models") : getLocalizedText("selectModel")}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 sm:gap-2">
                   {getModelIcon()}
-                  <span className="max-w-24 truncate">
+                  <span className="max-w-16 sm:max-w-24 truncate">
                     {getSelectedModelDisplay()}
                   </span>
                   {!isModelLocked && (

@@ -4,7 +4,7 @@
 
 export const translations = {
   en: {
-    placeholder: "Start a conversation with MornGPT...",
+    placeholder: "Start chatting...",
     thinking: "Thinking...",
     deepThinking: "Deep thinking in progress...",
     newChat: "New Chat",
@@ -185,7 +185,7 @@ export const translations = {
     supportDescription: "Get help & contact us",
   },
   zh: {
-    placeholder: "开始与 MornGPT 对话...",
+    placeholder: "开始对话...",
     thinking: "思考中...",
     deepThinking: "深度思考进行中...",
     newChat: "新对话",

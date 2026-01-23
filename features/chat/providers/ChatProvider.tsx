@@ -2450,17 +2450,11 @@ const loadMessagesForConversation = useCallback(
 
   const applyFontSettings = useCallback(
     (family: string, sizePx: string) => {
-      const map: Record<string, string> = {
-        arial: "Arial, sans-serif",
-        helvetica: "Helvetica, Arial, sans-serif",
-        times: '"Times New Roman", Times, serif',
-        georgia: "Georgia, serif",
-        verdana: "Verdana, sans-serif",
-        courier: '"Courier New", monospace',
-        default: "var(--font-sans, sans-serif)",
-      };
-      const resolvedFamily = map[family] || map.default;
       const resolvedSize = /^\d+$/.test(sizePx) ? `${sizePx}px` : sizePx;
+      // 保持全局字体为固定的14px，不受用户设置影响
+      document.documentElement.style.fontSize = "14px";
+      document.body.style.fontSize = "14px";
+      // 设置聊天消息专用的可调节字体变量
       document.documentElement.style.setProperty("--chat-font-size", resolvedSize);
     },
     []

@@ -29,6 +29,7 @@ import {
   Upload,
   ChevronDown,
   User,
+  Menu,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchQuotaShared } from "@/utils/quota-fetcher";
@@ -94,6 +95,9 @@ interface HeaderProps {
   mobileGuestTrialMax?: number;
   // 未登录时点击关闭广告按钮的回调
   onLoginRequired?: () => void;
+  // 侧边栏控制
+  sidebarCollapsed?: boolean;
+  setSidebarCollapsed?: (collapsed: boolean) => void;
 }
 
 export default function Header({
@@ -153,6 +157,8 @@ export default function Header({
   mobileGuestTrialRemaining = 0,
   mobileGuestTrialMax = 10,
   onLoginRequired,
+  sidebarCollapsed = false,
+  setSidebarCollapsed,
 }: HeaderProps) {
   const planLower = (
     currentPlan ||
@@ -430,6 +436,19 @@ export default function Header({
     <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#40414f] shadow-sm transition-colors overflow-x-hidden">
       <div className="max-w-full mx-auto px-2 sm:px-3 lg:px-4 overflow-x-hidden">
         <div className="flex justify-between items-center h-11 sm:h-14 md:h-16 overflow-x-hidden gap-1.5 sm:gap-2">
+          {/* 侧边栏切换按钮 - 最左侧 */}
+          {setSidebarCollapsed && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="h-8 w-8 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] flex-shrink-0"
+              title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+            >
+              <Menu className="w-4 h-4" />
+            </Button>
+          )}
+
           {/* 左侧：Logo + 身份牌 - 不截断 */}
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-[#ececf1] whitespace-nowrap leading-none">

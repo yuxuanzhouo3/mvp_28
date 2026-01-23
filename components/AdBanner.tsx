@@ -176,10 +176,10 @@ export default function AdBanner({
     bg-transparent
   `;
 
-  // 左右侧广告样式 - 高度固定170px，宽度弹性填充
+  // 左右侧广告样式 - 高度固定60px，宽度弹性填充
   const sideAdStyles = `
     flex items-center justify-center
-    w-full h-[170px] max-h-[170px] overflow-hidden
+    w-full h-[60px] max-h-[60px] overflow-hidden
   `;
 
   // 底部左右广告样式 - 高度与底部广告一致(60px)，宽度弹性填充
@@ -188,10 +188,9 @@ export default function AdBanner({
     w-full h-[60px] max-h-[60px] overflow-hidden
   `;
 
-  // 侧边栏广告样式 - 竖向长条，增加纵向长度，图片拉伸填充
+  // 侧边栏广告样式 - 横向平铺，充分利用容器空间
   const sidebarAdStyles = `
-    flex items-center justify-center
-    w-7 h-[400px] overflow-hidden
+    w-full h-full overflow-hidden
   `;
 
   const isTop = position === "top";
@@ -232,20 +231,20 @@ export default function AdBanner({
       <button
         type="button"
         onClick={() => handleAdClick(currentAd)}
-        className="block cursor-pointer w-full h-full transition-opacity duration-300 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        className="absolute inset-0 cursor-pointer transition-opacity duration-300 hover:opacity-90 focus:outline-none"
         title={currentAd.target_url ? `点击访问: ${currentAd.title}` : currentAd.title}
       >
         {currentAd.media_type === "image" ? (
           <img
             src={currentAd.media_url}
             alt={currentAd.title}
-            className={`w-full h-full object-fill ${isSideAd || isBottomSideAd ? "rounded-xl" : !isTop ? "rounded-lg" : ""}`}
+            className={`w-full h-full object-fill ${isSideAd || isBottomSideAd ? "rounded-xl" : !isTop && position !== "sidebar" ? "rounded-lg" : ""}`}
             loading="lazy"
           />
         ) : (
           <video
             src={currentAd.media_url}
-            className={`w-full h-full object-fill ${isSideAd || isBottomSideAd ? "rounded-xl" : !isTop ? "rounded-lg" : ""}`}
+            className={`w-full h-full object-fill ${isSideAd || isBottomSideAd ? "rounded-xl" : !isTop && position !== "sidebar" ? "rounded-lg" : ""}`}
             autoPlay
             muted
             loop

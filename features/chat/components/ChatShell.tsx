@@ -106,7 +106,13 @@ function ChatShell() {
       <div className="flex-1 flex flex-col h-screen overflow-x-hidden max-w-full transition-all duration-300">
         {/* Header - Fixed height */}
         <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#40414f] flex-shrink-0 transition-colors">
-          <Header {...headerProps} showGlobalAds={displayAds} onLoginRequired={handleLoginRequired} />
+          <Header
+            {...headerProps}
+            showGlobalAds={displayAds}
+            onLoginRequired={handleLoginRequired}
+            sidebarCollapsed={sidebarCollapsed}
+            setSidebarCollapsed={sidebarProps?.setSidebarCollapsed}
+          />
         </header>
 
         {/* Chat Messages - Flexible height with scroll */}

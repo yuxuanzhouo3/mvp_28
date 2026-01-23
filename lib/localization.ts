@@ -183,6 +183,10 @@ export const translations = {
     privacyDescription: "Security & account protection",
     support: "Support",
     supportDescription: "Get help & contact us",
+    advertisements: "Advertisements",
+    socialLinks: "Social Links",
+    showSocialLinks: "Show social links",
+    clickToVisit: "Click to visit",
   },
   zh: {
     placeholder: "开始对话...",
@@ -364,6 +368,10 @@ export const translations = {
     privacyDescription: "安全与账号保护",
     support: "支持",
     supportDescription: "获取帮助与联系我们",
+    advertisements: "广告",
+    socialLinks: "社交链接",
+    showSocialLinks: "显示社交链接",
+    clickToVisit: "点击访问",
   },
 };
 

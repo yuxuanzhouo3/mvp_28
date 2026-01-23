@@ -188,162 +188,6 @@ export default function Sidebar({
 
   return (
     <>
-      {/* Collapsed Sidebar Toggle - 所有设备都显示 */}
-      {sidebarCollapsed && (
-        <div
-          className="w-12 h-full bg-white dark:bg-[#40414f] border-r border-gray-200 dark:border-[#565869] flex flex-col transition-all duration-300 ease-in-out animate-in slide-in-from-left-2"
-          style={{ margin: 0, padding: 0 }}
-        >
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSidebarCollapsed(false)}
-            className="w-full h-12 rounded-none border-b border-gray-200 dark:border-[#565869] m-0 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
-            style={{ margin: 0, padding: 0 }}
-          >
-            <Menu className="w-4 h-4" />
-          </Button>
-
-          {/* Download Section */}
-          <div className="flex flex-col items-center space-y-2 px-1 pt-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowDownloadSection(!showDownloadSection)}
-              className="w-6 h-6 rounded-sm text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
-              title={getLocalizedText("downloadApps")}
-            >
-              <Download className="w-3 h-3" />
-            </Button>
-          </div>
-
-          {/* Ads Toggle - 默认显示广告（Eye），点击后仅关闭侧边栏广告并显示社交链接 */}
-          <div className="flex justify-center px-1 pb-1 pt-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowSidebarAd(!showSidebarAd)}
-              className={`w-6 h-6 rounded-sm ${
-                showSidebarAd && shouldShowAds
-                  ? "text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
-                  : "text-gray-400 dark:text-gray-500"
-              }`}
-              title={
-                showSidebarAd && shouldShowAds
-                  ? getLocalizedText("hideAds")
-                  : getLocalizedText("showAds")
-              }
-            >
-              {showSidebarAd && shouldShowAds ? (
-                <Eye className="w-3 h-3" />
-              ) : (
-                <EyeOff className="w-3 h-3" />
-              )}
-            </Button>
-          </div>
-
-          {/* 侧边栏竖向广告 (shouldShowAds且showSidebarAd为true时显示) */}
-          {shouldShowAds && showSidebarAd && (
-            <div className="flex flex-col items-center px-1 flex-1">
-              <ScrollArea className="w-full h-full">
-                <div className="flex flex-col items-center py-2">
-                  <AdBanner
-                    position="sidebar"
-                    isDomestic={isDomestic}
-                    showCloseButton={false}
-                    className="h-[200px]"
-                  />
-                </div>
-              </ScrollArea>
-            </div>
-          )}
-
-          {/* 社交链接小方块 (shouldShowAds为false或showSidebarAd为false时显示) */}
-          {(!shouldShowAds || !showSidebarAd) && (
-            <div className="flex flex-col items-center space-y-0.5 px-1">
-              <ScrollArea className="w-full max-h-[calc(100vh-120px)]">
-                <div className="grid grid-cols-1 gap-0.5 w-full pb-4 justify-items-center pt-1">
-                  {socialLinksLoading ? (
-                    // 加载占位符
-                    Array.from({ length: 6 }).map((_, idx) => (
-                      <div
-                        key={`skeleton-${idx}`}
-                        className="w-7 h-7 rounded-sm bg-gray-200 dark:bg-[#565869] animate-pulse"
-                      />
-                    ))
-                  ) : (
-                    displayLinks.map((link) => (
-                      <Popover key={link.id}>
-                        <PopoverTrigger asChild>
-                          <button
-                            className="w-7 h-7 rounded-sm border border-gray-200 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869] transition-colors flex items-center justify-center group focus:outline-none focus:ring-1 focus:ring-blue-500 overflow-hidden"
-                            onMouseEnter={(e) => e.currentTarget.focus()}
-                          >
-                            {isImageUrl(link.icon_url) ? (
-                              <img
-                                src={link.icon_url}
-                                alt={link.title}
-                                className="w-5 h-5 object-contain"
-                              />
-                            ) : (
-                              <span className="text-[10px]">{link.icon_url}</span>
-                            )}
-                          </button>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          side="right"
-                          align="center"
-                          className="w-56 p-3 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] shadow-lg cursor-pointer z-50"
-                          onClick={() => handleSocialLinkClick(link)}
-                          onOpenAutoFocus={(e) => e.preventDefault()}
-                        >
-                          <div className="space-y-2">
-                            <div className="flex items-center space-x-2">
-                              {isImageUrl(link.icon_url) ? (
-                                <img
-                                  src={link.icon_url}
-                                  alt={link.title}
-                                  className="w-8 h-8 object-contain"
-                                />
-                              ) : (
-                                <span className="text-lg">{link.icon_url}</span>
-                              )}
-                              <div>
-                                <h4 className="font-medium text-gray-900 dark:text-[#ececf1] text-sm">
-                                  {link.title}
-                                </h4>
-                                {link.description && (
-                                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                                    {link.description}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                            {link.target_url && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSocialLinkClick(link);
-                                }}
-                                className="w-full text-left text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 cursor-pointer"
-                              >
-                                Click to visit:{" "}
-                                {link.target_url.replace("https://", "").replace("http://", "")}
-                              </button>
-                            )}
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    ))
-                  )}
-                </div>
-              </ScrollArea>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Left Sidebar - Chat History - 展开时固定宽度或可调整宽度 */}
       {!sidebarCollapsed && (
         <div
@@ -372,10 +216,11 @@ export default function Sidebar({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setSidebarCollapsed(true)}
+                  onClick={() => setShowDownloadSection(!showDownloadSection)}
                   className="ml-2 h-10 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                  title={getLocalizedText("downloadApps")}
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  <Download className="w-4 h-4" />
                 </Button>
               </div>
               <div className="relative">
@@ -1019,6 +864,132 @@ export default function Sidebar({
                 )}
               </div>
             </ScrollArea>
+
+            {/* 底部固定区域：广告/社交链接 */}
+            <div className="border-t border-gray-200 dark:border-[#565869] bg-white dark:bg-[#40414f] h-[200px] flex flex-col">
+              {/* 广告/社交链接切换按钮 */}
+              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-[#565869] shrink-0">
+                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  {showSidebarAd && shouldShowAds
+                    ? getLocalizedText("advertisements")
+                    : getLocalizedText("socialLinks")}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowSidebarAd(!showSidebarAd)}
+                  className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#565869]"
+                  title={
+                    showSidebarAd && shouldShowAds
+                      ? getLocalizedText("showSocialLinks")
+                      : getLocalizedText("showAds")
+                  }
+                >
+                  {showSidebarAd && shouldShowAds ? (
+                    <Eye className="w-3.5 h-3.5" />
+                  ) : (
+                    <EyeOff className="w-3.5 h-3.5" />
+                  )}
+                </Button>
+              </div>
+
+              {/* 广告显示区域 */}
+              {shouldShowAds && showSidebarAd && (
+                <div className="flex-1 h-0 w-full">
+                  <AdBanner
+                    position="sidebar"
+                    isDomestic={isDomestic}
+                    showCloseButton={false}
+                    className="w-full h-full"
+                  />
+                </div>
+              )}
+
+              {/* 社交链接显示区域 */}
+              {(!shouldShowAds || !showSidebarAd) && (
+                <ScrollArea className="flex-1">
+                  <div className="p-2">
+                    {socialLinksLoading ? (
+                      <div className="grid grid-cols-6 gap-2">
+                        {Array.from({ length: 12 }).map((_, idx) => (
+                          <div
+                            key={`skeleton-${idx}`}
+                            className="w-full aspect-square rounded-md bg-gray-200 dark:bg-[#565869] animate-pulse"
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-6 gap-2">
+                        {displayLinks.map((link) => (
+                          <Popover key={link.id}>
+                            <PopoverTrigger asChild>
+                              <button
+                                className="w-full aspect-square rounded-md border border-gray-200 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869] transition-colors flex items-center justify-center group focus:outline-none focus:ring-2 focus:ring-blue-500 overflow-hidden"
+                                onMouseEnter={(e) => e.currentTarget.focus()}
+                              >
+                                {isImageUrl(link.icon_url) ? (
+                                  <img
+                                    src={link.icon_url}
+                                    alt={link.title}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <span className="text-2xl">{link.icon_url}</span>
+                                )}
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              side="right"
+                              align="center"
+                              className="w-56 p-3 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869] shadow-lg cursor-pointer z-50"
+                              onClick={() => handleSocialLinkClick(link)}
+                              onOpenAutoFocus={(e) => e.preventDefault()}
+                            >
+                              <div className="space-y-2">
+                                <div className="flex items-center space-x-2">
+                                  {isImageUrl(link.icon_url) ? (
+                                    <img
+                                      src={link.icon_url}
+                                      alt={link.title}
+                                      className="w-7 h-7 object-contain"
+                                    />
+                                  ) : (
+                                    <span className="text-lg">{link.icon_url}</span>
+                                  )}
+                                  <div>
+                                    <h4 className="font-medium text-gray-900 dark:text-[#ececf1] text-sm">
+                                      {link.title}
+                                    </h4>
+                                    {link.description && (
+                                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        {link.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                {link.target_url && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSocialLinkClick(link);
+                                    }}
+                                    className="w-full text-left text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 cursor-pointer truncate"
+                                  >
+                                    {getLocalizedText("clickToVisit")}:{" "}
+                                    {link.target_url.replace("https://", "").replace("http://", "")}
+                                  </button>
+                                )}
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              )}
+            </div>
 
             {/* Resize Handle */}
             <div

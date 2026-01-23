@@ -1095,6 +1095,7 @@ const InputArea = React.memo(function InputArea({
               placeholder={getLocalizedText("placeholder")}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              maxLength={2000}
               className="w-full text-sm py-2 px-2 text-gray-900 dark:text-[#ececf1] bg-transparent border-0 focus:ring-0 focus:outline-none resize-none overflow-y-auto"
               style={{ maxHeight: '240px', minHeight: '24px' }}
               rows={1}

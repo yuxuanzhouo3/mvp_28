@@ -589,8 +589,9 @@ const InputArea = React.memo(function InputArea({
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-9 w-9 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0"
-                title={selectedLanguage === "zh" ? "更多功能" : "More Options"}
+                disabled={!appUser}
+                className="h-9 w-9 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                title={!appUser ? (selectedLanguage === "zh" ? "请先登录后使用" : "Please login to use this feature") : (selectedLanguage === "zh" ? "更多功能" : "More Options")}
               >
                 <Plus className="w-4 h-4" />
               </Button>
@@ -1125,9 +1126,9 @@ const InputArea = React.memo(function InputArea({
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-9 px-3 text-xs text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0"
-                disabled={isModelLocked}
-                title={getLocalizedText("selectModel")}
+                className="h-9 px-3 text-xs text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isModelLocked || !appUser}
+                title={!appUser ? (selectedLanguage === "zh" ? "请先登录后切换模型" : "Please login to switch models") : getLocalizedText("selectModel")}
               >
                 <div className="flex items-center gap-2">
                   {getModelIcon()}

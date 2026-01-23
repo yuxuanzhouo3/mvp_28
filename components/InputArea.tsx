@@ -1126,13 +1126,13 @@ const InputArea = React.memo(function InputArea({
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-9 px-2 sm:px-3 text-xs text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-9 px-2 text-xs text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isModelLocked || !appUser}
                 title={!appUser ? (selectedLanguage === "zh" ? "请先登录后切换模型" : "Please login to switch models") : getLocalizedText("selectModel")}
               >
-                <div className="flex items-center gap-1 sm:gap-2">
+                <div className="flex items-center gap-1">
                   {getModelIcon()}
-                  <span className="max-w-16 sm:max-w-24 truncate">
+                  <span className="hidden sm:inline max-w-24 truncate">
                     {getSelectedModelDisplay()}
                   </span>
                   {!isModelLocked && (
@@ -1293,7 +1293,7 @@ const InputArea = React.memo(function InputArea({
             size="sm"
             onClick={isStreaming ? stopStreaming : handleSubmit}
             disabled={isStreaming ? false : !prompt.trim() || isLoading}
-            className={`h-9 w-9 ${
+            className={`h-8 w-8 sm:h-9 sm:w-9 ${
               isStreaming
                 ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25"
                 : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/25"
@@ -1309,9 +1309,9 @@ const InputArea = React.memo(function InputArea({
             }
           >
             {isStreaming ? (
-              <Square className="w-4 h-4" />
+              <Square className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             ) : (
-              <Send className="w-4 h-4" />
+              <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             )}
           </Button>
         </div>

@@ -333,14 +333,14 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[95vw] sm:max-w-4xl bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-[#0f1015] dark:via-[#14151a] dark:to-[#0f1015] border-0 overflow-visible shadow-2xl rounded-2xl">
+        <DialogContent className="w-[95vw] sm:max-w-4xl bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-[#0f1015] dark:via-[#14151a] dark:to-[#0f1015] border-0 shadow-2xl rounded-2xl overflow-hidden">
           {/* 装饰性背景 */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute top-0 left-1/4 w-64 h-64 bg-gradient-to-br from-blue-400/10 to-purple-500/10 rounded-full blur-3xl" />
             <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-gradient-to-br from-emerald-400/10 to-teal-500/10 rounded-full blur-3xl" />
         </div>
 
-        <div className="relative z-10 p-2 md:p-4">
+        <div className="relative z-10 p-2 md:p-4 overflow-x-hidden">
           {/* 标题区 */}
           <DialogHeader className="text-center mb-2 md:mb-3">
             <DialogTitle className="flex items-center justify-center space-x-1.5 md:space-x-2 text-base md:text-lg font-bold">
@@ -438,7 +438,7 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
               </div>
 
               {/* 套餐卡片 - 移动端横向滑动，桌面端三列网格 */}
-              <div className="flex md:grid md:grid-cols-3 gap-2 md:gap-3 overflow-x-auto md:overflow-visible snap-x snap-mandatory md:snap-none scrollbar-hide py-1 pb-2 mb-2 md:mb-3 px-1 -mx-1">
+              <div className="flex md:grid md:grid-cols-3 gap-3 md:gap-3 overflow-x-auto md:overflow-visible snap-x snap-mandatory md:snap-none scrollbar-hide py-1 pb-2 mb-2 md:mb-3 -mx-2 px-2">
                 {localizedPlans.map((plan, index) => {
                   const isSelected = selectedPlanInDialog?.name === plan.name;
                   const theme = getPlanTheme(plan.name);
@@ -447,7 +447,7 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
                 <div
                   key={plan.name}
                       onClick={() => { setSelectedPlanInDialog(plan); handleUpgradeClick(plan); }}
-                      className={`relative cursor-pointer transition-all duration-300 group flex-shrink-0 w-[240px] md:w-auto snap-center ${
+                      className={`relative cursor-pointer transition-all duration-300 group flex-shrink-0 w-[48vw] md:w-auto snap-center ${
                         isSelected ? "scale-[1.02]" : "hover:scale-[1.01]"
                       }`}
                       style={{ animationDelay: `${index * 100}ms` }}

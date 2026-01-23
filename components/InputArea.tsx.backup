@@ -264,19 +264,6 @@ const InputArea = React.memo(function InputArea({
   selectedLanguage,
   allowAudioUpload,
 }: InputAreaProps) {
-  // Auto-resize textarea
-  React.useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    // Reset height to auto to get the correct scrollHeight
-    textarea.style.height = 'auto';
-
-    // Calculate new height (min 24px, max 240px for 10 lines)
-    const newHeight = Math.min(Math.max(textarea.scrollHeight, 24), 240);
-    textarea.style.height = `${newHeight}px`;
-  }, [prompt, textareaRef]);
-
   // Use camera hook
   const {
     isCameraActive,
@@ -580,151 +567,260 @@ const InputArea = React.memo(function InputArea({
   
   return (
     <div className="flex-shrink-0 overflow-x-hidden max-w-full">
-      <div className="max-w-4xl mx-auto px-4">
-        {/* Single Row Input Layout with Rounded Rectangle */}
-        <div className="flex items-center gap-2 sm:gap-3 bg-white dark:bg-[#40414f] border border-gray-200 dark:border-[#565869] rounded-2xl px-2 sm:px-4 py-2 sm:py-3 shadow-sm hover:shadow-md transition-shadow">
-          {/* Left Side - Plus Button with Popover */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-9 w-9 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0"
-                title={selectedLanguage === "zh" ? "更多功能" : "More Options"}
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              className="w-[calc(100vw-2rem)] sm:w-64 p-2 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]"
-              align="start"
-              side="top"
-            >
-              <div className="grid grid-cols-2 gap-2">
-                {/* File Upload */}
-                <input
-                  type="file"
-                  multiple
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="file-upload"
-                  accept={["image/*", "video/*", "audio/*"].join(",")}
-                  disabled={isUploading || !IS_DOMESTIC_VERSION}
-                />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className={`justify-start gap-2 ${isUploading ? "animate-pulse" : ""}`}
-                  title={attachmentButtonTitle}
-                  type="button"
-                  disabled={isUploading || !IS_DOMESTIC_VERSION}
-                  onClick={() => {
-                    if (!IS_DOMESTIC_VERSION) return;
-                    if (uploadedFiles.length >= MAX_FILES) {
-                      setUploadError(
-                        `Maximum ${MAX_FILES} files reached. Please remove some files first.`
-                      );
-                      setTimeout(() => setUploadError(""), 3000);
-                      return;
+      <div className="max-w-4xl mx-auto overflow-x-hidden">
+        {/* Input Container Box with Modern Styling */}
+        <div className="border border-gray-200 dark:border-[#565869] rounded-2xl p-2 sm:p-3 md:p-4 bg-white dark:bg-[#40414f] shadow-lg relative overflow-x-hidden max-w-full">
+          <div className="flex flex-col space-y-4">
+            {/* Main Input Field */}
+            <div className="relative">
+              <textarea
+                ref={textareaRef}
+                placeholder={getLocalizedText("placeholder")}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onSelect={handleTextSelection}
+                className="w-full resize-none overflow-hidden text-sm py-2 sm:py-3 px-2 sm:px-3 text-gray-900 dark:text-[#ececf1] bg-transparent border-0 focus:ring-0 focus:border-0 focus:outline-none outline-none rounded-xl selection:bg-blue-200 dark:selection:bg-blue-800 selection:text-gray-900 dark:selection:text-[#ececf1] min-h-[64px] sm:min-h-[80px] md:min-h-[96px] max-h-[280px] sm:max-h-[384px] pr-4"
+                onKeyDown={(e) => {
+                  const currentHotkey =
+                    appUser?.settings?.sendHotkey || "enter";
+                  const shouldSend =
+                    checkHotkeyMatch(e, currentHotkey) &&
+                    prompt.trim().length > 0 &&
+                    !isLoading &&
+                    !isStreaming;
+                  if (shouldSend) {
+                    e.preventDefault();
+                    handleSubmit();
+                  }
+
+                  // Text selection shortcuts
+                  if (e.ctrlKey || e.metaKey) {
+                    if (e.key === "c" && selectedText) {
+                      e.preventDefault();
+                      copySelectedText();
+                    } else if (e.key === "x" && selectedText) {
+                      e.preventDefault();
+                      copySelectedText();
+                      deleteSelectedText();
+                    } else if (e.key === "a") {
+                      e.preventDefault();
+                      if (textareaRef.current) {
+                        textareaRef.current.select();
+                        handleTextSelection();
+                      }
                     }
-                    document.getElementById("file-upload")?.click();
-                  }}
-                >
-                  {isUploading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-                  ) : (
-                    <Paperclip className="w-4 h-4" />
-                  )}
-                  <span className="text-xs">{selectedLanguage === "zh" ? "上传文件" : "Upload"}</span>
-                </Button>
-
-                {/* Voice Recording */}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className={`justify-start gap-2 ${
-                    isAudioPanelActive
-                      ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20"
-                      : ""
-                  }`}
-                  title={selectedLanguage === "zh" ? "语音录制" : "Voice Recording"}
-                  type="button"
-                  onClick={() => setIsAudioPanelActive(!isAudioPanelActive)}
-                >
-                  <Circle className={`w-4 h-4 ${isAudioPanelActive ? "fill-current" : ""}`} />
-                  <span className="text-xs">{selectedLanguage === "zh" ? "语音录制" : "Voice"}</span>
-                </Button>
-
-                {/* Camera */}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className={`justify-start gap-2 ${
-                    !isCameraSupported
-                      ? "text-gray-400 dark:text-gray-500 cursor-not-allowed"
-                      : isCameraActive
-                      ? "text-blue-600 dark:text-blue-400"
-                      : ""
-                  }`}
-                  title={
-                    !isCameraSupported
-                      ? getLocalizedText("cameraUnavailable")
-                      : isCameraActive
-                      ? getLocalizedText("cameraClose")
-                      : getLocalizedText("cameraOpen")
                   }
-                  type="button"
-                  onClick={isCameraSupported ? toggleCamera : undefined}
-                  disabled={!isCameraSupported}
-                >
-                  <Camera className="w-4 h-4" />
-                  <span className="text-xs">{selectedLanguage === "zh" ? "摄像头" : "Camera"}</span>
-                </Button>
 
-                {/* Location */}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={getCurrentLocation}
-                  disabled={isGettingLocation}
-                  className={`justify-start gap-2 ${
-                    currentLocation
-                      ? "text-green-600 dark:text-green-400"
-                      : ""
-                  }`}
-                  title={
-                    currentLocation
-                      ? getLocalizedText("locationAdded")
-                      : getLocalizedText("getLocation")
+                  // Delete key for selected text
+                  if (e.key === "Delete" && selectedText) {
+                    e.preventDefault();
+                    deleteSelectedText();
                   }
-                >
-                  {isGettingLocation ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-                  ) : (
-                    <MapPin className="w-4 h-4" />
-                  )}
-                  <span className="text-xs">{selectedLanguage === "zh" ? "位置" : "Location"}</span>
-                </Button>
+                }}
+              />
 
-                {/* Conversation History */}
-                <Popover open={isAskGPTOpen} onOpenChange={setIsAskGPTOpen}>
-                  <PopoverTrigger asChild>
+              {/* Text Selection Controls */}
+              {selectedText && (
+                <div className="absolute top-2 right-2 flex items-center space-x-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-1 z-10">
+                  <button
+                    onClick={copySelectedText}
+                    className="p-1 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors"
+                    title={getLocalizedText("copySelection")}
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={deleteSelectedText}
+                    className="p-1 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 rounded transition-colors"
+                    title={getLocalizedText("deleteSelection")}
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 px-1">
+                    {selectedText.length} chars
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Single Row Input Layout */}
+            <div className="flex items-center gap-2">
+              {/* Left Side - Plus Button with Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-9 w-9 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full border border-gray-300 dark:border-[#565869] flex-shrink-0"
+                    title={selectedLanguage === "zh" ? "更多功能" : "More Options"}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-64 p-2 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]"
+                  align="start"
+                  side="top"
+                >
+                  <div className="grid grid-cols-2 gap-2">
+                  {/* File Upload */}
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="file-upload"
+                    accept={["image/*", "video/*", "audio/*"].join(",")}
+                    disabled={isUploading || !IS_DOMESTIC_VERSION}
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={`h-8 w-8 sm:h-8 sm:w-8 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
+                      isUploading ? "animate-pulse" : ""
+                    }`}
+                    title={attachmentButtonTitle}
+                    type="button"
+                    disabled={isUploading || !IS_DOMESTIC_VERSION}
+                    onClick={() => {
+                      if (!IS_DOMESTIC_VERSION) return;
+                      if (uploadedFiles.length >= MAX_FILES) {
+                        setUploadError(
+                          `Maximum ${MAX_FILES} files reached. Please remove some files first.`
+                        );
+                        setTimeout(() => setUploadError(""), 3000);
+                        return;
+                      }
+                      document.getElementById("file-upload")?.click();
+                    }}
+                  >
+                    {isUploading ? (
+                      <div className="animate-spin rounded-full h-3.5 w-3.5 sm:h-3.5 sm:w-3.5 border-b-2 border-current"></div>
+                    ) : (
+                      <Paperclip className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
+                    )}
+                  </Button>
+
+                  {/* Voice Input Button - 打开录音面板 */}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={`h-8 w-8 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
+                      isAudioPanelActive
+                        ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20"
+                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869]"
+                    }`}
+                    title={selectedLanguage === "zh" ? "语音录制" : "Voice Recording"}
+                    type="button"
+                    onClick={() => setIsAudioPanelActive(!isAudioPanelActive)}
+                  >
+                    <Circle className={`w-3.5 h-3.5 sm:w-3.5 sm:h-3.5 ${isAudioPanelActive ? "fill-current" : ""}`} />
+                  </Button>
+
+                  {/* Reset Voice Recording Button (shown when stuck) - 仅国际版 */}
+                  {!IS_DOMESTIC_VERSION && isRecording && (
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="justify-start gap-2"
-                      title={getLocalizedText("navigateConversation")}
-                      disabled={!appUser}
+                    className="h-8 w-8 sm:h-8 sm:w-8 p-0 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all duration-200 rounded-full border border-orange-300 dark:border-orange-600"
+                      title={getLocalizedText("resetVoiceRecording")}
+                      type="button"
+                      onClick={resetVoiceRecording}
                     >
-                      <Clock className="w-4 h-4" />
-                      <span className="text-xs">{selectedLanguage === "zh" ? "对话历史" : "History"}</span>
+                      <X className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-[calc(100vw-2rem)] sm:w-80 p-2 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]"
-                    align="start"
-                    side="top"
+                  )}
+
+                  {/* Camera Button - 移动端保留显示 */}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={`h-8 w-8 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
+                      !isCameraSupported
+                        ? "text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                        : isCameraActive
+                        ? "text-blue-600 dark:text-blue-400"
+                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869]"
+                    }`}
+                    title={
+                      !isCameraSupported
+                        ? getLocalizedText("cameraUnavailable")
+                        : isCameraActive
+                        ? getLocalizedText("cameraClose")
+                        : getLocalizedText("cameraOpen")
+                    }
+                    type="button"
+                    onClick={isCameraSupported ? toggleCamera : undefined}
+                    disabled={!isCameraSupported}
                   >
+                    <Camera className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
+                  </Button>
+
+                  {/* Location Button - 移动端保留显示 */}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={getCurrentLocation}
+                    disabled={isGettingLocation}
+                    className={`h-8 w-8 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] ${
+                      currentLocation
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869]"
+                    }`}
+                    title={
+                      currentLocation
+                        ? getLocalizedText("locationAdded")
+                        : getLocalizedText("getLocation")
+                    }
+                  >
+                    {isGettingLocation ? (
+                      <div className="animate-spin rounded-full h-3.5 w-3.5 sm:h-3.5 sm:w-3.5 border-b-2 border-current"></div>
+                    ) : (
+                      <MapPin className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
+                    )}
+                  </Button>
+
+                  {/* Ask GPT Button - 移动端保留显示 */}
+                  <Popover open={isAskGPTOpen} onOpenChange={setIsAskGPTOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 sm:h-8 sm:w-8 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full border border-gray-300 dark:border-[#565869]"
+                        title={getLocalizedText("navigateConversation")}
+                        disabled={!appUser}
+                      >
+                        <Clock className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-[calc(100vw-2rem)] sm:w-80 p-2 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]"
+                      align="end"
+                    >
                       <Tabs defaultValue="messages" className="w-full">
                         <TabsList className="grid w-full grid-cols-3 mb-2 bg-gray-100 dark:bg-[#565869]">
                           <TabsTrigger
@@ -1058,328 +1154,298 @@ const InputArea = React.memo(function InputArea({
                     </PopoverContent>
                   </Popover>
 
-                {/* Pro Voice Chat - Disabled */}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="justify-start gap-2 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50"
-                  title={selectedLanguage === "zh" ? "实时语音通话（开发中）" : "Pro Voice Chat (Coming Soon)"}
-                  type="button"
-                  disabled={true}
-                >
-                  <Mic className="w-4 h-4" />
-                  <span className="text-xs">{selectedLanguage === "zh" ? "语音通话" : "Voice Call"}</span>
-                </Button>
-
-                {/* Pro Video Chat - Disabled */}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="justify-start gap-2 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50"
-                  title={selectedLanguage === "zh" ? "实时视频通话（开发中）" : "Pro Video Chat (Coming Soon)"}
-                  type="button"
-                  disabled={true}
-                >
-                  <Video className="w-4 h-4" />
-                  <span className="text-xs">{selectedLanguage === "zh" ? "视频通话" : "Video Call"}</span>
-                </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          {/* Multi-line Input (max 10 lines) */}
-          <div className="flex-1 min-w-0">
-            <textarea
-              ref={textareaRef}
-              placeholder={getLocalizedText("placeholder")}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="w-full text-sm py-2 px-2 text-gray-900 dark:text-[#ececf1] bg-transparent border-0 focus:ring-0 focus:outline-none resize-none overflow-y-auto"
-              style={{ maxHeight: '240px', minHeight: '24px' }}
-              rows={1}
-              onKeyDown={(e) => {
-                // Ctrl+Enter: 换行
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                  return; // 允许默认换行行为
-                }
-
-                // Enter: 发送消息
-                if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-                  if (prompt.trim().length > 0 && !isLoading && !isStreaming) {
-                    e.preventDefault();
-                    handleSubmit();
-                  } else {
-                    e.preventDefault(); // 防止空消息换行
-                  }
-                }
-              }}
-            />
-          </div>
-
-          {/* Model Selector */}
-          <Popover
-            open={isModelSelectorOpen}
-            onOpenChange={setIsModelSelectorOpen}
-          >
-            <PopoverTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-9 px-3 text-xs text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0"
-                disabled={isModelLocked}
-                title={getLocalizedText("selectModel")}
-              >
-                <div className="flex items-center gap-2">
-                  {getModelIcon()}
-                  <span className="max-w-24 truncate">
-                    {getSelectedModelDisplay()}
-                  </span>
-                  {!isModelLocked && (
-                    <ChevronDown className="w-3 h-3" />
-                  )}
-                </div>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              className="w-[calc(100vw-2rem)] sm:w-[500px] md:w-[650px] lg:w-[850px] max-w-[850px] p-0 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl"
-              align="end"
-              side="top"
-              sideOffset={8}
-            >
-              <div className="p-3 sm:p-4">
-                <div className="flex items-center justify-between mb-3 sm:mb-4">
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
-                    {getLocalizedText("selectModel")}
-                  </h3>
+                  {/* Pro Voice Chat Button - 暂时禁用 */}
                   <Button
-                    variant="ghost"
                     size="sm"
-                    className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    onClick={() => setIsModelSelectorOpen(false)}
+                    variant="ghost"
+                    className="hidden sm:flex h-7 w-7 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50"
+                    title={selectedLanguage === "zh" ? "专业语音对话（开发中）" : "Pro Voice Chat (Coming Soon)"}
+                    type="button"
+                    disabled={true}
                   >
-                    <X className="w-4 h-4" />
+                    <Mic className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   </Button>
-                </div>
 
-                <Tabs
-                  value={modelSelectorTab}
-                  onValueChange={setModelSelectorTab}
-                  className="w-full"
-                >
-                  <TabsList className={`grid w-full ${hideMornGPTModels ? "grid-cols-2" : "grid-cols-3"} bg-gray-100 dark:bg-[#565869]`}>
-                    <TabsTrigger
-                      value="general"
-                      className="text-xs text-gray-900 dark:text-[#ececf1]"
-                    >
-                      <MessageSquare className="w-3 h-3 mr-1" />
-                      {getLocalizedText("general")}
-                    </TabsTrigger>
-                    {!hideMornGPTModels && (
-                      <TabsTrigger
-                        value="morngpt"
-                        className="text-xs text-gray-900 dark:text-[#ececf1]"
+                  {/* Pro Video Chat Button - 暂时禁用 */}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="hidden sm:flex h-7 w-7 sm:h-8 sm:w-8 p-0 transition-all duration-200 rounded-full border border-gray-300 dark:border-[#565869] text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50"
+                    title={selectedLanguage === "zh" ? "专业视频对话（开发中）" : "Pro Video Chat (Coming Soon)"}
+                    type="button"
+                    disabled={true}
+                  >
+                    <Video className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  </Button>
+
+                  {/* Model Selector */}
+                  <Popover
+                    open={isModelSelectorOpen}
+                    onOpenChange={setIsModelSelectorOpen}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 sm:h-8 px-2 sm:px-3 text-[10px] sm:text-xs border-gray-300 dark:border-[#565869] hover:border-gray-400 dark:hover:border-gray-500 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] rounded-md transition-all duration-200 min-w-[100px] sm:min-w-[140px]"
+                        disabled={isModelLocked}
+                        title={getLocalizedText("selectModel")}
                       >
-                        <Sparkles className="w-3 h-3 mr-1" />
-                        {getLocalizedText("mornGPT")}
-                      </TabsTrigger>
-                    )}
-                    <TabsTrigger
-                      value="external"
-                      className={`text-xs ${isGuestMode ? "text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50" : "text-gray-900 dark:text-[#ececf1]"}`}
-                      disabled={isGuestMode}
-                      title={isGuestMode ? (selectedLanguage === "zh" ? "请先登录后使用外部模型" : "Please login to use external models") : undefined}
+                        <div className="flex items-center space-x-1">
+                          {getModelIcon()}
+                          <span className="max-w-16 sm:max-w-24 truncate">
+                            {getSelectedModelDisplay()}
+                          </span>
+                          {!isModelLocked && (
+                            <ChevronDown className="w-2.5 h-2.5" />
+                          )}
+                        </div>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-[calc(100vw-2rem)] sm:w-[500px] md:w-[650px] lg:w-[850px] max-w-[850px] p-0 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl"
+                      align="end"
+                      side="top"
+                      sideOffset={8}
                     >
-                      <Globe className="w-3 h-3 mr-1" />
-                      {getLocalizedText("external")}
-                    </TabsTrigger>
-                  </TabsList>
+                      <div className="p-3 sm:p-4">
+                        <div className="flex items-center justify-between mb-3 sm:mb-4">
+                          <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
+                            {getLocalizedText("selectModel")}
+                          </h3>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                            onClick={() => setIsModelSelectorOpen(false)}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
 
-                  <TabsContent value="general" className="p-2">
-                    <div className="h-32 flex items-center justify-center">
-                      <div
-                        className="w-full h-full cursor-pointer p-2 rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-[#565869] hover:bg-gray-100 dark:hover:bg-[#444654] transition-all duration-200 hover:shadow-sm flex flex-col items-center justify-center"
-                        onClick={() => handleModelSelect("general", undefined, GENERAL_MODEL_ID)}
-                      >
-                        <MessageSquare className="w-4 h-4 mx-auto text-gray-500 dark:text-gray-400 mb-1" />
-                        <h3 className="text-xs font-semibold text-gray-900 dark:text-[#ececf1] mb-1">
-                          {getLocalizedText("generalModelTitle")}
-                        </h3>
-                        <p className="text-[8px] text-gray-600 dark:text-gray-400 text-center">
-                          {getLocalizedText("generalModelDesc")}
-                        </p>
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  {!hideMornGPTModels && (
-                    <TabsContent value="morngpt" className="p-2">
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
-                        {mornGPTCategories.map((category) => {
-                          const IconComponent = category.icon || Bot;
-                          return (
-                            <div
-                              key={category.id}
-                              className={`p-1.5 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm border ${
-                                selectedCategory === category.id
-                                  ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
-                                  : "border-gray-100 dark:border-gray-700"
-                              }`}
-                              onClick={() =>
-                                handleModelSelect("morngpt", category.id)
-                              }
+                        <Tabs
+                          value={modelSelectorTab}
+                          onValueChange={setModelSelectorTab}
+                          className="w-full"
+                        >
+                          <TabsList className={`grid w-full ${hideMornGPTModels ? "grid-cols-2" : "grid-cols-3"} bg-gray-100 dark:bg-[#565869]`}>
+                            <TabsTrigger
+                              value="general"
+                              className="text-xs text-gray-900 dark:text-[#ececf1]"
                             >
-                              <div className="flex flex-col space-y-1">
-                                <div className="flex items-center space-x-1.5">
-                                  <div
-                                    className={`p-1 rounded ${category.color} text-white shadow-sm flex items-center justify-center`}
-                                  >
-                                    <IconComponent className="w-3 h-3" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between">
-                                      <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
-                                        {category.name}
-                                      </p>
-                                      <Badge
-                                        variant="secondary"
-                                        className="text-[2px] px-0.5 py-0 h-2"
-                                      >
-                                        {category.id.toUpperCase()}1
-                                      </Badge>
-                                    </div>
-                                  </div>
-                                </div>
-                                <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
-                                  {category.description}
+                              <MessageSquare className="w-3 h-3 mr-1" />
+                              {getLocalizedText("general")}
+                            </TabsTrigger>
+                            {!hideMornGPTModels && (
+                              <TabsTrigger
+                                value="morngpt"
+                                className="text-xs text-gray-900 dark:text-[#ececf1]"
+                              >
+                                <Sparkles className="w-3 h-3 mr-1" />
+                                {getLocalizedText("mornGPT")}
+                              </TabsTrigger>
+                            )}
+                            <TabsTrigger
+                              value="external"
+                              className={`text-xs ${isGuestMode ? "text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50" : "text-gray-900 dark:text-[#ececf1]"}`}
+                              disabled={isGuestMode}
+                              title={isGuestMode ? (selectedLanguage === "zh" ? "请先登录后使用外部模型" : "Please login to use external models") : undefined}
+                            >
+                              <Globe className="w-3 h-3 mr-1" />
+                              {getLocalizedText("external")}
+                            </TabsTrigger>
+                          </TabsList>
+
+                          <TabsContent value="general" className="p-2">
+                            <div className="h-32 flex items-center justify-center">
+                              <div
+                                className="w-full h-full cursor-pointer p-2 rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-[#565869] hover:bg-gray-100 dark:hover:bg-[#444654] transition-all duration-200 hover:shadow-sm flex flex-col items-center justify-center"
+                                onClick={() => handleModelSelect("general", undefined, GENERAL_MODEL_ID)}
+                              >
+                                <MessageSquare className="w-4 h-4 mx-auto text-gray-500 dark:text-gray-400 mb-1" />
+                                <h3 className="text-xs font-semibold text-gray-900 dark:text-[#ececf1] mb-1">
+                                  {getLocalizedText("generalModelTitle")}
+                                </h3>
+                                <p className="text-[8px] text-gray-600 dark:text-gray-400 text-center">
+                                  {getLocalizedText("generalModelDesc")}
                                 </p>
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </TabsContent>
-                  )}
+                          </TabsContent>
 
-                  <TabsContent value="external" className="p-2">
-                    <div className="space-y-1 max-h-60 overflow-y-auto border border-gray-100 dark:border-gray-700 rounded-md p-2 bg-gray-50/50 dark:bg-[#2f3037]">
-                      <div className="text-[10px] font-semibold text-gray-700 dark:text-gray-200 mb-1">
-                        {isDomesticVersion ? "可用外部模型（国内版）" : "Available External Models (International)"}
-                      </div>
-                      {isDomesticVersion ? (
-                        <>
-                          <div className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 mt-1">
-                            多模态模型
-                          </div>
-                          {domesticMultimodalModels.map(renderExternalModelButton)}
+                          {!hideMornGPTModels && (
+                            <TabsContent value="morngpt" className="p-2">
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
+                                {mornGPTCategories.map((category) => {
+                                  const IconComponent = category.icon || Bot;
+                                  return (
+                                    <div
+                                      key={category.id}
+                                      className={`p-1.5 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm border ${
+                                        selectedCategory === category.id
+                                          ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
+                                          : "border-gray-100 dark:border-gray-700"
+                                      }`}
+                                      onClick={() =>
+                                        handleModelSelect("morngpt", category.id)
+                                      }
+                                    >
+                                      <div className="flex flex-col space-y-1">
+                                        <div className="flex items-center space-x-1.5">
+                                          <div
+                                            className={`p-1 rounded ${category.color} text-white shadow-sm flex items-center justify-center`}
+                                          >
+                                            <IconComponent className="w-3 h-3" />
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between">
+                                              <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
+                                                {category.name}
+                                              </p>
+                                              <Badge
+                                                variant="secondary"
+                                                className="text-[2px] px-0.5 py-0 h-2"
+                                              >
+                                                {category.id.toUpperCase()}1
+                                              </Badge>
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
+                                          {category.description}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </TabsContent>
+                          )}
 
-                          <div className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 mt-2">
-                            文本模型
-                          </div>
-                          {domesticTextModels.map(renderExternalModelButton)}
-                        </>
-                      ) : (
-                        filteredExternalModels.map(renderExternalModelButton)
-                      )}
-                    </div>
-                  </TabsContent>
-                </Tabs>
+                          <TabsContent value="external" className="p-2">
+                            <div className="space-y-1 max-h-60 overflow-y-auto border border-gray-100 dark:border-gray-700 rounded-md p-2 bg-gray-50/50 dark:bg-[#2f3037]">
+                              <div className="text-[10px] font-semibold text-gray-700 dark:text-gray-200 mb-1">
+                                {isDomesticVersion ? "可用外部模型（国内版）" : "Available External Models (International)"}
+                              </div>
+                              {isDomesticVersion ? (
+                                <>
+                                  <div className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 mt-1">
+                                    多模态模型
+                                  </div>
+                                  {domesticMultimodalModels.map(renderExternalModelButton)}
+
+                                  <div className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 mt-2">
+                                    文本模型
+                                  </div>
+                                  {domesticTextModels.map(renderExternalModelButton)}
+                                </>
+                              ) : (
+                                filteredExternalModels.map(renderExternalModelButton)
+                              )}
+                            </div>
+                          </TabsContent>
+                        </Tabs>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  <Button
+                    size="sm"
+                    onClick={isStreaming ? stopStreaming : handleSubmit}
+                    disabled={isStreaming ? false : !prompt.trim() || isLoading}
+                    className={`h-8 w-8 sm:h-9 sm:w-9 ${
+                      isStreaming
+                        ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25"
+                        : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/25"
+                    } text-white rounded-full flex items-center justify-center transition-all duration-300 transform hover:scale-105 active:scale-95`}
+                    title={
+                      isStreaming
+                        ? selectedLanguage === "zh"
+                          ? "停止生成"
+                          : "Stop Generation"
+                        : selectedLanguage === "zh"
+                        ? "发送消息"
+                        : "Send Message"
+                    }
+                  >
+                    {isStreaming ? (
+                      <Square className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                    ) : (
+                      <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
-            </PopoverContent>
-          </Popover>
+            </div>
 
-          {/* Send Button */}
-          <Button
-            size="sm"
-            onClick={isStreaming ? stopStreaming : handleSubmit}
-            disabled={isStreaming ? false : !prompt.trim() || isLoading}
-            className={`h-9 w-9 ${
-              isStreaming
-                ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25"
-                : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/25"
-            } text-white rounded-full flex items-center justify-center transition-all duration-300 transform hover:scale-105 active:scale-95 flex-shrink-0`}
-            title={
-              isStreaming
-                ? selectedLanguage === "zh"
-                  ? "停止生成"
-                  : "Stop Generation"
-                : selectedLanguage === "zh"
-                ? "发送消息"
-                : "Send Message"
-            }
-          >
-            {isStreaming ? (
-              <Square className="w-4 h-4" />
-            ) : (
-              <Send className="w-4 h-4" />
+            {/* Unified Error Display (only the most recent one) */}
+            {latestError && (
+              <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+                <p className="text-xs text-red-600 dark:text-red-400">
+                  {latestError}
+                </p>
+              </div>
             )}
-          </Button>
+
+            {/* 功能开发中提示 - 国际版 */}
+            {featureInDevMessage && (
+              <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                <p className="text-xs text-yellow-600 dark:text-yellow-400">
+                  ⚠️ {featureInDevMessage}
+                </p>
+              </div>
+            )}
+
+            <StatusIndicators
+              isRecording={isRecording}
+              isProVoiceChatActive={isProVoiceChatActive}
+              stopProVoiceChat={stopProVoiceChat}
+              isProVideoChatActive={isProVideoChatActive}
+              stopProVideoChat={stopProVideoChat}
+              currentLocation={currentLocation}
+              clearLocation={clearLocation}
+            />
+
+            <CameraPanel
+              isCameraActive={isCameraActive}
+              cameraStream={cameraStream}
+              isVideoRecording={isVideoRecording}
+              recordingTime={recordingTime}
+              cameraMode={cameraMode}
+              isCapturing={isCapturing}
+              isConverting={isConverting}
+              convertProgress={convertProgress}
+              switchCameraMode={switchCameraMode}
+              capturePhoto={capturePhoto}
+              toggleVideoRecording={toggleVideoRecording}
+              stopCamera={stopCamera}
+              formatRecordingTime={formatRecordingTime}
+              onMediaCaptured={handleMediaCaptured}
+              onFeatureInDev={showFeatureInDevelopment}
+              selectedLanguage={selectedLanguage}
+            />
+
+            <AudioRecordingPanel
+              isActive={isAudioPanelActive}
+              onClose={() => setIsAudioPanelActive(false)}
+              onUpload={(result) => {
+                const file = new File([result.blob], result.name, { type: result.blob.type });
+                triggerFileUpload(file);
+              }}
+              onFeatureInDev={showFeatureInDevelopment}
+              selectedLanguage={selectedLanguage}
+            />
+
+            <UploadedFilesList
+              uploadedFiles={uploadedFiles}
+              maxFiles={MAX_FILES}
+              formatFileSize={formatFileSize}
+              setUploadedFiles={setUploadedFiles}
+              removeFile={removeFile}
+              getFileIcon={getFileIcon}
+            />
+          </div>
         </div>
-
-        {/* Error Messages and Other Components */}
-        {latestError && (
-          <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
-            <p className="text-xs text-red-600 dark:text-red-400">
-              {latestError}
-            </p>
-          </div>
-        )}
-
-        {featureInDevMessage && (
-          <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-            <p className="text-xs text-yellow-600 dark:text-yellow-400">
-              {featureInDevMessage}
-            </p>
-          </div>
-        )}
-
-        <StatusIndicators
-          isRecording={isRecording}
-          isProVoiceChatActive={isProVoiceChatActive}
-          stopProVoiceChat={stopProVoiceChat}
-          isProVideoChatActive={isProVideoChatActive}
-          stopProVideoChat={stopProVideoChat}
-          currentLocation={currentLocation}
-          clearLocation={clearLocation}
-        />
-
-        <CameraPanel
-          isCameraActive={isCameraActive}
-          cameraStream={cameraStream}
-          isVideoRecording={isVideoRecording}
-          recordingTime={recordingTime}
-          cameraMode={cameraMode}
-          isCapturing={isCapturing}
-          isConverting={isConverting}
-          convertProgress={convertProgress}
-          switchCameraMode={switchCameraMode}
-          capturePhoto={capturePhoto}
-          toggleVideoRecording={toggleVideoRecording}
-          stopCamera={stopCamera}
-          formatRecordingTime={formatRecordingTime}
-          onMediaCaptured={handleMediaCaptured}
-          onFeatureInDev={showFeatureInDevelopment}
-          selectedLanguage={selectedLanguage}
-        />
-
-        <AudioRecordingPanel
-          isActive={isAudioPanelActive}
-          onClose={() => setIsAudioPanelActive(false)}
-          onUpload={(result) => {
-            const file = new File([result.blob], result.name, { type: result.blob.type });
-            triggerFileUpload(file);
-          }}
-          onFeatureInDev={showFeatureInDevelopment}
-          selectedLanguage={selectedLanguage}
-        />
-
-        <UploadedFilesList
-          uploadedFiles={uploadedFiles}
-          maxFiles={MAX_FILES}
-          formatFileSize={formatFileSize}
-          setUploadedFiles={setUploadedFiles}
-          removeFile={removeFile}
-          getFileIcon={getFileIcon}
-        />
       </div>
     </div>
   );

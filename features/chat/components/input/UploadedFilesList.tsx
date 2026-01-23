@@ -89,9 +89,9 @@ export function UploadedFilesList({
               )}
 
               {/* 文件信息 */}
-              <div className="flex flex-col min-w-0 max-w-[100px]">
-                <span className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate">
-                  {file.name.length > 12 ? file.name.substring(0, 10) + "..." : file.name}
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate" title={file.name}>
+                  {file.name}
                 </span>
                 <span className="text-[10px] text-gray-400 dark:text-gray-500">
                   {formatFileSize(file.size)}

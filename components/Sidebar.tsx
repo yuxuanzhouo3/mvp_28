@@ -309,7 +309,10 @@ export default function Sidebar({
                                   : "text-gray-700 dark:text-gray-300"
                               }`}
                               onClick={() => selectChat(chat.id)}
-                              onDoubleClick={() => setEditingChatId(chat.id)}
+                              onDoubleClick={() => {
+                                setEditingChatId(chat.id);
+                                setEditingTitle(chat.title);
+                              }}
                             >
                               <div className="flex items-center space-x-1.5 min-w-0 overflow-hidden">
                                 <MessageSquare className="w-2.5 h-2.5 shrink-0" />
@@ -320,11 +323,12 @@ export default function Sidebar({
                                       onChange={(e) =>
                                         setEditingTitle(e.target.value)
                                       }
-                                      className="h-5 text-xs bg-white dark:bg-[#565869] text-gray-900 dark:text-[#ececf1]"
+                                      className="h-5 text-xs bg-white dark:bg-[#565869] text-gray-900 dark:text-[#ececf1] max-w-[8rem]"
                                       onKeyDown={(e) => {
                                         if (e.key === "Enter") saveTitle();
                                         if (e.key === "Escape") cancelEditing();
                                       }}
+                                      maxLength={10}
                                       autoFocus
                                     />
                                     <Button
@@ -350,7 +354,7 @@ export default function Sidebar({
                                       className="truncate flex-1 min-w-0 text-gray-700 dark:text-gray-300"
                                       title={chat.title}
                                     >
-                                      {truncateText(chat.title, 8)}
+                                      {truncateText(chat.title, 10)}
                                     </span>
                                     <div className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center space-x-0.5">
                                       <Button
@@ -360,27 +364,10 @@ export default function Sidebar({
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           setEditingChatId(chat.id);
+                                          setEditingTitle(chat.title);
                                         }}
                                       >
                                         <Edit3 className="w-2.5 h-2.5" />
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          selectChat(chat.id);
-                                          setShowShareDialog(true);
-                                        }}
-                                        disabled={chat.messages.length === 0}
-                                        title={
-                                          chat.messages.length === 0
-                                            ? "No conversation to share"
-                                            : "Share conversation"
-                                        }
-                                      >
-                                        <Upload className="w-2.5 h-2.5" />
                                       </Button>
                                       {appUser?.plan &&
                                         ["pro", "enterprise"].includes(
@@ -423,22 +410,14 @@ export default function Sidebar({
                           </ContextMenuTrigger>
                           <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
                             <ContextMenuItem
-                              onClick={() => setEditingChatId(chat.id)}
+                              onClick={() => {
+                                setEditingChatId(chat.id);
+                                setEditingTitle(chat.title);
+                              }}
                               className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
                             >
                               <Edit3 className="w-4 h-4 mr-2" />
                               Rename
-                            </ContextMenuItem>
-                            <ContextMenuItem
-                              onClick={() => {
-                                selectChat(chat.id);
-                                setShowShareDialog(true);
-                              }}
-                              disabled={chat.messages.length === 0}
-                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              <Upload className="w-4 h-4 mr-2" />
-                              Share
                             </ContextMenuItem>
                             {appUser?.plan &&
                               ["pro", "enterprise"].includes(
@@ -514,7 +493,10 @@ export default function Sidebar({
                                   : "text-gray-700 dark:text-gray-300"
                               }`}
                               onClick={() => selectChat(chat.id)}
-                              onDoubleClick={() => setEditingChatId(chat.id)}
+                              onDoubleClick={() => {
+                                setEditingChatId(chat.id);
+                                setEditingTitle(chat.title);
+                              }}
                             >
                               <div className="flex items-center space-x-1.5 min-w-0 overflow-hidden">
                                 <MessageSquare className="w-2.5 h-2.5 shrink-0" />
@@ -553,7 +535,7 @@ export default function Sidebar({
                                       className="truncate flex-1 min-w-0 text-gray-700 dark:text-gray-300"
                                       title={chat.title}
                                     >
-                                      {truncateText(chat.title, 8)}
+                                      {truncateText(chat.title, 10)}
                                     </span>
                                     <div className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center space-x-0.5">
                                       <Button
@@ -563,27 +545,10 @@ export default function Sidebar({
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           setEditingChatId(chat.id);
+                                          setEditingTitle(chat.title);
                                         }}
                                       >
                                         <Edit3 className="w-2.5 h-2.5" />
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          selectChat(chat.id);
-                                          setShowShareDialog(true);
-                                        }}
-                                        disabled={chat.messages.length === 0}
-                                        title={
-                                          chat.messages.length === 0
-                                            ? "No conversation to share"
-                                            : "Share conversation"
-                                        }
-                                      >
-                                        <Upload className="w-2.5 h-2.5" />
                                       </Button>
                                       {appUser?.plan &&
                                         ["pro", "enterprise"].includes(
@@ -626,22 +591,14 @@ export default function Sidebar({
                           </ContextMenuTrigger>
                           <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
                             <ContextMenuItem
-                              onClick={() => setEditingChatId(chat.id)}
+                              onClick={() => {
+                                setEditingChatId(chat.id);
+                                setEditingTitle(chat.title);
+                              }}
                               className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
                             >
                               <Edit3 className="w-4 h-4 mr-2" />
                               Rename
-                            </ContextMenuItem>
-                            <ContextMenuItem
-                              onClick={() => {
-                                selectChat(chat.id);
-                                setShowShareDialog(true);
-                              }}
-                              disabled={chat.messages.length === 0}
-                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              <Upload className="w-4 h-4 mr-2" />
-                              Share
                             </ContextMenuItem>
                             {appUser?.plan &&
                               ["pro", "enterprise"].includes(
@@ -717,7 +674,10 @@ export default function Sidebar({
                                   : "text-gray-700 dark:text-gray-300"
                               }`}
                               onClick={() => selectChat(chat.id)}
-                              onDoubleClick={() => setEditingChatId(chat.id)}
+                              onDoubleClick={() => {
+                                setEditingChatId(chat.id);
+                                setEditingTitle(chat.title);
+                              }}
                             >
                               <div className="flex items-center space-x-1.5 min-w-0 overflow-hidden">
                                 <MessageSquare className="w-2.5 h-2.5 shrink-0" />
@@ -756,7 +716,7 @@ export default function Sidebar({
                                       className="truncate flex-1 min-w-0 text-gray-700 dark:text-gray-300"
                                       title={chat.title}
                                     >
-                                      {truncateText(chat.title, 8)}
+                                      {truncateText(chat.title, 10)}
                                     </span>
                                     <div className="shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center space-x-0.5">
                                       <Button
@@ -766,27 +726,10 @@ export default function Sidebar({
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           setEditingChatId(chat.id);
+                                          setEditingTitle(chat.title);
                                         }}
                                       >
                                         <Edit3 className="w-2.5 h-2.5" />
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="h-5 w-5 p-0 hover:bg-gray-200 dark:hover:bg-[#565869]"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          selectChat(chat.id);
-                                          setShowShareDialog(true);
-                                        }}
-                                        disabled={chat.messages.length === 0}
-                                        title={
-                                          chat.messages.length === 0
-                                            ? "No conversation to share"
-                                            : "Share conversation"
-                                        }
-                                      >
-                                        <Upload className="w-2.5 h-2.5" />
                                       </Button>
                                       {appUser?.plan &&
                                         ["pro", "enterprise"].includes(
@@ -829,22 +772,14 @@ export default function Sidebar({
                           </ContextMenuTrigger>
                           <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
                             <ContextMenuItem
-                              onClick={() => setEditingChatId(chat.id)}
+                              onClick={() => {
+                                setEditingChatId(chat.id);
+                                setEditingTitle(chat.title);
+                              }}
                               className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
                             >
                               <Edit3 className="w-4 h-4 mr-2" />
                               Rename
-                            </ContextMenuItem>
-                            <ContextMenuItem
-                              onClick={() => {
-                                selectChat(chat.id);
-                                setShowShareDialog(true);
-                              }}
-                              disabled={chat.messages.length === 0}
-                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              <Upload className="w-4 h-4 mr-2" />
-                              Share
                             </ContextMenuItem>
                             {appUser?.plan &&
                               ["pro", "enterprise"].includes(

@@ -4416,28 +4416,69 @@ const loadMessagesForConversation = useCallback(
 
   // Missing functions that need to be added
   const generateShareLink = async () => {
-    // Implementation for generating share link
-    if(false) console.log("generateShareLink called");
+    if (!currentChatId || messages.length === 0) return;
+
+    setIsGeneratingLink(true);
+    try {
+      const res = await fetch("/api/share/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          chatId: currentChatId,
+          makePublic: makeDiscoverable,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setShareLink(data.shareLink);
+        setShareSecret(data.secret || "");
+        setShowShareDialog(true);
+      } else {
+        alert(data.error || (selectedLanguage === "zh" ? "生成分享链接失败" : "Failed to generate share link"));
+      }
+    } catch (err) {
+      console.error("Share link generation error:", err);
+      alert(selectedLanguage === "zh" ? "网络错误，请重试" : "Network error, please try again");
+    } finally {
+      setIsGeneratingLink(false);
+    }
   };
 
   const copyShareLink = () => {
-    // Implementation for copying share link
-    if(false) console.log("copyShareLink called");
+    copyToClipboard(shareLink);
   };
 
   const copyShareSecret = () => {
-    // Implementation for copying share secret
-    if(false) console.log("copyShareSecret called");
+    copyToClipboard(shareSecret);
   };
 
-  const regenerateSecretKey = () => {
-    // Implementation for regenerating secret key
-    if(false) console.log("regenerateSecretKey called");
+  const regenerateSecretKey = async () => {
+    if (!shareLink) return;
+    await generateShareLink();
   };
 
-  const shareToSocialMedia = () => {
-    // Implementation for sharing to social media
-    if(false) console.log("shareToSocialMedia called");
+  const shareToSocialMedia = (platform: string) => {
+    const text = selectedLanguage === "zh"
+      ? `查看我的 AI 对话`
+      : `Check out my AI conversation`;
+    const url = shareLink;
+
+    const shareUrls: Record<string, string> = {
+      twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
+      whatsapp: `https://wa.me/?text=${encodeURIComponent(text + " " + url)}`,
+      telegram: `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
+      reddit: `https://reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(text)}`,
+      email: `mailto:?subject=${encodeURIComponent(text)}&body=${encodeURIComponent(url)}`,
+    };
+
+    const shareUrl = shareUrls[platform];
+    if (shareUrl) {
+      window.open(shareUrl, "_blank");
+    }
   };
 
   const handleResetCancel = () => {

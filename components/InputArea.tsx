@@ -607,7 +607,6 @@ const InputArea = React.memo(function InputArea({
       {/* Hidden file input - must be outside Popover to always exist in DOM */}
       <input
         type="file"
-        multiple
         onChange={handleFileUpload}
         className="hidden"
         id="file-upload"

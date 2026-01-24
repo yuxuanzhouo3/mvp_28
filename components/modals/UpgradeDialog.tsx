@@ -686,38 +686,38 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
 
       {/* 订阅规则弹窗 */}
       <Dialog open={showTerms} onOpenChange={setShowTerms}>
-        <DialogContent className="w-[95vw] sm:max-w-2xl lg:max-w-3xl overflow-visible rounded-lg sm:rounded-xl p-0 border-0 shadow-2xl">
+        <DialogContent className="w-[95vw] sm:max-w-2xl lg:max-w-4xl max-h-[90vh] sm:max-h-[85vh] overflow-hidden rounded-xl sm:rounded-2xl p-0 border-0 shadow-2xl">
           {/* 装饰性背景 */}
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900" />
-          <div className="absolute top-0 right-0 w-24 sm:w-32 lg:w-48 h-24 sm:h-32 lg:h-48 bg-gradient-to-br from-emerald-400/10 to-teal-500/10 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-24 sm:w-32 lg:w-48 h-24 sm:h-32 lg:h-48 bg-gradient-to-br from-blue-400/10 to-cyan-500/10 rounded-full blur-3xl" />
+          <div className="absolute top-0 right-0 w-32 sm:w-48 lg:w-64 h-32 sm:h-48 lg:h-64 bg-gradient-to-br from-emerald-400/10 to-teal-500/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-32 sm:w-48 lg:w-64 h-32 sm:h-48 lg:h-64 bg-gradient-to-br from-blue-400/10 to-cyan-500/10 rounded-full blur-3xl" />
 
-          <div className="relative z-10 flex flex-col">
-            <DialogHeader className="px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200/80 dark:border-gray-700/80 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm flex-shrink-0">
-              <DialogTitle className="flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base font-bold text-gray-900 dark:text-white">
-                <div className="p-1 sm:p-1.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-md sm:rounded-lg shadow-lg shadow-emerald-500/25">
-                  <svg className="w-3 h-3 sm:w-4 sm:h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="relative z-10 flex flex-col h-full max-h-[90vh] sm:max-h-[85vh]">
+            <DialogHeader className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200/80 dark:border-gray-700/80 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm flex-shrink-0">
+              <DialogTitle className="flex items-center gap-2 sm:gap-3 text-base sm:text-lg font-bold text-gray-900 dark:text-white">
+                <div className="p-1.5 sm:p-2 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg sm:rounded-xl shadow-lg shadow-emerald-500/25">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
                 <span>{tr("Subscription Terms", "订阅规则")}</span>
               </DialogTitle>
-              <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5 ml-6 sm:ml-8">
+              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1 ml-8 sm:ml-12">
                 {tr("Please read the following subscription terms carefully", "请仔细阅读以下订阅规则")}
               </p>
             </DialogHeader>
 
-            <div className="px-2 sm:px-4 py-2 sm:py-3 bg-white/50 dark:bg-slate-800/50">
+            <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-3 sm:py-4 bg-white/50 dark:bg-slate-800/50">
               <SubscriptionTermsContent isDomestic={isDomesticVersion} />
             </div>
 
-            <div className="px-3 sm:px-4 py-2 sm:py-3 border-t border-gray-200/80 dark:border-gray-700/80 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm flex-shrink-0">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200/80 dark:border-gray-700/80 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm flex-shrink-0">
               <button
                 onClick={() => {
                   setShowTerms(false);
                   setAgreeRules(true);
                 }}
-                className="w-full py-1.5 sm:py-2 px-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs sm:text-sm font-medium rounded-md sm:rounded-lg shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 hover:-translate-y-0.5"
+                className="w-full py-2 sm:py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-sm sm:text-base font-medium rounded-lg sm:rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 hover:-translate-y-0.5"
               >
                 {tr("I have read and agree", "我已阅读并同意")}
               </button>

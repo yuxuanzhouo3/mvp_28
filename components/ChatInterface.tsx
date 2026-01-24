@@ -8,20 +8,23 @@ import {
 } from "@/components/ui/context-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Copy, Share, Download, Star, Zap, Bot, User } from "lucide-react";
+import { Copy, Share, Download, Star, Zap, Bot, User, Trash2 } from "lucide-react";
 import { AudioPlayer } from "./AudioPlayer";
 import { Message } from "../types";
 import type { ReactNode } from "react";
 import { externalModels } from "@/constants";
 import { GENERAL_MODEL_ID } from "@/utils/model-limits";
 import { formatMessageDate, isSameDay } from "@/lib/utils";
-import { useState, memo, useEffect, useRef } from "react";
+import { useState, memo, useEffect, useRef, useMemo } from "react";
 import React from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
+import { marked } from "marked";
+import markedKatex from "marked-katex-extension";
 import "katex/dist/katex.min.css";
+
+// 配置 marked 使用 katex 扩展（只配置一次）
+marked.use(markedKatex({
+  throwOnError: false
+}));
 
 interface ChatInterfaceProps {
   messages: Message[];
@@ -67,6 +70,62 @@ const formatModelName = (raw: string) => {
   return streaming ? `${mapped} (Streaming...)` : mapped;
 };
 
+// AI消息内容组件，使用memo防止不必要的重新渲染
+const AIMessageContent = memo(({ content, isStreaming }: {
+  content: string;
+  isStreaming?: boolean;
+}) => {
+  // 使用 marked 解析 markdown，避免 ReactMarkdown 的文本选择问题
+  const htmlContent = useMemo(() => {
+    try {
+      // 预处理内容
+      let processedContent = content;
+
+      // 1. 修复标题格式（###1 -> ### 1）
+      processedContent = processedContent.replace(/^(#{1,6})(\d)/gm, '$1 $2');
+
+      // 2. 修复列表格式（-文字 -> - 文字，包括缩进的列表项）
+      processedContent = processedContent.replace(/^(\s*)-([^\s])/gm, '$1- $2');
+
+      // 3. 转换LaTeX分隔符为marked-katex支持的格式
+      // 块级公式：\[ ... \] -> $$...$$（确保在同一行）
+      processedContent = processedContent.replace(/\\\[\s*/g, '$$');
+      processedContent = processedContent.replace(/\s*\\\]/g, '$$');
+
+      // 行内公式：\( ... \) -> $ ... $
+      processedContent = processedContent.replace(/\\\(/g, '$');
+      processedContent = processedContent.replace(/\\\)/g, '$');
+
+      // 3. 转换 \boxed{...} 为带CSS样式的span
+      processedContent = processedContent.replace(/\\boxed\{([^}]+)\}/g, '<span class="math-boxed">$1</span>');
+
+      return marked.parse(processedContent, {
+        breaks: true,
+        gfm: true,
+      });
+    } catch (error) {
+      console.error('Markdown parsing error:', error);
+      return content;
+    }
+  }, [content]);
+
+  return (
+    <div
+      className="text-sm leading-relaxed space-y-2 markdown-content"
+      style={{
+        fontSize: 'var(--chat-font-size, 14px)',
+        userSelect: 'text',
+        WebkitUserSelect: 'text',
+        MozUserSelect: 'text',
+        msUserSelect: 'text'
+      }}
+      dangerouslySetInnerHTML={{ __html: htmlContent }}
+    />
+  );
+});
+
+AIMessageContent.displayName = 'AIMessageContent';
+
 export default memo(ChatInterface);
 
 function ChatInterface({
@@ -109,9 +168,14 @@ function ChatInterface({
   const showContextBanner =
     ctxLimit !== null && ctxRemaining !== null && ctxRemaining <= 5 && ctxRemaining > 0;
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [downloadedMessageId, setDownloadedMessageId] = useState<string | null>(null);
   const [mediaPreviewMap, setMediaPreviewMap] = useState<Record<string, string>>({});
   const [imagePreviewSrc, setImagePreviewSrc] = useState<string | null>(null);
   const resolvingIdsRef = useRef<Set<string>>(new Set());
+  const [showCopyButton, setShowCopyButton] = useState(false);
+  const [copyButtonPosition, setCopyButtonPosition] = useState({ x: 0, y: 0 });
+  const [selectedText, setSelectedText] = useState("");
 
   const isDirectUrl = (val: string) =>
     /^https?:\/\//i.test(val || "") || (val || "").startsWith("blob:");
@@ -122,6 +186,43 @@ function ChatInterface({
     return mediaPreviewMap[val] || null;
   };
 
+  const handleTextSelection = () => {
+    const selection = window.getSelection();
+    const text = selection?.toString().trim();
+
+    if (text && text.length > 0) {
+      try {
+        const range = selection?.getRangeAt(0);
+        const rect = range?.getBoundingClientRect();
+
+        if (rect && rect.width > 0 && rect.height > 0) {
+          // 计算按钮位置，考虑滚动偏移
+          const scrollY = window.scrollY || window.pageYOffset;
+          const buttonX = rect.left + rect.width / 2;
+          const buttonY = rect.top + scrollY - 45;
+
+          // 边界检查，确保按钮在视口内
+          const finalX = Math.max(80, Math.min(buttonX, window.innerWidth - 80));
+          const finalY = Math.max(10, buttonY);
+
+          setCopyButtonPosition({ x: finalX, y: finalY });
+          setSelectedText(text);
+          setShowCopyButton(true);
+        }
+      } catch (error) {
+        // 静默处理选择错误
+        setShowCopyButton(false);
+      }
+    } else {
+      setShowCopyButton(false);
+    }
+  };
+
+  const handleCopySelected = () => {
+    copyToClipboard(selectedText);
+    setShowCopyButton(false);
+  };
+
   // 关闭大图预览（含 Esc 支持）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -129,6 +230,19 @@ function ChatInterface({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // 监听鼠标松开事件来检测文本选择
+  useEffect(() => {
+    const handleMouseUp = () => {
+      // 延迟执行,确保选择已完成
+      setTimeout(() => {
+        handleTextSelection();
+      }, 10);
+    };
+
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => document.removeEventListener("mouseup", handleMouseUp);
   }, []);
 
   useEffect(() => {
@@ -206,15 +320,28 @@ function ChatInterface({
 
   // Normalize common AI 输出的"[\\vec{F} = m \\vec{a}]"或"\\[ ... \\]"为 math 块，仅在原文完全没有 $ 时执行，避免重复渲染
   const normalizeMathContent = (text: string) => {
+    // 临时调试：查看包含答案的原始内容
+    if (text.includes('答案')) {
+      console.log('[DEBUG] 原始内容:', text.substring(text.indexOf('答案') - 20, text.indexOf('答案') + 50));
+    }
+
     // If user已写 $, 不处理，避免重复
     if (/\$/.test(text)) return text;
     let out = text;
 
-    // 修复Markdown标题语法问题
-    // 1. 确保标题符号后有空格: "###1." => "### 1."
-    out = out.replace(/^(#{1,6})(?!\s)/gm, '$1 ');
-    // 2. 移除标题符号后多余的#: "## # 2." => "## 2."
-    out = out.replace(/^(#{1,6})\s+#\s+/gm, '$1 ');
+    // 修复Markdown标题语法问题 - 全面处理各种格式
+    // 1. 移除标题前的多余空格和#: "  ## # 2." => "## 2."
+    out = out.replace(/^[\s#]*(#{1,6})\s*#+\s*/gm, '$1 ');
+    // 2. 确保标题符号后有且仅有一个空格: "###1." => "### 1.", "##  2." => "## 2."
+    out = out.replace(/^(#{1,6})\s*/gm, '$1 ');
+    // 3. 清理标题内容开头的多余#: "### # 标题" => "### 标题"
+    out = out.replace(/^(#{1,6}\s+)#+\s*/gm, '$1');
+
+    // 修复列表标记格式: "-项目" => "- 项目", "+项目" => "+ 项目", "*项目" => "* 项目"
+    out = out.replace(/^([-+*])(?!\s)/gm, '$1 ');
+
+    // \boxed{...} 转换为HTML边框样式（避免KaTeX渲染问题）
+    out = out.replace(/\\boxed\{([^}]+)\}/g, '<span style="display:inline-block;border:1.5px solid currentColor;padding:3px 8px;border-radius:3px;margin:0 2px;">$1</span>');
 
     // \[ ... \]  => $$ ... $$
     out = out.replace(/\\\[(.+?)\\\]/gs, (_m, inner) => `$$${inner}$$`);
@@ -523,19 +650,10 @@ function ChatInterface({
                             )}
                           </p>
                         ) : (
-                          <div className="text-sm leading-relaxed space-y-2" style={{ fontSize: 'var(--chat-font-size, 14px)' }}>
-                            <ReactMarkdown
-                              // math should run before gfm to avoid gfm eating backslashes/underscores
-                              remarkPlugins={[remarkMath, remarkGfm]}
-                              rehypePlugins={[rehypeKatex]}
-                              components={markdownComponents}
-                            >
-                              {normalizeMathContent(message.content)}
-                            </ReactMarkdown>
-                            {message.isStreaming && (
-                              <span className="inline-block w-0.5 h-4 bg-gray-900 dark:bg-[#ececf1] ml-1 animate-pulse"></span>
-                            )}
-                          </div>
+                          <AIMessageContent
+                            content={message.content}
+                            isStreaming={message.isStreaming}
+                          />
                         )}
                         {(resolvedImages.length > 0 ||
                           resolvedVideos.length > 0 ||
@@ -598,31 +716,37 @@ function ChatInterface({
                               size="sm"
                               variant="ghost"
                               className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
-                              onClick={() => copyToClipboard(message.content)}
+                              onClick={() => {
+                                copyToClipboard(message.content);
+                                setCopiedMessageId(message.id);
+                                setTimeout(() => setCopiedMessageId(null), 2000);
+                              }}
                               title={getLocalizedText("copyResponse")}
                             >
                               <Copy className="w-3 h-3 sm:mr-1" />
-                              <span className="hidden sm:inline">{getLocalizedText("copy")}</span>
+                              <span className="hidden sm:inline">
+                                {copiedMessageId === message.id
+                                  ? (getLocalizedText("copied") || "已复制")
+                                  : (getLocalizedText("copy") || "复制")}
+                              </span>
                             </Button>
                             <Button
                               size="sm"
                               variant="ghost"
                               className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
-                              onClick={() => shareMessage(message.content)}
-                              title={getLocalizedText("shareResponse")}
-                            >
-                              <Share className="w-3 h-3 sm:mr-1" />
-                              <span className="hidden sm:inline">{getLocalizedText("share")}</span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
-                              onClick={() => downloadMessage(message.content, message.id)}
+                              onClick={() => {
+                                downloadMessage(message.content, message.id);
+                                setDownloadedMessageId(message.id);
+                                setTimeout(() => setDownloadedMessageId(null), 2000);
+                              }}
                               title={getLocalizedText("downloadResponse")}
                             >
                               <Download className="w-3 h-3 sm:mr-1" />
-                              <span className="hidden sm:inline">{getLocalizedText("download")}</span>
+                              <span className="hidden sm:inline">
+                                {downloadedMessageId === message.id
+                                  ? (getLocalizedText("downloaded") || "已下载")
+                                  : (getLocalizedText("download") || "下载")}
+                              </span>
                             </Button>
                             <Button
                               size="sm"
@@ -697,24 +821,31 @@ function ChatInterface({
                           </div>
                         )}
 
-                        <ContextMenu>
-                          <ContextMenuTrigger asChild>{bubble}</ContextMenuTrigger>
-                          <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
-                            <ContextMenuItem
-                              onClick={() => copyToClipboard(message.content)}
-                              className="text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
-                            >
-                              <Copy className="w-4 h-4 mr-2" />
-                              {getLocalizedText("copy") || "Copy"}
-                            </ContextMenuItem>
-                            <ContextMenuItem
-                              onClick={() => onDeleteMessage(message.id)}
-                              className="text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30"
-                            >
-                              {getLocalizedText("delete") || "Delete"}
-                            </ContextMenuItem>
-                          </ContextMenuContent>
-                        </ContextMenu>
+                        {isUser ? (
+                          <ContextMenu>
+                            <ContextMenuTrigger asChild>
+                              <div onContextMenu={(e) => {
+                                // 只有在没有选中文本时才触发右键菜单
+                                if (!isUser && window.getSelection()?.toString()) {
+                                  e.preventDefault();
+                                }
+                              }}>
+                                {bubble}
+                              </div>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
+                              <ContextMenuItem
+                                onClick={() => onDeleteMessage(message.id)}
+                                className="text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                {getLocalizedText("delete") || "Delete"}
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        ) : (
+                          bubble
+                        )}
                       </div>
                       </React.Fragment>
                     );
@@ -755,6 +886,21 @@ function ChatInterface({
             onClick={(e) => e.stopPropagation()}
           />
         </div>
+      )}
+      {showCopyButton && (
+        <button
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={handleCopySelected}
+          className="fixed z-[9999] px-3 py-2 bg-white dark:bg-[#2f3039] text-gray-900 dark:text-gray-100 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-[#3a3b44] transition-colors flex items-center gap-2"
+          style={{
+            left: `${copyButtonPosition.x}px`,
+            top: `${copyButtonPosition.y}px`,
+            transform: 'translateX(-50%)'
+          }}
+        >
+          <Copy className="w-4 h-4" />
+          <span className="text-sm">{getLocalizedText("copy") || "Copy"}</span>
+        </button>
       )}
     </div>
   );

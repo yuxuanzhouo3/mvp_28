@@ -43,6 +43,92 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     @apply bg-gray-400 dark:bg-gray-500;
   }
+
+  /* Markdown 内容样式 */
+  .markdown-content {
+    @apply text-gray-900 dark:text-[#e7e9f3];
+  }
+
+  .markdown-content h1 {
+    @apply text-xl font-semibold mt-2 mb-1 leading-snug;
+  }
+
+  .markdown-content h2 {
+    @apply text-lg font-semibold mt-2 mb-1 leading-snug;
+  }
+
+  .markdown-content h3 {
+    @apply font-semibold mt-2 mb-1 leading-snug;
+  }
+
+  .markdown-content p {
+    @apply mb-2 leading-relaxed;
+  }
+
+  .markdown-content strong {
+    @apply font-semibold;
+  }
+
+  .markdown-content em {
+    @apply italic;
+  }
+
+  .markdown-content ul {
+    @apply list-disc pl-5 space-y-1 mb-2;
+  }
+
+  .markdown-content ol {
+    @apply list-decimal pl-5 space-y-1 mb-2;
+  }
+
+  .markdown-content li {
+    @apply leading-relaxed;
+  }
+
+  .markdown-content blockquote {
+    @apply border-l-4 border-gray-200 dark:border-gray-600 pl-3 italic text-gray-700 dark:text-gray-200 mb-2;
+  }
+
+  .markdown-content code {
+    @apply px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#2f3037] text-[0.95em];
+  }
+
+  .markdown-content pre {
+    @apply bg-gray-900/90 text-gray-100 rounded-md p-3 overflow-x-auto text-sm mb-3;
+  }
+
+  .markdown-content pre code {
+    @apply px-0 py-0 bg-transparent;
+  }
+
+  .markdown-content a {
+    @apply text-blue-600 dark:text-blue-400 underline underline-offset-2 hover:text-blue-700 dark:hover:text-blue-300;
+  }
+
+  .markdown-content table {
+    @apply border-collapse border border-gray-300 dark:border-gray-600 my-2 text-sm;
+  }
+
+  .markdown-content thead {
+    @apply bg-gray-100 dark:bg-[#3a3b42];
+  }
+
+  .markdown-content td {
+    @apply border border-gray-300 dark:border-gray-600 px-2 py-1;
+  }
+
+  .markdown-content th {
+    @apply border border-gray-300 dark:border-gray-600 px-2 py-1 text-left font-semibold;
+  }
+
+  /* 数学公式框样式 - 用于 \boxed{} */
+  .math-boxed {
+    display: inline-block;
+    padding: 0.2em 0.4em;
+    border: 1px solid currentColor;
+    border-radius: 0.25em;
+    margin: 0 0.2em;
+  }
 }
 
 @layer base {
@@ -137,8 +223,8 @@
     height: -webkit-fill-available;
   }
 
-  /* 防止移动端双击缩放 */
-  * {
+  /* 防止移动端双击缩放，但允许文本选择 */
+  button, a, input[type="button"], input[type="submit"] {
     touch-action: manipulation;
   }
 }

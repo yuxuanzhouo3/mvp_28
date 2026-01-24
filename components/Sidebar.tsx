@@ -889,7 +889,13 @@ export default function Sidebar({
                                   <img
                                     src={link.icon_url}
                                     alt={link.title}
+                                    loading="lazy"
+                                    decoding="async"
                                     className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                      e.currentTarget.parentElement!.innerHTML = `<span class="text-2xl">${link.title.charAt(0)}</span>`;
+                                    }}
                                   />
                                 ) : (
                                   <span className="text-2xl">{link.icon_url}</span>

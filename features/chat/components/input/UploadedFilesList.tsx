@@ -77,9 +77,20 @@ export function UploadedFilesList({
               {isMedia && file.preview ? (
                 <div className="w-8 h-8 rounded overflow-hidden flex-shrink-0">
                   {file.type.startsWith("image/") ? (
-                    <img src={file.preview} alt="" className="w-full h-full object-cover" />
+                    <img
+                      src={file.preview}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                    />
                   ) : (
-                    <video src={file.preview} className="w-full h-full object-cover" muted />
+                    <video
+                      src={file.preview}
+                      className="w-full h-full object-cover"
+                      muted
+                      preload="metadata"
+                    />
                   )}
                 </div>
               ) : (

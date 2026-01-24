@@ -240,6 +240,11 @@ export default function AdBanner({
             alt={currentAd.title}
             className={`w-full h-full object-fill ${isSideAd || isBottomSideAd ? "rounded-xl" : !isTop && position !== "sidebar" ? "rounded-lg" : ""}`}
             loading="lazy"
+            decoding="async"
+            onError={(e) => {
+              e.currentTarget.style.opacity = '0.5';
+              e.currentTarget.style.filter = 'grayscale(100%)';
+            }}
           />
         ) : (
           <video
@@ -249,6 +254,7 @@ export default function AdBanner({
             muted
             loop
             playsInline
+            preload="metadata"
           />
         )}
       </button>

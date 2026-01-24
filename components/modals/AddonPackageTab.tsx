@@ -189,7 +189,7 @@ export function AddonPackageTab({
             <div
               key={pkg.id}
               onClick={() => setSelectedPackage(pkg)}
-              className={`relative cursor-pointer transition-all duration-300 flex-shrink-0 w-[260px] md:w-auto snap-center ${
+              className={`relative cursor-pointer transition-all duration-300 flex-shrink-0 w-[48vw] md:w-auto snap-center ${
                 isSelected ? "scale-[1.02]" : "hover:scale-[1.01]"
               }`}
             >

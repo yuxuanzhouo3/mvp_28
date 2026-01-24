@@ -30,6 +30,7 @@ import {
   ChevronDown,
   User,
   Menu,
+  ChevronLeft,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchQuotaShared } from "@/utils/quota-fetcher";
@@ -435,17 +436,21 @@ export default function Header({
   return (
     <header className="bg-white dark:bg-[#40414f] border-b border-gray-200 dark:border-[#40414f] shadow-sm transition-colors overflow-x-hidden">
       <div className="max-w-full mx-auto px-2 sm:px-3 lg:px-4 overflow-x-hidden">
-        <div className="flex justify-between items-center h-11 sm:h-14 md:h-16 overflow-x-hidden gap-1.5 sm:gap-2">
+        <div className="flex items-center h-11 sm:h-14 md:h-16 overflow-x-hidden gap-1.5 sm:gap-2">
           {/* 侧边栏切换按钮 - 最左侧 */}
           {setSidebarCollapsed && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="h-8 w-8 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] flex-shrink-0"
+              className="h-8 w-8 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] flex-shrink-0 transition-all duration-200"
               title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
             >
-              <Menu className="w-4 h-4" />
+              {sidebarCollapsed ? (
+                <Menu className="w-5 h-5" />
+              ) : (
+                <ChevronLeft className="w-5 h-5" />
+              )}
             </Button>
           )}
 
@@ -753,27 +758,8 @@ export default function Header({
             )}
           </div>
 
-          {/* 顶部广告位 - 居中显示，移动端隐藏，受全局广告开关控制 */}
-          {showGlobalAds && (
-            <div className="flex-1 hidden lg:flex justify-center px-4">
-              <AdBanner
-                position="top"
-                isDomestic={isDomestic}
-                showCloseButton={true}
-                isLoggedIn={!!appUser}
-                onLoginRequired={onLoginRequired || (() => setShowAuthDialog(true))}
-                onClose={() => {
-                  if (shouldShowUpgradeDialogOnAdClose) {
-                    setShowUpgradeDialog(true);
-                  }
-                }}
-                className="max-w-3xl"
-              />
-            </div>
-          )}
-          {!showGlobalAds && <div className="flex-1 hidden lg:block" />}
-
-          <div className="flex items-center space-x-1 sm:space-x-1.5 md:space-x-2 lg:space-x-3 flex-shrink-0">
+          {/* 右侧按钮组 - 使用 ml-auto 推到最右侧 */}
+          <div className="flex items-center space-x-1 sm:space-x-1.5 md:space-x-2 lg:space-x-3 flex-shrink-0 ml-auto">
             {/* Share Link Button - 中屏及以上显示 */}
             <Button
               variant="ghost"

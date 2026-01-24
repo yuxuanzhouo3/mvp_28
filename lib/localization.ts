@@ -184,8 +184,8 @@ export const translations = {
     support: "Support",
     supportDescription: "Get help & contact us",
     advertisements: "Advertisements",
-    socialLinks: "Social Links",
-    showSocialLinks: "Show social links",
+    socialLinks: "Our Products",
+    showSocialLinks: "Show our products",
     clickToVisit: "Click to visit",
   },
   zh: {
@@ -369,8 +369,8 @@ export const translations = {
     support: "支持",
     supportDescription: "获取帮助与联系我们",
     advertisements: "广告",
-    socialLinks: "社交链接",
-    showSocialLinks: "显示社交链接",
+    socialLinks: "旗下产品",
+    showSocialLinks: "显示旗下产品",
     clickToVisit: "点击访问",
   },
 };

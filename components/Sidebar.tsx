@@ -205,22 +205,34 @@ export default function Sidebar({
         {!sidebarCollapsed && (
           <div className="relative h-full flex flex-col">
             <div className="p-2 sm:p-3 border-b border-gray-200 dark:border-[#565869] space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <Button
                   onClick={() => createNewChat()}
-                  className="flex-1 flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white"
+                  className="flex-1 flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white h-10"
                 >
-              <Plus className="w-4 h-4" />
-              <span>{getLocalizedText("newChat")}</span>
-            </Button>
+                  <Plus className="w-4 h-4" />
+                  <span>{getLocalizedText("newChat")}</span>
+                </Button>
+
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowDownloadSection(!showDownloadSection)}
-                  className="ml-2 h-10 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                  className="h-10 w-10 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] flex-shrink-0"
                   title={getLocalizedText("downloadApps")}
                 >
                   <Download className="w-4 h-4" />
+                </Button>
+
+                {/* 移动端关闭按钮 - 仅在小屏幕显示 */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSidebarCollapsed?.(true)}
+                  className="md:hidden h-10 w-10 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] flex-shrink-0"
+                  title="关闭侧边栏"
+                >
+                  <X className="w-5 h-5" />
                 </Button>
               </div>
               <div className="relative">

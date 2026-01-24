@@ -11,17 +11,10 @@ import { getAdminSession } from "@/utils/session";
 import { revalidatePath } from "next/cache";
 
 // 平台类型
-export type Platform = "ios" | "android" | "windows" | "macos" | "linux";
+export type Platform = "android" | "ios" | "harmonyos" | "windows" | "macos" | "linux" | "chrome";
 
 // 变体类型（针对不同架构/格式）
-export type Variant =
-  | "default"
-  // macOS
-  | "intel" | "m"
-  // Windows
-  | "x64" | "x86" | "arm64"
-  // Linux
-  | "deb" | "appimage" | "snap" | "flatpak" | "aur" | "rpm";
+export type Variant = "default";
 
 // 发布版本类型定义
 export interface AppRelease {

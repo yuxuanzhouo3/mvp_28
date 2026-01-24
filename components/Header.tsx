@@ -14,12 +14,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
-import {
   Crown,
   LogIn,
   LogOut,
@@ -31,6 +25,7 @@ import {
   User,
   Menu,
   ChevronLeft,
+  Languages,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchQuotaShared } from "@/utils/quota-fetcher";
@@ -759,7 +754,7 @@ export default function Header({
           </div>
 
           {/* 右侧按钮组 - 使用 ml-auto 推到最右侧 */}
-          <div className="flex items-center space-x-1 sm:space-x-1.5 md:space-x-2 lg:space-x-3 flex-shrink-0 ml-auto">
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 ml-auto">
             {/* Share Link Button - 中屏及以上显示 */}
             <Button
               variant="ghost"
@@ -773,7 +768,7 @@ export default function Header({
               disabled={
                 !currentChat || messages.length === 0
               }
-              className="hidden md:flex text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed h-7 w-7 p-0"
+              className="hidden md:flex text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed h-8 w-8 p-0"
               title={
                 !appUser
                   ? getLocalizedText("signUpToShare")
@@ -785,40 +780,59 @@ export default function Header({
               }
             >
               {isGeneratingLink ? (
-                <div className="w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <Upload className="w-3.5 h-3.5" />
+                <Upload className="w-4 h-4" />
               )}
             </Button>
 
-            {/* Language Selector - 增大尺寸 */}
-            <div className="flex items-center">
-              <Select
-                value={selectedLanguage}
-                onValueChange={setSelectedLanguage}
-              >
-                <SelectTrigger className="h-8 sm:h-9 w-14 sm:w-16 md:w-20 text-xs sm:text-sm bg-white dark:bg-[#40414f] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869]">
-                  <span className="text-xs sm:text-sm">{selectedLanguage === "en" ? "EN" : "中"}</span>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="en">English</SelectItem>
-                  <SelectItem value="zh">中文</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* 设置组：语言切换 + 主题切换 */}
+            <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-[#565869]/50 rounded-md p-0.5">
+              {/* Language Toggle Button */}
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedLanguage(selectedLanguage === "en" ? "zh" : "en")}
+                      className="h-7 w-7 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-white dark:hover:bg-[#40414f] flex-shrink-0"
+                    >
+                      <Languages className="w-3.5 h-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">
+                    {selectedLanguage === "zh" ? "切换到英文" : "Switch to Chinese"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {/* Theme Toggle Button */}
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={toggleTheme}
+                      className="h-7 w-7 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-white dark:hover:bg-[#40414f] flex-shrink-0"
+                    >
+                      {isDarkMode ? (
+                        <Sun className="w-3.5 h-3.5" />
+                      ) : (
+                        <Moon className="w-3.5 h-3.5" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">
+                    {isDarkMode
+                      ? (selectedLanguage === "zh" ? "切换到亮色模式" : "Switch to light mode")
+                      : (selectedLanguage === "zh" ? "切换到暗色模式" : "Switch to dark mode")
+                    }
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleTheme}
-              className="h-8 w-8 sm:h-7 sm:w-7 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] flex-shrink-0"
-            >
-              {isDarkMode ? (
-                <Sun className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
-              ) : (
-                <Moon className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5" />
-              )}
-            </Button>
 
             {/* 订阅按钮 - 所有设备显示，移动端仅图标 */}
             {appUser && (

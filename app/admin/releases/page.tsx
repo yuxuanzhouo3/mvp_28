@@ -78,34 +78,24 @@ import {
 
 // 平台配置
 const PLATFORMS: { value: Platform; label: string; icon: React.ReactNode }[] = [
-  { value: "ios", label: "iOS", icon: <Apple className="h-4 w-4" /> },
   { value: "android", label: "Android", icon: <Smartphone className="h-4 w-4" /> },
+  { value: "ios", label: "iOS", icon: <Apple className="h-4 w-4" /> },
+  { value: "harmonyos", label: "HarmonyOS", icon: <Smartphone className="h-4 w-4" /> },
   { value: "windows", label: "Windows", icon: <Monitor className="h-4 w-4" /> },
   { value: "macos", label: "macOS", icon: <Apple className="h-4 w-4" /> },
   { value: "linux", label: "Linux", icon: <Monitor className="h-4 w-4" /> },
+  { value: "chrome", label: "Chrome", icon: <Monitor className="h-4 w-4" /> },
 ];
 
 // 变体配置（按平台分组）
 const VARIANTS: Record<Platform, { value: Variant; label: string }[]> = {
-  ios: [],
   android: [],
-  windows: [
-    { value: "x64", label: "x64 (64位)" },
-    { value: "x86", label: "x86 (32位)" },
-    { value: "arm64", label: "ARM64" },
-  ],
-  macos: [
-    { value: "intel", label: "Intel 芯片" },
-    { value: "m", label: "Apple Silicon (M系列)" },
-  ],
-  linux: [
-    { value: "deb", label: "Debian/Ubuntu (.deb)" },
-    { value: "rpm", label: "Red Hat/Fedora (.rpm)" },
-    { value: "appimage", label: "AppImage" },
-    { value: "snap", label: "Snap" },
-    { value: "flatpak", label: "Flatpak" },
-    { value: "aur", label: "AUR (Arch Linux)" },
-  ],
+  ios: [],
+  harmonyos: [],
+  windows: [],
+  macos: [],
+  linux: [],
+  chrome: [],
 };
 
 function getVariantLabel(platform: Platform, variant?: Variant | null): string {

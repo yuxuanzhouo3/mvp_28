@@ -755,7 +755,7 @@ export default function Header({
 
           {/* 右侧按钮组 - 使用 ml-auto 推到最右侧 */}
           <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 ml-auto">
-            {/* Share Link Button - 中屏及以上显示 */}
+            {/* Share Link Button - 所有设备显示 */}
             <Button
               variant="ghost"
               size="sm"
@@ -768,7 +768,7 @@ export default function Header({
               disabled={
                 !currentChat || messages.length === 0
               }
-              className="hidden md:flex text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed h-8 w-8 p-0"
+              className="flex text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] disabled:opacity-50 disabled:cursor-not-allowed h-8 w-8 p-0"
               title={
                 !appUser
                   ? getLocalizedText("signUpToShare")

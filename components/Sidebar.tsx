@@ -814,31 +814,42 @@ export default function Sidebar({
 
             {/* 底部固定区域：广告/社交链接 */}
             <div className="border-t border-gray-200 dark:border-[#565869] bg-white dark:bg-[#40414f] h-[200px] flex flex-col">
-              {/* 广告/社交链接切换按钮 */}
-              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-[#565869] shrink-0">
-                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                  {showSidebarAd && shouldShowAds
-                    ? getLocalizedText("advertisements")
-                    : getLocalizedText("socialLinks")}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowSidebarAd(!showSidebarAd)}
-                  className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#565869]"
-                  title={
-                    showSidebarAd && shouldShowAds
-                      ? getLocalizedText("showSocialLinks")
-                      : getLocalizedText("showAds")
-                  }
-                >
-                  {showSidebarAd && shouldShowAds ? (
-                    <Eye className="w-3.5 h-3.5" />
-                  ) : (
-                    <EyeOff className="w-3.5 h-3.5" />
-                  )}
-                </Button>
-              </div>
+              {/* 广告/社交链接切换按钮 - 移动端无广告时隐藏 */}
+              {!(isMobile && !shouldShowAds) && (
+                <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-[#565869] shrink-0">
+                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {showSidebarAd && shouldShowAds
+                      ? getLocalizedText("advertisements")
+                      : getLocalizedText("socialLinks")}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowSidebarAd(!showSidebarAd)}
+                    className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#565869]"
+                    title={
+                      showSidebarAd && shouldShowAds
+                        ? getLocalizedText("showSocialLinks")
+                        : getLocalizedText("showAds")
+                    }
+                  >
+                    {showSidebarAd && shouldShowAds ? (
+                      <Eye className="w-3.5 h-3.5" />
+                    ) : (
+                      <EyeOff className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {/* 移动端无广告时显示标题 */}
+              {isMobile && !shouldShowAds && (
+                <div className="px-3 py-2 border-b border-gray-200 dark:border-[#565869] shrink-0">
+                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {getLocalizedText("socialLinks")}
+                  </span>
+                </div>
+              )}
 
               {/* 广告显示区域 */}
               {shouldShowAds && showSidebarAd && (

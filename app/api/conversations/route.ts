@@ -17,15 +17,17 @@ async function getDomesticUser(req: NextRequest) {
 }
 
 function getPlanInfo(meta: any) {
+  // 优先使用 subscriptionTier，其次使用 plan
   const rawPlan =
-    (meta?.plan as string | undefined) ||
-    (meta?.plan_exp && meta?.plan) || // keep plan if present alongside plan_exp
     (meta?.subscriptionTier as string | undefined) ||
+    (meta?.plan as string | undefined) ||
     "";
   const rawPlanLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
   const planExp = meta?.plan_exp ? new Date(meta.plan_exp) : null;
   const planActive = planExp ? isAfter(planExp, new Date()) : true;
-  const planLower = planActive ? rawPlanLower : "free";
+
+  // 如果套餐类型明确为 enterprise/pro/basic，即使过期也保留套餐类型（仅影响功能限制，不影响对话数量限制）
+  const planLower = rawPlanLower || "free";
   const isProFlag = !!meta?.pro && planLower !== "free" && planLower !== "basic";
   const isBasic = planLower === "basic";
   const isPro = planLower === "pro" || planLower === "enterprise" || isProFlag;

@@ -204,11 +204,17 @@ function ChatInterface({
       });
   }, [messages, mediaPreviewMap]);
 
-  // Normalize common AI 输出的“[\\vec{F} = m \\vec{a}]”或“\\[ ... \\]”为 math 块，仅在原文完全没有 $ 时执行，避免重复渲染
+  // Normalize common AI 输出的"[\\vec{F} = m \\vec{a}]"或"\\[ ... \\]"为 math 块，仅在原文完全没有 $ 时执行，避免重复渲染
   const normalizeMathContent = (text: string) => {
     // If user已写 $, 不处理，避免重复
     if (/\$/.test(text)) return text;
     let out = text;
+
+    // 修复Markdown标题语法问题
+    // 1. 确保标题符号后有空格: "###1." => "### 1."
+    out = out.replace(/^(#{1,6})(?!\s)/gm, '$1 ');
+    // 2. 移除标题符号后多余的#: "## # 2." => "## 2."
+    out = out.replace(/^(#{1,6})\s+#\s+/gm, '$1 ');
 
     // \[ ... \]  => $$ ... $$
     out = out.replace(/\\\[(.+?)\\\]/gs, (_m, inner) => `$$${inner}$$`);

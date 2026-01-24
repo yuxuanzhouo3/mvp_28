@@ -321,19 +321,36 @@ const InputArea = React.memo(function InputArea({
     setTimeout(() => setFeatureInDevMessage(""), 4000);
   }, [selectedLanguage]);
 
-  // 辅助函数：模拟文件上传（复用 handleFileUpload 逻辑）
+  // 辅助函数：直接调用 handleFileUpload（最可靠的方法）
   const triggerFileUpload = React.useCallback((file: File) => {
     const input = document.getElementById("file-upload") as HTMLInputElement;
-    if (!input) return;
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(file);
-    input.files = dataTransfer.files;
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-  }, []);
+    if (!input) {
+      console.error("[triggerFileUpload] file-upload input not found");
+      return;
+    }
+
+    try {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      input.files = dataTransfer.files;
+
+      // 创建模拟的 React ChangeEvent 并直接调用 handleFileUpload
+      const mockEvent = {
+        target: input,
+        currentTarget: input,
+      } as React.ChangeEvent<HTMLInputElement>;
+
+      handleFileUpload(mockEvent);
+      console.log("[triggerFileUpload] File upload triggered:", file.name, file.type, file.size);
+    } catch (error) {
+      console.error("[triggerFileUpload] Failed to trigger upload:", error);
+    }
+  }, [handleFileUpload]);
 
   // 处理音频录制完成
   const handleAudioRecordingComplete = React.useCallback(
     (result: { blob: Blob; url: string; name: string }) => {
+      console.log("[handleAudioRecordingComplete] Audio recording completed:", result.name, result.blob.type, result.blob.size);
       const file = new File([result.blob], result.name, { type: result.blob.type });
       triggerFileUpload(file);
     },
@@ -352,10 +369,16 @@ const InputArea = React.memo(function InputArea({
   // 处理摄像头捕获的媒体
   const handleMediaCaptured = React.useCallback(
     (media: { type: "image" | "video"; data: string; blob?: Blob; name: string }) => {
-      if (!media.blob) return;
+      console.log("[handleMediaCaptured] Media captured:", media.type, media.name, media.blob?.size);
+
+      if (!media.blob) {
+        console.error("[handleMediaCaptured] No blob provided");
+        return;
+      }
 
       // 国际版：显示功能开发中提示
       if (!IS_DOMESTIC_VERSION) {
+        console.log("[handleMediaCaptured] International version, feature in development");
         showFeatureInDevelopment();
         return;
       }
@@ -363,6 +386,7 @@ const InputArea = React.memo(function InputArea({
       // 创建 File 对象并复用文件上传逻辑
       const mimeType = media.type === "image" ? "image/jpeg" : "video/webm";
       const file = new File([media.blob], media.name, { type: mimeType });
+      console.log("[handleMediaCaptured] File created:", file.name, file.type, file.size);
       triggerFileUpload(file);
     },
     [showFeatureInDevelopment, triggerFileUpload]
@@ -580,6 +604,17 @@ const InputArea = React.memo(function InputArea({
   
   return (
     <div className="flex-shrink-0 overflow-x-hidden max-w-full">
+      {/* Hidden file input - must be outside Popover to always exist in DOM */}
+      <input
+        type="file"
+        multiple
+        onChange={handleFileUpload}
+        className="hidden"
+        id="file-upload"
+        accept={["image/*", "video/*", "audio/*"].join(",")}
+        disabled={isUploading || !IS_DOMESTIC_VERSION}
+      />
+
       <div className="max-w-4xl mx-auto px-4">
         {/* Single Row Input Layout with Rounded Rectangle */}
         <div className="flex items-center gap-2 sm:gap-3 bg-white dark:bg-[#40414f] border border-gray-200 dark:border-[#565869] rounded-2xl px-2 sm:px-4 py-2 sm:py-3 shadow-sm hover:shadow-md transition-shadow">
@@ -603,15 +638,6 @@ const InputArea = React.memo(function InputArea({
             >
               <div className="grid grid-cols-2 gap-2">
                 {/* File Upload */}
-                <input
-                  type="file"
-                  multiple
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="file-upload"
-                  accept={["image/*", "video/*", "audio/*"].join(",")}
-                  disabled={isUploading || !IS_DOMESTIC_VERSION}
-                />
                 <Button
                   size="sm"
                   variant="ghost"

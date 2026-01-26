@@ -1938,34 +1938,54 @@ const loadMessagesForConversation = useCallback(
 
           setFreeQuotaUsed((prev) => Math.max(prev, usedVal));
           setFreeQuotaLimit(limitVal);
-          setFreePhotoLimit(
-            typeof data.photoLimit === "number"
-              ? data.photoLimit
-              : typeof data.monthlyMedia?.photoLimit === "number"
-                ? data.monthlyMedia.photoLimit
-                : null
-          );
-          setFreePhotoRemaining(
-            typeof data.photoRemaining === "number"
-              ? data.photoRemaining
-              : typeof data.monthlyMedia?.photoRemaining === "number"
-                ? data.monthlyMedia.photoRemaining
-                : null
-          );
-          setFreeVideoAudioLimit(
-            typeof data.videoAudioLimit === "number"
-              ? data.videoAudioLimit
-              : typeof data.monthlyMedia?.videoAudioLimit === "number"
-                ? data.monthlyMedia.videoAudioLimit
-                : null
-          );
-          setFreeVideoAudioRemaining(
-            typeof data.videoAudioRemaining === "number"
-              ? data.videoAudioRemaining
-              : typeof data.monthlyMedia?.videoAudioRemaining === "number"
-                ? data.monthlyMedia.videoAudioRemaining
-                : null
-          );
+
+          // 详细日志：Free用户额度数据读取
+          console.log("/*quota*/ ========== Free用户分支 - 开始处理 ==========");
+          console.log("/*quota*/ 原始API返回数据:", {
+            photoLimit: data.photoLimit,
+            photoRemaining: data.photoRemaining,
+            videoAudioLimit: data.videoAudioLimit,
+            videoAudioRemaining: data.videoAudioRemaining,
+            monthlyMedia: data.monthlyMedia,
+            contextMsgLimit: data.contextMsgLimit,
+          });
+
+          const freePhotoLimitValue = typeof data.photoLimit === "number"
+            ? data.photoLimit
+            : typeof data.monthlyMedia?.photoLimit === "number"
+              ? data.monthlyMedia.photoLimit
+              : null;
+          const freePhotoRemainingValue = typeof data.photoRemaining === "number"
+            ? data.photoRemaining
+            : typeof data.monthlyMedia?.photoRemaining === "number"
+              ? data.monthlyMedia.photoRemaining
+              : null;
+          const freeVideoLimitValue = typeof data.videoAudioLimit === "number"
+            ? data.videoAudioLimit
+            : typeof data.monthlyMedia?.videoAudioLimit === "number"
+              ? data.monthlyMedia.videoAudioLimit
+              : null;
+          const freeVideoRemainingValue = typeof data.videoAudioRemaining === "number"
+            ? data.videoAudioRemaining
+            : typeof data.monthlyMedia?.videoAudioRemaining === "number"
+              ? data.monthlyMedia.videoAudioRemaining
+              : null;
+
+          console.log("/*quota*/ 计算后的Free用户额度值:", {
+            freePhotoLimit: freePhotoLimitValue,
+            freePhotoRemaining: freePhotoRemainingValue,
+            freeVideoLimit: freeVideoLimitValue,
+            freeVideoRemaining: freeVideoRemainingValue,
+          });
+
+          setFreePhotoLimit(freePhotoLimitValue);
+          setFreePhotoRemaining(freePhotoRemainingValue);
+          setFreeVideoAudioLimit(freeVideoLimitValue);
+          setFreeVideoAudioRemaining(freeVideoRemainingValue);
+
+          console.log("/*quota*/ Free用户额度已设置完成");
+          console.log("/*quota*/ ========== Free用户分支 - 处理完成 ==========");
+
           setFreeContextLimit(
             typeof data.contextMsgLimit === "number" ? data.contextMsgLimit : null
           );

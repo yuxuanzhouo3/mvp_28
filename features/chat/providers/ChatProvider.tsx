@@ -1762,7 +1762,7 @@ const loadMessagesForConversation = useCallback(
       setFreeQuotaDate(today);
 
       const targetUser = userOverride ?? appUserRef.current ?? appUser;
-      if(false) console.log("/*quota*/ refreshQuota start", {
+      console.log("/*quota*/ refreshQuota start", {
         targetUserId: targetUser?.id,
         targetPlan: targetUser?.plan,
         currentPlan,
@@ -1912,7 +1912,7 @@ const loadMessagesForConversation = useCallback(
           setFreeVideoAudioLimit(null);
           setFreeVideoAudioRemaining(null);
           setFreeContextLimit(null);
-          if(false) console.log("/*quota*/ refreshQuota applied basic/pro", {
+          console.log("/*quota*/ refreshQuota applied basic/pro", {
             used: dailyUsed,
             limit: dailyLimit || (data?.plan === "pro" ? PRO_DAILY_LIMIT : BASIC_DAILY_LIMIT),
             period: data.period,
@@ -2007,7 +2007,7 @@ const loadMessagesForConversation = useCallback(
           setProVideoAudioLimit(null);
           setProVideoAudioRemaining(null);
           setProContextLimit(null);
-          if(false) console.log("/*quota*/ refreshQuota applied free", {
+          console.log("/*quota*/ refreshQuota applied free", {
             used: usedVal,
             limit: limitVal,
             period: data.period,
@@ -2081,7 +2081,7 @@ const loadMessagesForConversation = useCallback(
         setProQuotaUsed((prev) => {
           const safePrev = proQuotaDate === today ? prev : 0;
           const next = Math.min(limit, safePrev + 1);
-          if(false) console.log("/*quota*/ local pro consume", { prev, next, limit });
+          console.log("/*quota*/ local pro consume", { prev, next, limit });
           return next;
         });
       } else {
@@ -2089,7 +2089,7 @@ const loadMessagesForConversation = useCallback(
         setBasicQuotaUsed((prev) => {
           const safePrev = basicQuotaDate === today ? prev : 0;
           const next = Math.min(limit, safePrev + 1);
-          if(false) console.log("/*quota*/ local basic consume", { prev, next, limit });
+          console.log("/*quota*/ local basic consume", { prev, next, limit });
           return next;
         });
       }

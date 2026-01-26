@@ -1789,7 +1789,8 @@ const loadMessagesForConversation = useCallback(
       try {
         const data = await fetchQuotaShared("/api/account/quota");
         if(false) console.log("/*quota*/ refreshQuota response", data);
-        if (data?.plan === "basic" || data?.plan === "pro" || data?.plan === "enterprise") {
+        // 只有真正的付费用户才进入付费分支，订阅到期的用户（isPaid=false）应该进入Free分支
+        if ((data?.plan === "basic" || data?.plan === "pro" || data?.plan === "enterprise") && appUser?.isPaid) {
           const dailyLimit =
             typeof data.daily?.limit === "number"
               ? data.daily.limit

@@ -161,6 +161,74 @@ export function isSamePlanRenewal(currentPlan: string, targetPlan: string, curre
 }
 
 // =============================================================================
+// 订阅状态验证（防止订阅到期判断错误）
+// =============================================================================
+
+/**
+ * 检查用户���否为有效的付费用户
+ *
+ * ⚠️ 重要：此函数用于防止订阅到期后的状态判断错误
+ *
+ * 问题背景：
+ * - 订阅到期后，appUser.isPaid 可能未及时更新（缓存问题）
+ * - 导致前端错误地将过期用户识别为付费用户
+ * - 最终导致Free用户额度显示为"--"等问题
+ *
+ * 解决方案：
+ * - 同时检查 isPaid 标志和 planExp 过期时间
+ * - 只有两者都满足条件才认为是有效付费用户
+ *
+ * @param appUser 用���对象（包含 isPaid 和 planExp 字段）
+ * @returns true 表示有效付费用户，false 表示Free用户或订阅已过期
+ *
+ * @example
+ * ```typescript
+ * // 正确用法：在判断用户类型时使用此函数
+ * if (isValidPaidUser(appUser)) {
+ *   // 处理付费用户逻辑
+ * } else {
+ *   // 处理Free用户逻辑
+ * }
+ *
+ * // 错误用法：只检查 isPaid（可能导致订阅到期判断错误）
+ * if (appUser?.isPaid) {  // ❌ 不推荐
+ *   // ...
+ * }
+ * ```
+ */
+export function isValidPaidUser(appUser?: { isPaid?: boolean; planExp?: string | null } | null): boolean {
+  if (!appUser?.isPaid) return false;
+
+  // 如果没有 planExp，认为订阅无效（保守策略）
+  if (!appUser.planExp) return false;
+
+  // 检查订阅是否过期
+  const planExpDate = new Date(appUser.planExp);
+  const now = new Date();
+
+  return planExpDate > now;
+}
+
+/**
+ * 检查用户是否为有效的Pro用户
+ *
+ * @param appUser 用户对象
+ * @returns true 表示有效Pro用户
+ */
+export function isValidProUser(appUser?: { isPro?: boolean; planExp?: string | null } | null): boolean {
+  if (!appUser?.isPro) return false;
+
+  // 如果没有 planExp，认为订阅无效
+  if (!appUser.planExp) return false;
+
+  // 检查订阅是否过期
+  const planExpDate = new Date(appUser.planExp);
+  const now = new Date();
+
+  return planExpDate > now;
+}
+
+// =============================================================================
 // 上下文消息截断
 // =============================================================================
 

@@ -1789,10 +1789,11 @@ const loadMessagesForConversation = useCallback(
       try {
         const data = await fetchQuotaShared("/api/account/quota");
         console.log("/*quota*/ refreshQuota response", data);
-        // 检查订阅是否有效：必须同时满足 isPaid=true 且订阅未过期
-        const isPlanActive = appUser?.planExp ? new Date(appUser.planExp) > new Date() : false;
+        // 检查订阅是否有效：优先使用API返回的planExp（权威数据源），回退到appUser.planExp
+        const planExpStr = data?.planExp || appUser?.planExp;
+        const isPlanActive = planExpStr ? new Date(planExpStr) > new Date() : false;
         const isValidPaidUser = appUser?.isPaid && isPlanActive;
-        console.log("/*quota*/ isPlanActive:", isPlanActive, "isValidPaidUser:", isValidPaidUser, "data.plan:", data?.plan);
+        console.log("/*quota*/ isPlanActive:", isPlanActive, "isValidPaidUser:", isValidPaidUser, "data.plan:", data?.plan, "planExpStr:", planExpStr);
         // 只有真正有效的付费用户才进入付费分支，订阅到期的用户应该进入Free分支
         if ((data?.plan === "basic" || data?.plan === "pro" || data?.plan === "enterprise") && isValidPaidUser) {
           const dailyLimit =
@@ -1938,6 +1939,17 @@ const loadMessagesForConversation = useCallback(
 
           setFreeQuotaUsed((prev) => Math.max(prev, usedVal));
           setFreeQuotaLimit(limitVal);
+
+          // 订阅过期时，清理 localStorage 中的过期缓存
+          if (typeof window !== "undefined") {
+            const storedPlan = localStorage.getItem("morngpt_current_plan");
+            if (storedPlan && storedPlan !== "Free") {
+              console.log("/*quota*/ 清理过期的订阅缓存:", storedPlan, "-> Free");
+              localStorage.setItem("morngpt_current_plan", "Free");
+              localStorage.removeItem("morngpt_current_plan_exp");
+              setCurrentPlan(null);
+            }
+          }
 
           // 详细日志：Free用户额度数据读取
           console.log("/*quota*/ ========== Free用户分支 - 开始处理 ==========");

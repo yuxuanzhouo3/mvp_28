@@ -30,12 +30,15 @@ export async function GET(req: NextRequest) {
   let errorCount = 0;
 
   try {
-    // 查询所有有 pendingDowngrade 的用户
+    // 查询所有有 pendingDowngrade 的用户，或者订阅已过期的用户
     const usersRes = await db
       .collection("users")
-      .where({
-        pendingDowngrade: db.command.exists(true),
-      })
+      .where(
+        db.command.or([
+          { pendingDowngrade: db.command.exists(true) },
+          { plan_exp: db.command.lt(nowIso) }, // 订阅已过期
+        ])
+      )
       .get();
 
     const users = usersRes?.data || [];

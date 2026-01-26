@@ -1788,10 +1788,11 @@ const loadMessagesForConversation = useCallback(
 
       try {
         const data = await fetchQuotaShared("/api/account/quota");
-        if(false) console.log("/*quota*/ refreshQuota response", data);
+        console.log("/*quota*/ refreshQuota response", data);
         // 检查订阅是否有效：必须同时满足 isPaid=true 且订阅未过期
         const isPlanActive = appUser?.planExp ? new Date(appUser.planExp) > new Date() : false;
         const isValidPaidUser = appUser?.isPaid && isPlanActive;
+        console.log("/*quota*/ isPlanActive:", isPlanActive, "isValidPaidUser:", isValidPaidUser, "data.plan:", data?.plan);
         // 只有真正有效的付费用户才进入付费分支，订阅到期的用户应该进入Free分支
         if ((data?.plan === "basic" || data?.plan === "pro" || data?.plan === "enterprise") && isValidPaidUser) {
           const dailyLimit =

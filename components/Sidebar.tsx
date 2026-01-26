@@ -141,6 +141,9 @@ export default function Sidebar({
   const [socialLinks, setSocialLinks] = useState<SocialLinkData[]>([]);
   const [socialLinksLoading, setSocialLinksLoading] = useState(true);
 
+  // 侧边栏广告是否有内容
+  const [hasAds, setHasAds] = useState(true);
+
   // 侧边栏本地广告显示状态（仅控制侧边栏广告显示/社交链接切换）
   // 默认显示广告，用户点击小眼睛后切换到社交链接
   const [showSidebarAd, setShowSidebarAd] = useState(true);
@@ -852,19 +855,26 @@ export default function Sidebar({
               )}
 
               {/* 广告显示区域 */}
-              {shouldShowAds && showSidebarAd && (
+              {shouldShowAds && showSidebarAd && hasAds && (
                 <div className="flex-1 h-0 w-full">
                   <AdBanner
                     position="sidebar"
                     isDomestic={isDomestic}
                     showCloseButton={false}
                     className="w-full h-full"
+                    onAdLoadComplete={(hasAdsData) => {
+                      setHasAds(hasAdsData);
+                      // 如果没有广告，自动切换到显示社交链接
+                      if (!hasAdsData) {
+                        setShowSidebarAd(false);
+                      }
+                    }}
                   />
                 </div>
               )}
 
               {/* 社交链接显示区域 */}
-              {(!shouldShowAds || !showSidebarAd) && (
+              {(!shouldShowAds || !showSidebarAd || !hasAds) && (
                 <ScrollArea className="flex-1">
                   <div className="p-2">
                     {socialLinksLoading ? (

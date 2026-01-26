@@ -38,6 +38,8 @@ export interface AdBannerProps {
   isLoggedIn?: boolean;
   /** 未登录时点击关闭按钮的回调（用于弹出登录弹窗） */
   onLoginRequired?: () => void;
+  /** 广告加载完成回调（hasAds: 是否有广告数据） */
+  onAdLoadComplete?: (hasAds: boolean) => void;
 }
 
 /**
@@ -54,6 +56,7 @@ export default function AdBanner({
   onAdClick,
   isLoggedIn = false,
   onLoginRequired,
+  onAdLoadComplete,
 }: AdBannerProps) {
   const [ads, setAds] = useState<PublicAdvertisement[]>([]);
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
@@ -77,18 +80,21 @@ export default function AdBanner({
         console.log(`[AdBanner] Setting ${result.data.length} ads for position="${position}":`, result.data);
         setAds(result.data);
         setCurrentAdIndex(0);
+        onAdLoadComplete?.(true);
       } else {
         console.log(`[AdBanner] No ads found for position="${position}"`);
         setAds([]);
+        onAdLoadComplete?.(false);
       }
     } catch (err) {
       console.error("AdBanner loadAds error:", err);
       setError("加载广告失败");
       setAds([]);
+      onAdLoadComplete?.(false);
     } finally {
       setLoading(false);
     }
-  }, [position, isDomestic]);
+  }, [position, isDomestic, onAdLoadComplete]);
 
   // 初始加载
   useEffect(() => {

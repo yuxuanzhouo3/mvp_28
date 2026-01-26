@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MessageSquare, Lock, Eye, Home } from "lucide-react";
+import { MessageSquare, Lock, Eye, Home, Copy, Check } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
+import "katex/dist/katex.min.css";
 
 interface Message {
   role: string;
@@ -29,6 +35,7 @@ export default function SharePage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [needsSecret, setNeedsSecret] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   const loadShare = async (secretKey?: string) => {
     setLoading(true);
@@ -73,6 +80,16 @@ export default function SharePage() {
   const handleSecretSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     loadShare(secret);
+  };
+
+  const handleCopy = async (content: string, index: number) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
+    } catch (err) {
+      console.error('复制失败:', err);
+    }
   };
 
   if (loading) {
@@ -161,8 +178,33 @@ export default function SharePage() {
                 <div className="font-semibold mb-2 text-sm text-gray-700 dark:text-gray-300">
                   {message.role === 'user' ? '👤 用户' : '🤖 AI 助手'}
                 </div>
-                <div className="whitespace-pre-wrap text-gray-900 dark:text-gray-100">
-                  {message.content}
+                <div className="prose prose-sm dark:prose-invert max-w-none text-gray-900 dark:text-gray-100">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex, rehypeRaw]}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleCopy(message.content, index)}
+                    className="text-xs"
+                  >
+                    {copiedIndex === index ? (
+                      <>
+                        <Check className="w-3 h-3 mr-1" />
+                        已复制
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3 mr-1" />
+                        复制
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
             ))}

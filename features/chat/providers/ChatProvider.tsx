@@ -4446,6 +4446,14 @@ const loadMessagesForConversation = useCallback(
     }
   };
 
+  // 监听 makeDiscoverable 变化,自动刷新分享链接
+  useEffect(() => {
+    // 只有在已经生成了分享链接的情况下才重新生成
+    if (shareLink && showShareDialog) {
+      generateShareLink();
+    }
+  }, [makeDiscoverable]);
+
   const copyShareLink = () => {
     copyToClipboard(shareLink);
   };

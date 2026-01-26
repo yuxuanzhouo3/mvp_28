@@ -156,12 +156,19 @@ export default function Header({
   sidebarCollapsed = false,
   setSidebarCollapsed,
 }: HeaderProps) {
-  const planLower = (
+  // 检查订阅是否过期
+  const rawPlanLower = (
     currentPlan ||
     appUserPlan ||
     (appUser?.isPro ? "Pro" : "")
   )
     .toLowerCase();
+
+  const planExpDate = planExp ? new Date(planExp) : null;
+  const isPlanActive = planExpDate ? planExpDate > new Date() : true;
+
+  // 如果订阅过期,降级为Free
+  const planLower = isPlanActive ? rawPlanLower : "free";
 
   const tierDisplay = (() => {
     if (!appUser) return "Guest User";
@@ -532,13 +539,17 @@ export default function Header({
                           {renderQuotaBars()}
                           {(isBasicUser || isProUserLimited || isEnterpriseUser) && (
                             <div className="text-[11px] text-gray-600 dark:text-gray-300 pt-1 border-t border-gray-200 dark:border-gray-700">
-                              {planExp
-                                ? `${selectedLanguage === "zh" ? "到期" : "Expires"}: ${new Date(
-                                    planExp,
-                                  ).toLocaleString()}`
-                                : selectedLanguage === "zh"
-                                  ? "订阅中"
-                                  : "Active subscription"}
+                              {planExp ? (
+                                isPlanActive ? (
+                                  `${selectedLanguage === "zh" ? "到期" : "Expires"}: ${new Date(planExp).toLocaleString()}`
+                                ) : (
+                                  <span className="text-red-600 dark:text-red-400">
+                                    {selectedLanguage === "zh" ? "已过期" : "Expired"}
+                                  </span>
+                                )
+                              ) : (
+                                selectedLanguage === "zh" ? "订阅中" : "Active subscription"
+                              )}
                             </div>
                           )}
                         </div>
@@ -678,13 +689,17 @@ export default function Header({
                         {renderQuotaBars()}
                         {(isBasicUser || isProUserLimited || isEnterpriseUser) && (
                           <div className="text-[11px] text-gray-600 dark:text-gray-300 pt-1 border-t border-gray-200 dark:border-gray-700">
-                            {planExp
-                              ? `${selectedLanguage === "zh" ? "到期" : "Expires"}: ${new Date(
-                                  planExp,
-                                ).toLocaleString()}`
-                              : selectedLanguage === "zh"
-                                ? "订阅中"
-                                : "Active subscription"}
+                            {planExp ? (
+                              isPlanActive ? (
+                                `${selectedLanguage === "zh" ? "到期" : "Expires"}: ${new Date(planExp).toLocaleString()}`
+                              ) : (
+                                <span className="text-red-600 dark:text-red-400">
+                                  {selectedLanguage === "zh" ? "已过期" : "Expired"}
+                                </span>
+                              )
+                            ) : (
+                              selectedLanguage === "zh" ? "订阅中" : "Active subscription"
+                            )}
                           </div>
                         )}
                       </div>

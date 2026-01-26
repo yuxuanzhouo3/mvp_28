@@ -55,6 +55,12 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
+        // 如果用户已经是 Free 用户且没有待生效订阅，跳过（避免重复处理）
+        const currentPlan = normalizePlanName(user.plan);
+        if (currentPlan === "Free" && (!pendingQueue || pendingQueue.length === 0)) {
+          continue;
+        }
+
         // 如果没有待生效订阅，清理字段并降级为Free
         if (!pendingQueue || pendingQueue.length === 0) {
           await db.collection("users").doc(userId).update({

@@ -31,6 +31,9 @@ export async function POST(req: NextRequest) {
     // 兼容 chatId 和 conversationId 两种参数名
     const actualConversationId = conversationId || chatId;
 
+    // 优先使用环境变量，确保生产环境使用正确的域名
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin;
+
     if (!actualConversationId) {
       return Response.json({ success: false, error: "Conversation ID is required" }, { status: 400 });
     }
@@ -93,7 +96,7 @@ export async function POST(req: NextRequest) {
         const existing = existingShares.data[0];
         return Response.json({
           success: true,
-          shareLink: `${req.nextUrl.origin}/share/${existing.share_id}`,
+          shareLink: `${baseUrl}/share/${existing.share_id}`,
           secret: existing.secret || '',
           reused: true, // 标记为复用
         });
@@ -132,7 +135,7 @@ export async function POST(req: NextRequest) {
       // 5. 创建新分享
       shareId = generateShareId();
       secret = makePublic ? null : generateSecret();
-      shareLink = `${req.nextUrl.origin}/share/${shareId}`;
+      shareLink = `${baseUrl}/share/${shareId}`;
 
       await db.collection('conversation_shares').add({
         share_id: shareId,
@@ -171,7 +174,7 @@ export async function POST(req: NextRequest) {
         const existing = existingShares[0];
         return Response.json({
           success: true,
-          shareLink: `${req.nextUrl.origin}/share/${existing.share_id}`,
+          shareLink: `${baseUrl}/share/${existing.share_id}`,
           secret: existing.secret || '',
           reused: true,
         });
@@ -208,7 +211,7 @@ export async function POST(req: NextRequest) {
       // 5. 创建新分享
       shareId = generateShareId();
       secret = makePublic ? null : generateSecret();
-      shareLink = `${req.nextUrl.origin}/share/${shareId}`;
+      shareLink = `${baseUrl}/share/${shareId}`;
 
       const { error } = await supabase.from('conversation_shares').insert({
         share_id: shareId,

@@ -609,7 +609,7 @@ function ChatInterface({
 
                     const bubble = (
                       <div
-                        className={`w-full sm:max-w-3xl p-3 sm:p-4 rounded-xl sm:rounded-2xl relative group shadow-lg ${
+                        className={`chat-bubble-container w-full max-w-full sm:max-w-3xl p-3 sm:p-4 rounded-xl sm:rounded-2xl relative group shadow-lg ${
                           isUser
                             ? "bg-gradient-to-br from-indigo-500 via-blue-500 to-blue-600 text-white shadow-blue-500/25"
                             : "bg-white/90 dark:bg-[#2f3039] border border-white/70 dark:border-[#3f4150] text-gray-900 dark:text-[#e7e9f3] backdrop-blur"
@@ -643,7 +643,7 @@ function ChatInterface({
                           </div>
                         )}
                         {isUser ? (
-                          <p className="whitespace-pre-wrap leading-relaxed" style={{ fontSize: 'var(--chat-font-size, 14px)' }}>
+                          <p className="whitespace-pre-wrap leading-relaxed break-words" style={{ fontSize: 'var(--chat-font-size, 14px)', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
                             {stripAttachmentSummary(message.content)}
                             {message.isStreaming && (
                               <span className="inline-block w-0.5 h-4 bg-white/90 ml-1 animate-pulse"></span>

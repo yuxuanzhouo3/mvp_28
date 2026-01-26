@@ -129,6 +129,67 @@
     border-radius: 0.25em;
     margin: 0 0.2em;
   }
+
+  /* 移动端对话气泡溢出保护 */
+  .chat-bubble-container {
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
+    overflow: hidden;
+  }
+
+  .chat-bubble-container * {
+    max-width: 100%;
+  }
+
+  .chat-bubble-container pre {
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  .chat-bubble-container code {
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-all;
+  }
+
+  .chat-bubble-container img,
+  .chat-bubble-container video {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  .chat-bubble-container table {
+    max-width: 100%;
+    overflow-x: auto;
+    display: block;
+  }
+
+  /* Markdown 内容溢出保护 */
+  .markdown-content {
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+
+  .markdown-content pre {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .markdown-content img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  .markdown-content table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
 }
 
 @layer base {

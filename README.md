@@ -211,5 +211,5 @@ docker run -p 3000:3000 morngpt
 
 ## 许可证
 
-Copyright © 2025 Yuxuan Zhou. All rights reserved.
+© 2026 MornGPT. All rights reserved.
 Update for Vercel 

@@ -326,7 +326,7 @@ MornGPT（以下简称"我们"）非常重视您的隐私。本政策适用于�
 
 ---
 
-**Copyright © 2025 Yuxuan Zhou. [粤ICP备2024281756号-3]**
+**© 2026 MornGPT. All rights reserved.**
 `;
 
 // 国际版隐私条款完整内容
@@ -709,7 +709,7 @@ For EU residents, you also have the right to lodge a complaint with a supervisor
 
 ---
 
-**Copyright © 2025 Yuxuan Zhou. All Rights Reserved.**
+**© 2026 MornGPT. All rights reserved.**
 `;
 
 export function PrivacyPolicyContent({ isDomestic }: PrivacyPolicyContentProps) {

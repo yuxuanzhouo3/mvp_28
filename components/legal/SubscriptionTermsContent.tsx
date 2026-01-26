@@ -168,7 +168,7 @@ const SUBSCRIPTION_TERMS_CN = `# 订阅规则（国内版）
 
 ---
 
-**Copyright © 2025 Yuxuan Zhou. [粤ICP备2024281756号-3]**
+**© 2026 MornGPT. All rights reserved.**
 `;
 
 // 国际版订阅规则完整内容
@@ -331,7 +331,7 @@ If you have any questions about these Subscription Terms, please contact us:
 
 ---
 
-**Copyright © 2025 Yuxuan Zhou. All Rights Reserved.**
+**© 2026 MornGPT. All rights reserved.**
 `;
 
 export function SubscriptionTermsContent({ isDomestic }: SubscriptionTermsContentProps) {

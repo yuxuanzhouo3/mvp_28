@@ -2,8 +2,8 @@
   "name": "morngpt-homepage",
   "version": "1.0.0",
   "private": true,
-  "author": "Yuxuan Zhou",
-  "copyright": "Copyright © 2025 Yuxuan Zhou. All rights reserved.",
+  "author": "MornGPT",
+  "copyright": "© 2026 MornGPT. All rights reserved.",
   "license": "UNLICENSED",
   "scripts": {
     "build": "next build",

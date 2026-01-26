@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Copyright © 2025 Yuxuan Zhou. All rights reserved.
+ * © 2026 MornGPT. All rights reserved.
  *
  * This file is part of the MornGPT Homepage application.
  * Unauthorized copying, distribution, or use is strictly prohibited.

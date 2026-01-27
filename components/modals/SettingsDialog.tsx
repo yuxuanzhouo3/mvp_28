@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { createLocalizedTextGetter } from "@/lib/localization";
+import { useIsIOSMobile } from "@/hooks";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -90,7 +91,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   setShowPrivacyDialog,
   onLanguageChange,
 }) => {
-  const { currentLanguage, setCurrentLanguage } = useLanguage();
+  const { currentLanguage, setCurrentLanguage, isDomesticVersion } = useLanguage();
+  const isIOSMobile = useIsIOSMobile();
   const t = createLocalizedTextGetter(currentLanguage);
   const openSubDialog = (openFn: () => void) => {
     openFn();
@@ -180,14 +182,16 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         : "F"}
                     </span>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-6 h-6 p-0 bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 flex-shrink-0"
-                    onClick={() => setShowUpgradeDialog(true)}
-                  >
-                    <Crown className="w-3 h-3" />
-                  </Button>
+                  {!isDomesticVersion && !isIOSMobile && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-6 h-6 p-0 bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 flex-shrink-0"
+                      onClick={() => setShowUpgradeDialog(true)}
+                    >
+                      <Crown className="w-3 h-3" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>

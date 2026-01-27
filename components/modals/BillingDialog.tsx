@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { CreditCard, Crown, Edit3, Receipt, RefreshCw } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
+import { useIsIOSMobile } from "@/hooks";
 
 interface BillingDialogProps {
   open: boolean;
@@ -54,7 +55,8 @@ export function BillingDialog({
   paymentMethod,
   setPaymentMethod,
 }: BillingDialogProps) {
-  const { currentLanguage } = useLanguage();
+  const { currentLanguage, isDomesticVersion } = useLanguage();
+  const isIOSMobile = useIsIOSMobile();
   const isZh = currentLanguage === "zh";
   const tr = (en: string, zh: string) => (isZh ? zh : en);
   return (
@@ -90,19 +92,21 @@ export function BillingDialog({
                       </p>
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      onOpenChange(false);
-                      setShowUpgradeDialog(true);
-                    }}
-                    className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white"
-                  >
-                    <Crown className="w-4 h-4 mr-2" />
-                    {appUser?.isPro
-                      ? tr("Upgrade Plan", "升级套餐")
-                      : tr("Upgrade", "升级")}
-                  </Button>
+                  {!isDomesticVersion && !isIOSMobile && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        onOpenChange(false);
+                        setShowUpgradeDialog(true);
+                      }}
+                      className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white"
+                    >
+                      <Crown className="w-4 h-4 mr-2" />
+                      {appUser?.isPro
+                        ? tr("Upgrade Plan", "升级套餐")
+                        : tr("Upgrade", "升级")}
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -130,8 +134,10 @@ export function BillingDialog({
                         setShowPaymentEditDialog(true);
                       } else {
                         // For free users, redirect to upgrade
-                        onOpenChange(false);
-                        setShowUpgradeDialog(true);
+                        if (!isDomesticVersion && !isIOSMobile) {
+                          onOpenChange(false);
+                          setShowUpgradeDialog(true);
+                        }
                       }
                     }}
                     className="text-gray-600 dark:text-gray-400"

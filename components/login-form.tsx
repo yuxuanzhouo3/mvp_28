@@ -28,6 +28,7 @@ import { signInWithGoogle } from "@/actions/oauth";
 import { PrivacyPolicyContent } from "@/components/legal";
 import { trackLoginEventClient } from "@/services/analytics-client";
 import { validateEmail } from "@/lib/validation/email";
+import { useIsIOSMobile } from "@/hooks";
 
 export function LoginForm({
   className,
@@ -39,6 +40,7 @@ export function LoginForm({
   const { currentLanguage, isDomesticVersion } = useLanguage();
   const isDomestic = isDomesticVersion;
   const isZhText = (currentLanguage || DEFAULT_LANGUAGE) === "zh";
+  const isIOSMobile = useIsIOSMobile();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -227,7 +229,7 @@ export function LoginForm({
                   "Login"
                 )}
               </Button>
-              {!isDomestic && (
+              {!isDomestic && !isIOSMobile && (
                 <Button
                   type="button"
                   variant="outline"

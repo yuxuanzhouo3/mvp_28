@@ -20,6 +20,8 @@ import React from "react";
 import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
 import "katex/dist/katex.min.css";
+import { useIsIOSMobile } from "@/hooks";
+import { useLanguage } from "@/context/LanguageContext";
 
 // 配置 marked 使用 katex 扩展（只配置一次）
 marked.use(markedKatex({
@@ -154,6 +156,9 @@ function ChatInterface({
   bookmarkedMessages,
   onDeleteMessage,
 }: ChatInterfaceProps) {
+  const isIOSMobile = useIsIOSMobile();
+  const { isDomesticVersion } = useLanguage();
+
   const isFreeUser = !!appUser && !appUser.isPro && (appUser.plan || "").toLowerCase() === "free";
   // 直接使用 messages prop，ChatProvider 已正确处理消息来源（包括移动端访客试用模式）
   const activeMessages = messages;
@@ -538,13 +543,15 @@ function ChatInterface({
                       : `${ctxRemaining} context left`}
                   </span>
                   <span className="text-amber-400">·</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowUpgradeDialog(true)}
-                    className="font-medium text-amber-600 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-100 transition-colors underline-offset-2 hover:underline"
-                  >
-                    {selectedLanguage === "zh" ? "升级获取更多" : "Upgrade"}
-                  </button>
+                  {!isDomesticVersion && !isIOSMobile && (
+                    <button
+                      type="button"
+                      onClick={() => setShowUpgradeDialog(true)}
+                      className="font-medium text-amber-600 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-100 transition-colors underline-offset-2 hover:underline"
+                    >
+                      {selectedLanguage === "zh" ? "升级获取更多" : "Upgrade"}
+                    </button>
+                  )}
                 </div>
               )}
               {activeMessages.map((message: Message, index: number) => {

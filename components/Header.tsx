@@ -30,6 +30,7 @@ import {
 import { useEffect, useState } from "react";
 import { fetchQuotaShared } from "@/utils/quota-fetcher";
 import AdBanner from "@/components/AdBanner";
+import { useIsIOSMobile } from "@/hooks";
 
 interface HeaderProps {
   currentChat: any;
@@ -156,6 +157,8 @@ export default function Header({
   sidebarCollapsed = false,
   setSidebarCollapsed,
 }: HeaderProps) {
+  const isIOSMobile = useIsIOSMobile();
+
   // 检查订阅是否过期
   const rawPlanLower = (
     currentPlan ||
@@ -850,7 +853,7 @@ export default function Header({
             </div>
 
             {/* 订阅按钮 - 所有设备显示，移动端仅图标 */}
-            {appUser && (
+            {appUser && !isDomestic && !isIOSMobile && (
               <Button
                 variant="outline"
                 size="sm"

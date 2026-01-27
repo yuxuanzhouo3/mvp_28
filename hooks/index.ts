@@ -15,3 +15,4 @@ export { useCamera } from "./useCamera";
 export { useMessageSubmission } from "./useMessageSubmission";
 export { useMobileGuestTrial } from "./useMobileGuestTrial";
 export { useIsMobile } from "./use-mobile";
+export { useIsIOSMobile } from "./use-ios-mobile";

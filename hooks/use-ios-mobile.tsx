@@ -6,8 +6,11 @@ export function useIsIOSMobile() {
   React.useEffect(() => {
     const checkIOSMobile = () => {
       const userAgent = window.navigator.userAgent.toLowerCase()
-      const isIOS = /iphone|ipad|ipod/.test(userAgent)
-      return isIOS
+      const isIOS = /iphone|ipod/.test(userAgent)
+      const isIPad = /ipad/.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+
+      // 只有iPhone和iPod被视为移动端iOS设备，iPad不算
+      return isIOS && !isIPad
     }
 
     setIsIOSMobile(checkIOSMobile())

@@ -883,7 +883,7 @@ export default function Header({
                     >
                       <div className="flex items-center space-x-0.5 sm:space-x-1 w-full justify-center">
                         {appUser.isPro && !isIOSMobile && (
-                          <Crown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-900 dark:text-gray-100 flex-shrink-0 hidden sm:block" />
+                          <Crown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-900 dark:text-gray-100 flex-shrink-0" />
                         )}
                         <User className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
                         <span className="truncate text-[10px] sm:text-[10px] md:text-xs max-w-[40px] sm:max-w-[40px] md:max-w-[60px]">{appUser.name}</span>

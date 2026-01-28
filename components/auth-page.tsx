@@ -24,6 +24,7 @@ import {
   requestWxMpLogin,
   exchangeCodeForToken,
 } from "@/lib/wechat-mp";
+import { useIsIOSMobile } from "@/hooks";
 
 type Mode = "login" | "signup";
 
@@ -49,6 +50,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isInMiniProgram, setIsInMiniProgram] = useState(false);
+  const isIOSMobile = useIsIOSMobile();
 
   // 检测小程序环境
   useEffect(() => {
@@ -475,7 +477,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
                         </div>
                       </div>
 
-                      {isDomestic ? (
+                      {isDomestic && !isIOSMobile ? (
                         <Button
                           type="button"
                           variant="default"
@@ -494,7 +496,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
                           </svg>
                           {isZhText ? "使用微信登录" : "Continue with WeChat"}
                         </Button>
-                      ) : (
+                      ) : !isDomestic && !isIOSMobile ? (
                         <Button
                           type="button"
                           variant="outline"
@@ -513,7 +515,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
                           </svg>
                           {isZhText ? "使用 Google 登录" : "Continue with Google"}
                         </Button>
-                      )}
+                      ) : null}
                     </>
 
                     <p className="text-sm text-slate-300 text-center">

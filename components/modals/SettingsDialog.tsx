@@ -162,7 +162,13 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     {t("account")}
                   </Label>
                   <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {!isDomesticVersion && isIOSMobile ? (currentLanguage === "zh" ? "个人资料" : "Your profile") : t("profileSubtitle")}
+                    {isIOSMobile
+                      ? currentLanguage === "zh"
+                        ? "个人资料"
+                        : "Your profile"
+                      : currentLanguage === "zh"
+                        ? "个人资料与订阅"
+                        : "Your profile & subscription"}
                   </p>
                 </div>
                 <div className="flex items-center space-x-2 flex-shrink-0">
@@ -182,7 +188,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         : "F"}
                     </span>
                   </div>
-                  {!isDomesticVersion && !isIOSMobile && (
+                  {!isIOSMobile && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -436,7 +442,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     </SelectContent>
                   </Select>
                 </div>
-                {!(!isDomesticVersion && isIOSMobile) && (
+                {!isIOSMobile && (
                   <div className="flex items-center justify-between">
                     <div>
                       <Label className="text-sm text-gray-700 dark:text-gray-300">
@@ -455,7 +461,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                           // Free 用户点击时弹出订阅弹窗
                           setShowUpgradeDialog(true);
                         } else {
-                          // 订阅用户（Basic/Pro/Enterprise）正常切换
+                          // 订阅用户（Basic/Pro/Enterprise）正常��换
                           updateUserSettings({
                             hideAds: !(appUser?.settings?.hideAds ?? false),
                           });
@@ -491,7 +497,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     </span>
                   </Button>
                 </div>
-                {!(!isDomesticVersion && isIOSMobile) && (
+                {!isIOSMobile && (
                   <div className="flex items-center justify-between">
                     <div>
                       <Label className="text-sm text-gray-700 dark:text-gray-300">

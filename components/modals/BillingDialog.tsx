@@ -92,7 +92,7 @@ export function BillingDialog({
                       </p>
                     </div>
                   </div>
-                  {!isDomesticVersion && !isIOSMobile && (
+                  {!isIOSMobile && (
                     <Button
                       size="sm"
                       onClick={() => {
@@ -134,7 +134,7 @@ export function BillingDialog({
                         setShowPaymentEditDialog(true);
                       } else {
                         // For free users, redirect to upgrade
-                        if (!isDomesticVersion && !isIOSMobile) {
+                        if (!isIOSMobile) {
                           onOpenChange(false);
                           setShowUpgradeDialog(true);
                         }

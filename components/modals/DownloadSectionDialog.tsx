@@ -238,7 +238,7 @@ export default function DownloadSectionDialog({
           </div>
 
           {/* 广告设置 */}
-          {appUser && !(!isDomesticVersion && isIOSMobile) && (
+          {appUser && !isIOSMobile && (
             <div className="space-y-2 pt-3 border-t border-gray-200 dark:border-[#565869]">
               <div className="flex items-center justify-between">
                 <div>

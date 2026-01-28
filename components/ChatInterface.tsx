@@ -543,7 +543,7 @@ function ChatInterface({
                       : `${ctxRemaining} context left`}
                   </span>
                   <span className="text-amber-400">·</span>
-                  {!isDomesticVersion && !isIOSMobile && (
+                  {!isIOSMobile && (
                     <button
                       type="button"
                       onClick={() => setShowUpgradeDialog(true)}

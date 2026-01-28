@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { LogIn, UserPlus, Lock, Eye, EyeOff, Mail, User, Sparkles } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { PrivacyPolicyContent } from "@/components/legal";
+import { useIsIOSMobile } from "@/hooks";
 
 interface AuthDialogProps {
   open: boolean;
@@ -52,11 +53,12 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
   isMobile = false,
 }) => {
   const { currentLanguage, isDomesticVersion } = useLanguage();
+  const isIOSMobile = useIsIOSMobile();
   const isZh = currentLanguage === "zh";
   const isDomestic = isDomesticVersion;
 
-  // 国内版显示微信登录按钮（移动端和桌面端都显示）
-  const shouldShowWechatLogin = isDomestic;
+  // 国内版显示微信登录按钮（iOS移动端隐藏，其他设备显示）
+  const shouldShowWechatLogin = isDomestic && !isIOSMobile;
 
   // 国内版移动端品牌名
   const brandName = isDomestic && isMobile ? "晨佑 AI" : "MornGPT";

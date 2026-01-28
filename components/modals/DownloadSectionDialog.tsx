@@ -18,7 +18,7 @@ import {
   Crown,
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
-import { useIsMobile } from "@/hooks";
+import { useIsMobile, useIsIOSMobile } from "@/hooks";
 
 interface Platform {
   platform: string;
@@ -58,6 +58,7 @@ export default function DownloadSectionDialog({
 }: DownloadSectionDialogProps) {
   const { currentLanguage, isDomesticVersion } = useLanguage();
   const isMobile = useIsMobile();
+  const isIOSMobile = useIsIOSMobile();
   const isZh = currentLanguage === "zh";
   const brandName = isDomesticVersion && isMobile ? "晨佑 AI" : "MornGPT";
   const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
@@ -237,7 +238,7 @@ export default function DownloadSectionDialog({
           </div>
 
           {/* 广告设置 */}
-          {appUser && (
+          {appUser && !(!isDomesticVersion && isIOSMobile) && (
             <div className="space-y-2 pt-3 border-t border-gray-200 dark:border-[#565869]">
               <div className="flex items-center justify-between">
                 <div>

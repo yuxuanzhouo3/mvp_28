@@ -162,7 +162,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     {t("account")}
                   </Label>
                   <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {t("profileSubtitle")}
+                    {!isDomesticVersion && isIOSMobile ? (currentLanguage === "zh" ? "个人资料" : "Your profile") : t("profileSubtitle")}
                   </p>
                 </div>
                 <div className="flex items-center space-x-2 flex-shrink-0">
@@ -436,38 +436,40 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label className="text-sm text-gray-700 dark:text-gray-300">
-                      {t("turnOffAds")}
-                    </Label>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {appUser?.isPaid ? t("billingDescription") : t("proFeatureOnly")}
-                    </p>
+                {!(!isDomesticVersion && isIOSMobile) && (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm text-gray-700 dark:text-gray-300">
+                        {t("turnOffAds")}
+                      </Label>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {appUser?.isPaid ? t("billingDescription") : t("proFeatureOnly")}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-32 h-7 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869]"
+                      onClick={() => {
+                        if (!appUser?.isPaid) {
+                          // Free 用户点击时弹出订阅弹窗
+                          setShowUpgradeDialog(true);
+                        } else {
+                          // 订阅用户（Basic/Pro/Enterprise）正常切换
+                          updateUserSettings({
+                            hideAds: !(appUser?.settings?.hideAds ?? false),
+                          });
+                        }
+                      }}
+                    >
+                      <span className="text-xs">
+                        {appUser?.settings?.hideAds ?? false
+                          ? t("turnOnAds")
+                          : t("turnOffAds")}
+                      </span>
+                    </Button>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-32 h-7 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869]"
-                    onClick={() => {
-                      if (!appUser?.isPaid) {
-                        // Free 用户点击时弹出订阅弹窗
-                        setShowUpgradeDialog(true);
-                      } else {
-                        // 订阅用户（Basic/Pro/Enterprise）正常切换
-                        updateUserSettings({
-                          hideAds: !(appUser?.settings?.hideAds ?? false),
-                        });
-                      }
-                    }}
-                  >
-                    <span className="text-xs">
-                      {appUser?.settings?.hideAds ?? false
-                        ? t("turnOnAds")
-                        : t("turnOffAds")}
-                    </span>
-                  </Button>
-                </div>
+                )}
 
                 <div className="flex items-center justify-between">
                   <div>
@@ -489,24 +491,26 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     </span>
                   </Button>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label className="text-sm text-gray-700 dark:text-gray-300">
-                      {t("billing")}
-                    </Label>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {t("billingDescription")}
-                    </p>
+                {!(!isDomesticVersion && isIOSMobile) && (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm text-gray-700 dark:text-gray-300">
+                        {t("billing")}
+                      </Label>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {t("billingDescription")}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-32 h-7 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869]"
+                      onClick={() => openSubDialog(() => setShowBillingDialog(true))}
+                    >
+                      <span className="text-xs">{t("billing")}</span>
+                    </Button>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-32 h-7 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869]"
-                    onClick={() => openSubDialog(() => setShowBillingDialog(true))}
-                  >
-                    <span className="text-xs">{t("billing")}</span>
-                  </Button>
-                </div>
+                )}
                 <div className="flex items-center justify-between">
                   <div>
                     <Label className="text-sm text-gray-700 dark:text-gray-300">

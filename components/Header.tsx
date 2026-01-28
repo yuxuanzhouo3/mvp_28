@@ -882,7 +882,7 @@ export default function Header({
                       className="w-20 sm:w-20 md:w-28 lg:w-36 h-8 sm:h-8 bg-white dark:bg-[#40414f] text-gray-900 dark:text-[#ececf1] border-gray-300 dark:border-[#565869] hover:bg-gray-50 dark:hover:bg-[#565869] text-xs px-1.5 sm:px-2"
                     >
                       <div className="flex items-center space-x-0.5 sm:space-x-1 w-full justify-center">
-                        {appUser.isPro && !isIOSMobile && (
+                        {!isIOSMobile && (appUser.isPro || appUser.isPaid) && (
                           <Crown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-900 dark:text-gray-100 flex-shrink-0" />
                         )}
                         <User className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5 flex-shrink-0" />

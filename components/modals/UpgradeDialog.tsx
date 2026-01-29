@@ -12,7 +12,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { pricingPlans as pricingPlansRaw } from "@/constants/pricing";
 import { AddonPackageTab } from "./AddonPackageTab";
 import { SubscriptionTermsContent } from "@/components/legal";
-import { useIsMobile } from "@/hooks";
+import { useIsMobile, useIsIOSMobile } from "@/hooks";
 
 type UpgradeTabType = "subscription" | "addon";
 
@@ -109,7 +109,13 @@ export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
 }) => {
   const { currentLanguage, isDomesticVersion } = useLanguage();
   const isMobile = useIsMobile();
+  const isIOSMobile = useIsIOSMobile();
   const isZh = currentLanguage === "zh";
+
+  // iOS环境下不显示订阅弹窗
+  if (isIOSMobile) {
+    return null;
+  }
   // 国内版移动端品牌名
   const brandName = isDomesticVersion && isMobile ? "晨佑 AI" : "MornGPT";
   const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);

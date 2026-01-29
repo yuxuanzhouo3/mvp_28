@@ -60,6 +60,9 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
   // 国内版显示微信登录按钮（iOS移动端隐藏，其他设备显示）
   const shouldShowWechatLogin = isDomestic && !isIOSMobile;
 
+  // 国际版显示谷歌登录按钮（iOS移动端隐藏，其他设备显示）
+  const shouldShowGoogleLogin = !isDomestic && !isIOSMobile;
+
   // 国内版移动端品牌名
   const brandName = isDomestic && isMobile ? "晨佑 AI" : "MornGPT";
 
@@ -160,7 +163,7 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
                   </svg>
                   <span className="font-medium">{isZh ? "使用微信登录" : "Continue with WeChat"}</span>
                 </Button>
-              ) : !isDomestic ? (
+              ) : shouldShowGoogleLogin ? (
                 <Button
                   onClick={handleGoogleAuth}
                   variant="outline"

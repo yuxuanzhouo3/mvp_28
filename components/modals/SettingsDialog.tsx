@@ -162,13 +162,9 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     {t("account")}
                   </Label>
                   <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {isIOSMobile
-                      ? currentLanguage === "zh"
-                        ? "个人资料"
-                        : "Your profile"
-                      : currentLanguage === "zh"
-                        ? "个人资料与订阅"
-                        : "Your profile & subscription"}
+                    {currentLanguage === "zh"
+                      ? isIOSMobile ? "个人资料" : "个人资料与订阅"
+                      : isIOSMobile ? "Your profile" : "Your profile & subscription"}
                   </p>
                 </div>
                 <div className="flex items-center space-x-2 flex-shrink-0">

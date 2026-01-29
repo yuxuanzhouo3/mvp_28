@@ -465,21 +465,22 @@ export default function Header({
               {getLocalizedText("mornGPT")}
             </h1>
             {/* 移动端使用 Popover 点击展示，桌面端使用 Tooltip 悬浮显示 */}
-            <div className="hidden md:flex items-center">
-              <TooltipProvider delayDuration={150}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge
-                      variant="outline"
-                      className={`text-xs px-2 py-0.5 border-0 ${
-                        appUser
-                          ? tierClass
-                          : "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
-                      }`}
-                    >
-                      {tierDisplay}
-                    </Badge>
-                  </TooltipTrigger>
+            {!isIOSMobile && (
+              <div className="hidden md:flex items-center">
+                <TooltipProvider delayDuration={150}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge
+                        variant="outline"
+                        className={`text-xs px-2 py-0.5 border-0 ${
+                          appUser
+                            ? tierClass
+                            : "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+                        }`}
+                      >
+                        {tierDisplay}
+                      </Badge>
+                    </TooltipTrigger>
                   <TooltipContent side="bottom" className="text-xs">
                     {appUser ? (
                       isUnlimited ? (
@@ -614,9 +615,11 @@ export default function Header({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            </div>
+              </div>
+            )}
             {/* 移动端使用 Popover */}
-            <div className="flex md:hidden items-center self-center">
+            {!isIOSMobile && (
+              <div className="flex md:hidden items-center self-center">
               <Popover>
                 <PopoverTrigger asChild>
                   <Badge
@@ -763,7 +766,8 @@ export default function Header({
                   )}
                 </PopoverContent>
               </Popover>
-            </div>
+              </div>
+            )}
             {currentChat && (
               <span className="hidden sm:inline text-sm text-gray-500 dark:text-gray-400 truncate">
                 - {currentChat.title}

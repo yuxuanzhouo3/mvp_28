@@ -12,15 +12,13 @@ export function useIsIOSMobile() {
     // 只有iPhone和iPod被视为移动端iOS设备，iPad不算
     const result = isIOS && !isIPad
 
-    // 调试信息：在开发环境下输出检测结果
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[useIsIOSMobile] 设备检测:', {
-        userAgent,
-        isIOS,
-        isIPad,
-        result
-      })
-    }
+    // 调试信息：始终输出检测结果以便诊断
+    console.log('[useIsIOSMobile] 设备检测:', {
+      userAgent,
+      isIOS,
+      isIPad,
+      result
+    })
 
     return result
   })

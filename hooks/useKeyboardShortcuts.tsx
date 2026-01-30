@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useIsIOSMobile } from "@/hooks";
 
 export interface Shortcut {
   action: string;
@@ -35,6 +36,7 @@ export const useKeyboardShortcuts = (
   messagesEndRef: React.RefObject<HTMLDivElement | null>,
   scrollToInputArea: () => void
 ) => {
+  const isIOSMobile = useIsIOSMobile();
   const [editingShortcut, setEditingShortcut] = useState("");
   const [editingShortcutValue, setEditingShortcutValue] = useState("");
   const [shortcutConflict, setShortcutConflict] =
@@ -340,7 +342,9 @@ export const useKeyboardShortcuts = (
       // Downloads shortcut
       if (checkShortcutMatch(e, "Downloads")) {
         e.preventDefault();
-        setShowDownloadSection(true);
+        if (!isIOSMobile) {
+          setShowDownloadSection(true);
+        }
       }
 
       // Ask GPT shortcut
@@ -377,7 +381,9 @@ export const useKeyboardShortcuts = (
       // Download shortcut
       if (cmdOrCtrl && e.key === "j") {
         e.preventDefault();
-        setShowDownloadSection((prev) => !prev);
+        if (!isIOSMobile) {
+          setShowDownloadSection((prev) => !prev);
+        }
       }
 
       // Help shortcut

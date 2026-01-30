@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useLanguage } from "@/context/LanguageContext";
-import { useIsMobile } from "@/hooks";
+import { useIsMobile, useIsIOSMobile } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -133,6 +133,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const { currentLanguage } = useLanguage();
   const isMobile = useIsMobile();
+  const isIOSMobile = useIsIOSMobile();
   // 国内版移动端隐藏 MornGPT 文件夹
   const hideMornGPTFolder = isDomestic && isMobile;
   const canCloseAdsForUpsell = !appUser?.isPaid;
@@ -217,15 +218,17 @@ export default function Sidebar({
                   <span>{getLocalizedText("newChat")}</span>
                 </Button>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowDownloadSection(!showDownloadSection)}
-                  className="h-10 w-10 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] flex-shrink-0"
-                  title={getLocalizedText("downloadApps")}
-                >
-                  <Download className="w-4 h-4" />
-                </Button>
+                {!isIOSMobile && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowDownloadSection(!showDownloadSection)}
+                    className="h-10 w-10 p-0 text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] flex-shrink-0"
+                    title={getLocalizedText("downloadApps")}
+                  >
+                    <Download className="w-4 h-4" />
+                  </Button>
+                )}
 
                 {/* 移动端关闭按钮 - 仅在小屏幕显示 */}
                 <Button

@@ -1,10 +1,11 @@
 "use client";
 
 import { PrivacyPolicyContent } from "@/components/legal";
-import { useLanguage } from "@/hooks/useLanguage";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function PrivacyPage() {
-  const { isDomestic } = useLanguage();
+  const { isDomesticVersion } = useLanguage();
+  const isDomestic = isDomesticVersion;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">

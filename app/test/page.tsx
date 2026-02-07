@@ -1,8 +1,27 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+
 export default function TestPage() {
+  const [fcmToken, setFcmToken] = useState<string>('');
+
+  useEffect(() => {
+    // 设置FCM Token回调函数
+    (window as any).onFCMTokenReceived = (token: string) => {
+      setFcmToken(token);
+    };
+
+    (window as any).onFCMTokenError = (error: string) => {
+      alert(error);
+    };
+
+    return () => {
+      delete (window as any).onFCMTokenReceived;
+      delete (window as any).onFCMTokenError;
+    };
+  }, []);
+
   const handleTestNotification = () => {
-    // 检查是否在Android WebView环境中
     if (typeof window !== 'undefined' && (window as any).AndroidNotification) {
       try {
         (window as any).AndroidNotification.sendTestNotification();
@@ -17,7 +36,6 @@ export default function TestPage() {
   };
 
   const handleDelayedNotification = () => {
-    // 检查是否在Android WebView环境中
     if (typeof window !== 'undefined' && (window as any).AndroidNotification) {
       try {
         (window as any).AndroidNotification.scheduleDelayedNotification();
@@ -32,11 +50,9 @@ export default function TestPage() {
   };
 
   const handleGetFCMToken = () => {
-    // 检查是否在Android WebView环境中
     if (typeof window !== 'undefined' && (window as any).AndroidNotification) {
       try {
         (window as any).AndroidNotification.getFCMToken();
-        alert('FCM Token已请求！请查看Logcat日志');
       } catch (error) {
         console.error('获取FCM Token失败:', error);
         alert('获取FCM Token失败，请检查控制台');
@@ -46,9 +62,17 @@ export default function TestPage() {
     }
   };
 
+  const copyToClipboard = () => {
+    if (fcmToken) {
+      navigator.clipboard.writeText(fcmToken).then(() => {
+        alert('Token已复制到剪贴板！');
+      });
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 w-full max-w-md">
         <button
           className="rounded-lg bg-blue-600 px-8 py-4 text-lg font-medium text-white active:bg-blue-700 touch-manipulation"
           onClick={handleTestNotification}
@@ -67,6 +91,23 @@ export default function TestPage() {
         >
           获取FCM Token
         </button>
+
+        {fcmToken && (
+          <div className="mt-4 p-4 bg-gray-100 rounded-lg">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="font-semibold text-gray-700">FCM Token:</h3>
+              <button
+                onClick={copyToClipboard}
+                className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
+              >
+                复制
+              </button>
+            </div>
+            <p className="text-xs text-gray-600 break-all font-mono">
+              {fcmToken}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

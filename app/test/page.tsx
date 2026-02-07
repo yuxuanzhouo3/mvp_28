@@ -75,6 +75,19 @@ export default function TestPage() {
     }
   };
 
+  const handleDiagnoseFCM = () => {
+    if (typeof window !== 'undefined' && (window as any).AndroidNotification) {
+      try {
+        (window as any).AndroidNotification.diagnoseFCM();
+      } catch (error) {
+        console.error('FCM诊断失败:', error);
+        alert('FCM诊断失败，请检查控制台');
+      }
+    } else {
+      alert('此功能仅在Android应用中可用');
+    }
+  };
+
   const copyToClipboard = () => {
     if (fcmToken) {
       navigator.clipboard.writeText(fcmToken).then(() => {
@@ -109,6 +122,12 @@ export default function TestPage() {
           onClick={handleGetFCMToken}
         >
           获取FCM Token
+        </button>
+        <button
+          className="rounded-lg bg-red-600 px-8 py-4 text-lg font-medium text-white active:bg-red-700 touch-manipulation"
+          onClick={handleDiagnoseFCM}
+        >
+          🔍 FCM完整诊断
         </button>
 
         {fcmToken && (

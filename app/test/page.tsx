@@ -16,14 +16,37 @@ export default function TestPage() {
     }
   };
 
+  const handleDelayedNotification = () => {
+    // 检查是否在Android WebView环境中
+    if (typeof window !== 'undefined' && (window as any).AndroidNotification) {
+      try {
+        (window as any).AndroidNotification.scheduleDelayedNotification();
+        alert('定时通知已设置！请关闭应用，5秒后将收到通知');
+      } catch (error) {
+        console.error('设置定时通知失败:', error);
+        alert('设置定时通知失败，请检查控制台');
+      }
+    } else {
+      alert('此功能仅在Android应用中可用');
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <button
-        className="rounded-lg bg-blue-600 px-8 py-4 text-lg font-medium text-white active:bg-blue-700 touch-manipulation"
-        onClick={handleTestNotification}
-      >
-        测试
-      </button>
+      <div className="flex flex-col gap-4">
+        <button
+          className="rounded-lg bg-blue-600 px-8 py-4 text-lg font-medium text-white active:bg-blue-700 touch-manipulation"
+          onClick={handleTestNotification}
+        >
+          测试即时通知
+        </button>
+        <button
+          className="rounded-lg bg-green-600 px-8 py-4 text-lg font-medium text-white active:bg-green-700 touch-manipulation"
+          onClick={handleDelayedNotification}
+        >
+          测试定时通知(5秒)
+        </button>
+      </div>
     </div>
   );
 }

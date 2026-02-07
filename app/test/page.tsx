@@ -21,6 +21,19 @@ export default function TestPage() {
     };
   }, []);
 
+  const handleTestConnection = () => {
+    if (typeof window !== 'undefined' && (window as any).AndroidNotification) {
+      try {
+        (window as any).AndroidNotification.testConnection();
+      } catch (error) {
+        console.error('测试连接失败:', error);
+        alert('测试连接失败: ' + error);
+      }
+    } else {
+      alert('AndroidNotification接口不存在！请确认在Android应用中运行');
+    }
+  };
+
   const handleTestNotification = () => {
     if (typeof window !== 'undefined' && (window as any).AndroidNotification) {
       try {
@@ -73,6 +86,12 @@ export default function TestPage() {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="flex flex-col gap-4 w-full max-w-md">
+        <button
+          className="rounded-lg bg-orange-600 px-8 py-4 text-lg font-medium text-white active:bg-orange-700 touch-manipulation"
+          onClick={handleTestConnection}
+        >
+          测试JavaScript接口连接
+        </button>
         <button
           className="rounded-lg bg-blue-600 px-8 py-4 text-lg font-medium text-white active:bg-blue-700 touch-manipulation"
           onClick={handleTestNotification}

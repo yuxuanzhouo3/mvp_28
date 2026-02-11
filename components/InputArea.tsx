@@ -273,7 +273,7 @@ const InputArea = React.memo(function InputArea({
     textarea.style.height = 'auto';
 
     // Calculate new height (min 24px, max 240px for 10 lines)
-    const newHeight = Math.min(Math.max(textarea.scrollHeight, 24), 240);
+    const newHeight = Math.min(Math.max(textarea.scrollHeight, 36), 240);
     textarea.style.height = `${newHeight}px`;
   }, [prompt, textareaRef]);
 
@@ -611,40 +611,101 @@ const InputArea = React.memo(function InputArea({
         className="hidden"
         id="file-upload"
         accept={["image/*", "video/*", "audio/*"].join(",")}
-        disabled={isUploading || !IS_DOMESTIC_VERSION}
+        disabled={isUploading || !IS_DOMESTIC_VERSION || !appUser}
       />
 
       <div className="max-w-4xl mx-auto px-4">
-        {/* Single Row Input Layout with Rounded Rectangle */}
-        <div className="flex items-center gap-2 sm:gap-3 bg-white dark:bg-[#40414f] border-2 border-gray-300 dark:border-[#6b6d7a] rounded-2xl px-2 sm:px-4 py-2 sm:py-3 shadow-sm hover:shadow-md transition-shadow">
-          {/* Left Side - Plus Button with Popover */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={!appUser}
-                className="h-9 w-9 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:text-gray-400"
-                title={!appUser ? (selectedLanguage === "zh" ? "请先登录后使用" : "Please login to use this feature") : (selectedLanguage === "zh" ? "更多功能" : "More Options")}
+        {/* Two Row Input Layout with Rounded Rectangle */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 bg-white dark:bg-[#40414f] border-2 border-gray-300 dark:border-[#6b6d7a] rounded-2xl px-2 sm:px-4 py-3 sm:py-4 shadow-sm hover:shadow-md transition-shadow">
+
+          {/* Multi-line Input (max 10 lines) */}
+          <div className="flex-1 min-w-[120px]">
+            <textarea
+              ref={textareaRef}
+              placeholder={getLocalizedText("placeholder")}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              maxLength={2000}
+              className="w-full text-sm py-2 px-2 text-gray-900 dark:text-[#ececf1] bg-transparent border-0 focus:ring-0 focus:outline-none resize-none overflow-y-auto"
+              style={{ maxHeight: '240px', minHeight: '36px' }}
+              rows={1}
+              onKeyDown={(e) => {
+                // Ctrl+Enter: 换行
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  return; // 允许默认换行行为
+                }
+
+                // Enter: 发送消息
+                if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                  if (prompt.trim().length > 0 && !isLoading && !isStreaming) {
+                    e.preventDefault();
+                    handleSubmit();
+                  } else {
+                    e.preventDefault(); // 防止空消息换行
+                  }
+                }
+              }}
+            />
+          </div>
+
+
+          {/* Bottom Action Buttons */}
+          <div className="order-2 w-full flex items-center gap-1.5 sm:gap-2 overflow-x-auto pt-1">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={!appUser}
+                  className="h-9 w-9 p-0 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                  title={!appUser ? (selectedLanguage === "zh" ? "请先登录后使用" : "Please login to use this feature") : (selectedLanguage === "zh" ? "更多功能" : "More Options")}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-[calc(100vw-2rem)] sm:w-64 p-2 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]"
+                align="start"
+                side="top"
               >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              className="w-[calc(100vw-2rem)] sm:w-64 p-2 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]"
-              align="start"
-              side="top"
-            >
-              <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="justify-start gap-2 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50"
+                    title={selectedLanguage === "zh" ? "实时语音通话（开发中）" : "Pro Voice Chat (Coming Soon)"}
+                    type="button"
+                    disabled={true}
+                  >
+                    <Mic className="w-4 h-4" />
+                    <span className="text-xs">{selectedLanguage === "zh" ? "语音通话" : "Voice Call"}</span>
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="justify-start gap-2 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50"
+                    title={selectedLanguage === "zh" ? "实时视频通话（开发中）" : "Pro Video Chat (Coming Soon)"}
+                    type="button"
+                    disabled={true}
+                  >
+                    <Video className="w-4 h-4" />
+                    <span className="text-xs">{selectedLanguage === "zh" ? "视频通话" : "Video Call"}</span>
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+
                 {/* File Upload */}
                 <Button
                   size="sm"
                   variant="ghost"
-                  className={`justify-start gap-2 ${isUploading ? "animate-pulse" : ""}`}
+                  className={`h-9 w-9 p-0 sm:w-auto sm:px-3 justify-center sm:justify-start gap-0 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${isUploading ? "animate-pulse" : ""}`}
                   title={attachmentButtonTitle}
                   type="button"
-                  disabled={isUploading || !IS_DOMESTIC_VERSION}
+                  disabled={isUploading || !IS_DOMESTIC_VERSION || !appUser}
                   onClick={() => {
+                    if (!appUser) return;
                     if (!IS_DOMESTIC_VERSION) return;
                     if (uploadedFiles.length >= MAX_FILES) {
                       setUploadError(
@@ -661,50 +722,52 @@ const InputArea = React.memo(function InputArea({
                   ) : (
                     <Paperclip className="w-4 h-4" />
                   )}
-                  <span className="text-xs">{selectedLanguage === "zh" ? "上传文件" : "Upload"}</span>
+                  <span className="hidden sm:inline text-xs">{selectedLanguage === "zh" ? "上传文件" : "Upload"}</span>
                 </Button>
-
                 {/* Voice Recording */}
                 <Button
                   size="sm"
                   variant="ghost"
-                  className={`justify-start gap-2 ${
+                  className={`h-9 w-9 p-0 sm:w-auto sm:px-3 justify-center sm:justify-start gap-0 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
                     isAudioPanelActive
                       ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20"
                       : ""
                   }`}
                   title={selectedLanguage === "zh" ? "语音录制" : "Voice Recording"}
                   type="button"
+                  disabled={!appUser}
                   onClick={() => setIsAudioPanelActive(!isAudioPanelActive)}
                 >
-                  <Circle className={`w-4 h-4 ${isAudioPanelActive ? "fill-current" : ""}`} />
-                  <span className="text-xs">{selectedLanguage === "zh" ? "语音录制" : "Voice"}</span>
+                  <Mic className="w-4 h-4" />
+                  <span className="hidden sm:inline text-xs">{selectedLanguage === "zh" ? "语音录制" : "Voice"}</span>
                 </Button>
 
                 {/* Camera */}
                 <Button
                   size="sm"
                   variant="ghost"
-                  className={`justify-start gap-2 ${
-                    !isCameraSupported
+                  className={`h-9 w-9 p-0 sm:w-auto sm:px-3 justify-center sm:justify-start gap-0 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    !appUser || !isCameraSupported
                       ? "text-gray-400 dark:text-gray-500 cursor-not-allowed"
                       : isCameraActive
                       ? "text-blue-600 dark:text-blue-400"
                       : ""
                   }`}
                   title={
-                    !isCameraSupported
+                    !appUser
+                      ? (selectedLanguage === "zh" ? "请先登录后使用" : "Please login to use this feature")
+                      : !isCameraSupported
                       ? getLocalizedText("cameraUnavailable")
                       : isCameraActive
                       ? getLocalizedText("cameraClose")
                       : getLocalizedText("cameraOpen")
                   }
                   type="button"
-                  onClick={isCameraSupported ? toggleCamera : undefined}
-                  disabled={!isCameraSupported}
+                  onClick={appUser && isCameraSupported ? toggleCamera : undefined}
+                  disabled={!appUser || !isCameraSupported}
                 >
                   <Camera className="w-4 h-4" />
-                  <span className="text-xs">{selectedLanguage === "zh" ? "摄像头" : "Camera"}</span>
+                  <span className="hidden sm:inline text-xs">{selectedLanguage === "zh" ? "摄像头" : "Camera"}</span>
                 </Button>
 
                 {/* Location */}
@@ -712,8 +775,8 @@ const InputArea = React.memo(function InputArea({
                   size="sm"
                   variant="ghost"
                   onClick={getCurrentLocation}
-                  disabled={isGettingLocation}
-                  className={`justify-start gap-2 ${
+                  disabled={!appUser || isGettingLocation}
+                  className={`h-9 w-9 p-0 sm:w-auto sm:px-3 justify-center sm:justify-start gap-0 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
                     currentLocation
                       ? "text-green-600 dark:text-green-400"
                       : ""
@@ -729,21 +792,20 @@ const InputArea = React.memo(function InputArea({
                   ) : (
                     <MapPin className="w-4 h-4" />
                   )}
-                  <span className="text-xs">{selectedLanguage === "zh" ? "位置" : "Location"}</span>
+                  <span className="hidden sm:inline text-xs">{selectedLanguage === "zh" ? "位置" : "Location"}</span>
                 </Button>
-
                 {/* Conversation History */}
                 <Popover open={isAskGPTOpen} onOpenChange={setIsAskGPTOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="justify-start gap-2"
+                      className="h-9 w-9 p-0 sm:w-auto sm:px-3 justify-center sm:justify-start gap-0 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       title={getLocalizedText("navigateConversation")}
                       disabled={!appUser}
                     >
                       <Clock className="w-4 h-4" />
-                      <span className="text-xs">{selectedLanguage === "zh" ? "对话历史" : "History"}</span>
+                      <span className="hidden sm:inline text-xs">{selectedLanguage === "zh" ? "对话历史" : "History"}</span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent
@@ -1084,262 +1146,206 @@ const InputArea = React.memo(function InputArea({
                     </PopoverContent>
                   </Popover>
 
-                {/* Pro Voice Chat - Disabled */}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="justify-start gap-2 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50"
-                  title={selectedLanguage === "zh" ? "实时语音通话（开发中）" : "Pro Voice Chat (Coming Soon)"}
-                  type="button"
-                  disabled={true}
-                >
-                  <Mic className="w-4 h-4" />
-                  <span className="text-xs">{selectedLanguage === "zh" ? "语音通话" : "Voice Call"}</span>
-                </Button>
-
-                {/* Pro Video Chat - Disabled */}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="justify-start gap-2 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50"
-                  title={selectedLanguage === "zh" ? "实时视频通话（开发中）" : "Pro Video Chat (Coming Soon)"}
-                  type="button"
-                  disabled={true}
-                >
-                  <Video className="w-4 h-4" />
-                  <span className="text-xs">{selectedLanguage === "zh" ? "视频通话" : "Video Call"}</span>
-                </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          {/* Multi-line Input (max 10 lines) */}
-          <div className="flex-1 min-w-[120px]">
-            <textarea
-              ref={textareaRef}
-              placeholder={getLocalizedText("placeholder")}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              maxLength={2000}
-              className="w-full text-sm py-2 px-2 text-gray-900 dark:text-[#ececf1] bg-transparent border-0 focus:ring-0 focus:outline-none resize-none overflow-y-auto"
-              style={{ maxHeight: '240px', minHeight: '24px' }}
-              rows={1}
-              onKeyDown={(e) => {
-                // Ctrl+Enter: 换行
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                  return; // 允许默认换行行为
-                }
-
-                // Enter: 发送消息
-                if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-                  if (prompt.trim().length > 0 && !isLoading && !isStreaming) {
-                    e.preventDefault();
-                    handleSubmit();
-                  } else {
-                    e.preventDefault(); // 防止空消息换行
-                  }
-                }
-              }}
-            />
-          </div>
-
-          {/* Model Selector */}
-          <Popover
-            open={isModelSelectorOpen}
-            onOpenChange={setIsModelSelectorOpen}
-          >
-            <PopoverTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-9 px-2 text-xs text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isModelLocked || !appUser}
-                title={!appUser ? (selectedLanguage === "zh" ? "请先登录后切换模型" : "Please login to switch models") : getLocalizedText("selectModel")}
-              >
-                <div className="flex items-center gap-1">
-                  {getModelIcon()}
-                  <span className="hidden sm:inline max-w-24 truncate">
-                    {getSelectedModelDisplay()}
-                  </span>
-                  {!isModelLocked && (
-                    <ChevronDown className="w-3 h-3" />
-                  )}
-                </div>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              className="w-[calc(100vw-2rem)] sm:w-[500px] md:w-[650px] lg:w-[850px] max-w-[850px] p-0 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl"
-              align="end"
-              side="top"
-              sideOffset={8}
+            <div className="ml-auto flex items-center gap-2 pl-2 flex-shrink-0">
+            {/* Model Selector */}
+            <Popover
+              open={isModelSelectorOpen}
+              onOpenChange={setIsModelSelectorOpen}
             >
-              <div className="p-3 sm:p-4">
-                <div className="flex items-center justify-between mb-3 sm:mb-4">
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
-                    {getLocalizedText("selectModel")}
-                  </h3>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    onClick={() => setIsModelSelectorOpen(false)}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-
-                <Tabs
-                  value={modelSelectorTab}
-                  onValueChange={setModelSelectorTab}
-                  className="w-full"
+              <PopoverTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-9 w-9 p-0 sm:w-auto sm:px-2 text-xs text-gray-900 dark:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869] rounded-full flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isModelLocked || !appUser}
+                  title={!appUser ? (selectedLanguage === "zh" ? "请先登录后切换模型" : "Please login to switch models") : getLocalizedText("selectModel")}
                 >
-                  <TabsList className={`grid w-full ${hideMornGPTModels ? "grid-cols-2" : "grid-cols-3"} bg-gray-100 dark:bg-[#565869]`}>
-                    <TabsTrigger
-                      value="general"
-                      className="text-xs text-gray-900 dark:text-[#ececf1]"
+                  <div className="flex items-center gap-1">
+                    {getModelIcon()}
+                    <span className="hidden md:inline max-w-24 truncate">
+                      {getSelectedModelDisplay()}
+                    </span>
+                    {!isModelLocked && appUser && (
+                      <ChevronDown className="w-3 h-3" />
+                    )}
+                  </div>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-[calc(100vw-2rem)] sm:w-[500px] md:w-[650px] lg:w-[850px] max-w-[850px] p-0 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl"
+                align="end"
+                side="top"
+                sideOffset={8}
+              >
+                <div className="p-3 sm:p-4">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
+                      {getLocalizedText("selectModel")}
+                    </h3>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                      onClick={() => setIsModelSelectorOpen(false)}
                     >
-                      <MessageSquare className="w-3 h-3 mr-1" />
-                      {getLocalizedText("general")}
-                    </TabsTrigger>
-                    {!hideMornGPTModels && (
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+  
+                  <Tabs
+                    value={modelSelectorTab}
+                    onValueChange={setModelSelectorTab}
+                    className="w-full"
+                  >
+                    <TabsList className={`grid w-full ${hideMornGPTModels ? "grid-cols-2" : "grid-cols-3"} bg-gray-100 dark:bg-[#565869]`}>
                       <TabsTrigger
-                        value="morngpt"
+                        value="general"
                         className="text-xs text-gray-900 dark:text-[#ececf1]"
                       >
-                        <Sparkles className="w-3 h-3 mr-1" />
-                        {getLocalizedText("mornGPT")}
+                        <MessageSquare className="w-3 h-3 mr-1" />
+                        {getLocalizedText("general")}
                       </TabsTrigger>
-                    )}
-                    <TabsTrigger
-                      value="external"
-                      className={`text-xs ${isGuestMode ? "text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50" : "text-gray-900 dark:text-[#ececf1]"}`}
-                      disabled={isGuestMode}
-                      title={isGuestMode ? (selectedLanguage === "zh" ? "请先登录后使用外部模型" : "Please login to use external models") : undefined}
-                    >
-                      <Globe className="w-3 h-3 mr-1" />
-                      {getLocalizedText("external")}
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="general" className="p-2">
-                    <div className="h-32 flex items-center justify-center">
-                      <div
-                        className="w-full h-full cursor-pointer p-2 rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-[#565869] hover:bg-gray-100 dark:hover:bg-[#444654] transition-all duration-200 hover:shadow-sm flex flex-col items-center justify-center"
-                        onClick={() => handleModelSelect("general", undefined, GENERAL_MODEL_ID)}
+                      {!hideMornGPTModels && (
+                        <TabsTrigger
+                          value="morngpt"
+                          className="text-xs text-gray-900 dark:text-[#ececf1]"
+                        >
+                          <Sparkles className="w-3 h-3 mr-1" />
+                          {getLocalizedText("mornGPT")}
+                        </TabsTrigger>
+                      )}
+                      <TabsTrigger
+                        value="external"
+                        className={`text-xs ${isGuestMode ? "text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50" : "text-gray-900 dark:text-[#ececf1]"}`}
+                        disabled={isGuestMode}
+                        title={isGuestMode ? (selectedLanguage === "zh" ? "请先登录后使用外部模型" : "Please login to use external models") : undefined}
                       >
-                        <MessageSquare className="w-4 h-4 mx-auto text-gray-500 dark:text-gray-400 mb-1" />
-                        <h3 className="text-xs font-semibold text-gray-900 dark:text-[#ececf1] mb-1">
-                          {getLocalizedText("generalModelTitle")}
-                        </h3>
-                        <p className="text-[8px] text-gray-600 dark:text-gray-400 text-center">
-                          {getLocalizedText("generalModelDesc")}
-                        </p>
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  {!hideMornGPTModels && (
-                    <TabsContent value="morngpt" className="p-2">
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
-                        {mornGPTCategories.map((category) => {
-                          const IconComponent = category.icon || Bot;
-                          return (
-                            <div
-                              key={category.id}
-                              className={`p-1.5 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm border ${
-                                selectedCategory === category.id
-                                  ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
-                                  : "border-gray-100 dark:border-gray-700"
-                              }`}
-                              onClick={() =>
-                                handleModelSelect("morngpt", category.id)
-                              }
-                            >
-                              <div className="flex flex-col space-y-1">
-                                <div className="flex items-center space-x-1.5">
-                                  <div
-                                    className={`p-1 rounded ${category.color} text-white shadow-sm flex items-center justify-center`}
-                                  >
-                                    <IconComponent className="w-3 h-3" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between">
-                                      <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
-                                        {category.name}
-                                      </p>
-                                      <Badge
-                                        variant="secondary"
-                                        className="text-[2px] px-0.5 py-0 h-2"
-                                      >
-                                        {category.id.toUpperCase()}1
-                                      </Badge>
-                                    </div>
-                                  </div>
-                                </div>
-                                <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
-                                  {category.description}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
+                        <Globe className="w-3 h-3 mr-1" />
+                        {getLocalizedText("external")}
+                      </TabsTrigger>
+                    </TabsList>
+  
+                    <TabsContent value="general" className="p-2">
+                      <div className="h-32 flex items-center justify-center">
+                        <div
+                          className="w-full h-full cursor-pointer p-2 rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-[#565869] hover:bg-gray-100 dark:hover:bg-[#444654] transition-all duration-200 hover:shadow-sm flex flex-col items-center justify-center"
+                          onClick={() => handleModelSelect("general", undefined, GENERAL_MODEL_ID)}
+                        >
+                          <MessageSquare className="w-4 h-4 mx-auto text-gray-500 dark:text-gray-400 mb-1" />
+                          <h3 className="text-xs font-semibold text-gray-900 dark:text-[#ececf1] mb-1">
+                            {getLocalizedText("generalModelTitle")}
+                          </h3>
+                          <p className="text-[8px] text-gray-600 dark:text-gray-400 text-center">
+                            {getLocalizedText("generalModelDesc")}
+                          </p>
+                        </div>
                       </div>
                     </TabsContent>
-                  )}
-
-                  <TabsContent value="external" className="p-2">
-                    <div className="space-y-1 max-h-60 overflow-y-auto border border-gray-100 dark:border-gray-700 rounded-md p-2 bg-gray-50/50 dark:bg-[#2f3037]">
-                      <div className="text-[10px] font-semibold text-gray-700 dark:text-gray-200 mb-1">
-                        {isDomesticVersion ? "可用外部模型（国内版）" : "Available External Models (International)"}
+  
+                    {!hideMornGPTModels && (
+                      <TabsContent value="morngpt" className="p-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 h-32 overflow-y-auto">
+                          {mornGPTCategories.map((category) => {
+                            const IconComponent = category.icon || Bot;
+                            return (
+                              <div
+                                key={category.id}
+                                className={`p-1.5 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#565869] hover:shadow-sm border ${
+                                  selectedCategory === category.id
+                                    ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-700 shadow-md"
+                                    : "border-gray-100 dark:border-gray-700"
+                                }`}
+                                onClick={() =>
+                                  handleModelSelect("morngpt", category.id)
+                                }
+                              >
+                                <div className="flex flex-col space-y-1">
+                                  <div className="flex items-center space-x-1.5">
+                                    <div
+                                      className={`p-1 rounded ${category.color} text-white shadow-sm flex items-center justify-center`}
+                                    >
+                                      <IconComponent className="w-3 h-3" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center justify-between">
+                                        <p className="text-[8px] font-semibold truncate text-gray-900 dark:text-[#ececf1] leading-tight">
+                                          {category.name}
+                                        </p>
+                                        <Badge
+                                          variant="secondary"
+                                          className="text-[2px] px-0.5 py-0 h-2"
+                                        >
+                                          {category.id.toUpperCase()}1
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <p className="text-[7px] text-gray-600 dark:text-gray-400 truncate leading-tight">
+                                    {category.description}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </TabsContent>
+                    )}
+  
+                    <TabsContent value="external" className="p-2">
+                      <div className="space-y-1 max-h-60 overflow-y-auto border border-gray-100 dark:border-gray-700 rounded-md p-2 bg-gray-50/50 dark:bg-[#2f3037]">
+                        <div className="text-[10px] font-semibold text-gray-700 dark:text-gray-200 mb-1">
+                          {isDomesticVersion ? "可用外部模型（国内版）" : "Available External Models (International)"}
+                        </div>
+                        {isDomesticVersion ? (
+                          <>
+                            <div className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 mt-1">
+                              多模态模型
+                            </div>
+                            {domesticMultimodalModels.map(renderExternalModelButton)}
+  
+                            <div className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 mt-2">
+                              文本模型
+                            </div>
+                            {domesticTextModels.map(renderExternalModelButton)}
+                          </>
+                        ) : (
+                          filteredExternalModels.map(renderExternalModelButton)
+                        )}
                       </div>
-                      {isDomesticVersion ? (
-                        <>
-                          <div className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 mt-1">
-                            多模态模型
-                          </div>
-                          {domesticMultimodalModels.map(renderExternalModelButton)}
-
-                          <div className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 mt-2">
-                            文本模型
-                          </div>
-                          {domesticTextModels.map(renderExternalModelButton)}
-                        </>
-                      ) : (
-                        filteredExternalModels.map(renderExternalModelButton)
-                      )}
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          {/* Send Button */}
-          <Button
-            size="sm"
-            onClick={isStreaming ? stopStreaming : handleSubmit}
-            disabled={isStreaming ? false : !prompt.trim() || isLoading}
-            className={`h-8 w-8 sm:h-9 sm:w-9 ${
-              isStreaming
-                ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25"
-                : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/25"
-            } text-white rounded-full flex items-center justify-center transition-all duration-300 transform hover:scale-105 active:scale-95 flex-shrink-0`}
-            title={
-              isStreaming
-                ? selectedLanguage === "zh"
-                  ? "停止生成"
-                  : "Stop Generation"
-                : selectedLanguage === "zh"
-                ? "发送消息"
-                : "Send Message"
-            }
-          >
-            {isStreaming ? (
-              <Square className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            ) : (
-              <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            )}
-          </Button>
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              </PopoverContent>
+            </Popover>
+  
+            {/* Send Button */}
+            <Button
+              size="sm"
+              onClick={isStreaming ? stopStreaming : handleSubmit}
+              disabled={isStreaming ? false : !prompt.trim() || isLoading}
+              className={`h-9 w-9 sm:h-10 sm:w-10 ${
+                isStreaming
+                  ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25"
+                  : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/25"
+              } text-white rounded-full flex items-center justify-center transition-all duration-300 transform hover:scale-105 active:scale-95 flex-shrink-0`}
+              title={
+                isStreaming
+                  ? selectedLanguage === "zh"
+                    ? "停止生成"
+                    : "Stop Generation"
+                  : selectedLanguage === "zh"
+                  ? "发送消息"
+                  : "Send Message"
+              }
+            >
+              {isStreaming ? (
+                <Square className="w-4 h-4" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+            </Button>
+            </div>
+          </div>
         </div>
 
         {/* Error Messages and Other Components */}

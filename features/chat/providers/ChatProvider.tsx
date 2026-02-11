@@ -2838,18 +2838,51 @@ const loadMessagesForConversation = useCallback(
     e.preventDefault();
     try {
       if (authMode === "reset") {
-        const { error } = await supabase.auth.resetPasswordForEmail(
-          authForm.email,
-          { redirectTo: `${window.location.origin}/auth/update-password` },
-        );
-        if (error) throw error;
-        alert("Password reset link sent to your email.");
-        setAuthMode("login");
-        return;
+        if (isDomestic) {
+          // 国内版：使用验证码重置密码
+          if (!authForm.verificationCode) {
+            throw new Error(isZh ? "请输入验证码" : "Please enter verification code");
+          }
+          if (!authForm.password) {
+            throw new Error(isZh ? "请输入新密码" : "Please enter new password");
+          }
+
+          const res = await fetch("/api/auth/reset-password", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: authForm.email,
+              verificationCode: authForm.verificationCode,
+              newPassword: authForm.password,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || (isZh ? "重置密码失败" : "Reset password failed"));
+
+          toast.success(isZh ? "密码重置成功！请登录" : "Password reset successful! Please sign in");
+          setAuthMode("login");
+          setAuthForm({ email: authForm.email, password: "", name: "" });
+          return;
+        } else {
+          // 国际版：使用 Supabase 邮件重置
+          const { error } = await supabase.auth.resetPasswordForEmail(
+            authForm.email,
+            { redirectTo: `${window.location.origin}/auth/update-password` },
+          );
+          if (error) throw error;
+          toast.success(isZh ? "重置链接已发送到您的邮箱" : "Password reset link sent to your email");
+          setAuthMode("login");
+          return;
+        }
       }
 
       if (authMode === "signup") {
         if (isDomestic) {
+          // 验证验证码
+          if (!authForm.verificationCode) {
+            throw new Error(isZh ? "请输入验证码" : "Please enter verification code");
+          }
+
           const res = await fetch("/api/auth/register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -2858,45 +2891,17 @@ const loadMessagesForConversation = useCallback(
               email: authForm.email,
               password: authForm.password,
               name: authForm.name,
+              verificationCode: authForm.verificationCode,
             }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || "Register failed");
-          // CloudBase 返回用户对象
-          const storedExp = localStorage.getItem("morngpt_current_plan_exp");
-          // 正确判断 isPaid：Basic/Pro/Enterprise 都是付费用户
-          const planLower = (data.user.metadata?.plan || "").toLowerCase();
-          const isProMeta = !!data.user.metadata?.pro;
-          const isPaidUser = planLower === "basic" || planLower === "pro" || planLower === "enterprise" || isProMeta;
-          const mappedUser: AppUser = {
-            id: data.user.id,
-            email: data.user.email || "",
-            name: data.user.name || data.user.email || "User",
-            avatar: data.user.avatar || undefined, // 用户头像
-            isPro: isProMeta && planLower !== "basic",
-            isPaid: isPaidUser,
-            plan: data.user.metadata?.plan,
-            planExp: data.user.metadata?.plan_exp || storedExp || undefined,
-            settings: {
-              theme: "light",
-              language: "zh",
-              notifications: true,
-              soundEnabled: true,
-              autoSave: true,
-              hideAds: data.user.metadata?.hide_ads ?? false,
-            },
-          };
-          setAppUser(mappedUser);
-          setIsLoggedIn(true);
-          setShowAuthDialog(false);
-          if (mappedUser.plan) {
-            setCurrentPlan(mappedUser.plan as "Basic" | "Pro" | "Enterprise");
-            localStorage.setItem("morngpt_current_plan", mappedUser.plan);
-          }
-          if (mappedUser.planExp) {
-            localStorage.setItem("morngpt_current_plan_exp", mappedUser.planExp);
-          }
-          appUserRef.current = mappedUser;
+
+          // 注册成功，显示提示并切换到登录模式
+          toast.success(isZh ? "注册成功！请登录" : "Registration successful! Please sign in");
+          setAuthMode("login");
+          setAuthForm({ email: authForm.email, password: "", name: "" });
+          return;
           void loadConversations(mappedUser);
           alert(isZh ? "注册成功" : "Sign up successful");
         } else {

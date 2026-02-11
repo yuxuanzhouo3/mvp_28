@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -8,10 +8,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogIn, UserPlus, Lock, Eye, EyeOff, Mail, User, Sparkles } from "lucide-react";
+import { LogIn, UserPlus, Lock, Eye, EyeOff, Mail, User, Sparkles, Send, Loader2 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { PrivacyPolicyContent } from "@/components/legal";
 import { useIsIOSMobile } from "@/hooks";
+import { toast } from "sonner";
 
 interface AuthDialogProps {
   open: boolean;
@@ -22,12 +23,14 @@ interface AuthDialogProps {
     name: string;
     email: string;
     password: string;
+    verificationCode?: string;
   };
   setAuthForm: React.Dispatch<
     React.SetStateAction<{
       name: string;
       email: string;
       password: string;
+      verificationCode?: string;
     }>
   >;
   showPassword: boolean;
@@ -69,6 +72,53 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
   // 隐私条款确认状态
   const [agreePrivacy, setAgreePrivacy] = useState(false);
   const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
+
+  // 验证码状态管理
+  const [sendingCode, setSendingCode] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
+
+  const handleSendCode = async () => {
+    if (!authForm.email) {
+      toast.error(isZh ? "请先输入邮箱地址" : "Please enter email first");
+      return;
+    }
+
+    setSendingCode(true);
+
+    try {
+      const response = await fetch("/api/auth/send-verification-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: authForm.email,
+          purpose: authMode === "reset" ? "reset" : "register"
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const errorMsg = data.error || (isZh ? "发送验证码失败" : "Failed to send code");
+        toast.error(errorMsg);
+        return;
+      }
+
+      setCountdown(60);
+      toast.success(isZh ? "验证码已发送" : "Verification code sent");
+    } catch (err) {
+      console.error("[handleSendCode] Exception:", err);
+      toast.error(err instanceof Error ? err.message : (isZh ? "发送验证码失败" : "Failed to send code"));
+    } finally {
+      setSendingCode(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -252,7 +302,53 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
                 />
               </div>
             </div>
-            {authMode !== "reset" && (
+
+            {/* 验证码输入 - 在注册模式或找回密码模式且国内版显示 */}
+            {(authMode === "signup" || authMode === "reset") && isDomestic && (
+              <div className="space-y-2">
+                <Label
+                  htmlFor="verificationCode"
+                  className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {isZh ? "邮箱验证码" : "Verification Code"}
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="verificationCode"
+                    type="text"
+                    placeholder={isZh ? "输入6位验证码" : "Enter 6-digit code"}
+                    value={authForm.verificationCode || ""}
+                    onChange={(e) =>
+                      setAuthForm({ ...authForm, verificationCode: e.target.value })
+                    }
+                    className="h-11 bg-white dark:bg-white/5 border-gray-200 dark:border-white/10 focus:border-blue-500 dark:focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    maxLength={6}
+                    required
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleSendCode}
+                    disabled={sendingCode || countdown > 0 || !authForm.email}
+                    className="whitespace-nowrap h-11 px-4"
+                    variant="outline"
+                  >
+                    {sendingCode ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : countdown > 0 ? (
+                      `${countdown}s`
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-1" />
+                        {isZh ? "发送" : "Send"}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* 密码输入 - 仅在登录和注册模式显示 */}
+            {(authMode === "login" || authMode === "signup") && (
               <div className="space-y-2">
                 <Label
                   htmlFor="password"
@@ -313,8 +409,8 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
                   </>
                 ) : (
                   <>
-                    <Mail className="w-4 h-4 mr-2" />
-                    {isZh ? "发送重置链接" : "Send Reset Link"}
+                    <Lock className="w-4 h-4 mr-2" />
+                    {isZh ? "重置密码" : "Reset Password"}
                   </>
                 )}
               </Button>

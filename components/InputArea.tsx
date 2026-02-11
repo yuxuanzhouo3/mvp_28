@@ -616,7 +616,7 @@ const InputArea = React.memo(function InputArea({
 
       <div className="max-w-4xl mx-auto px-4">
         {/* Single Row Input Layout with Rounded Rectangle */}
-        <div className="flex items-center gap-2 sm:gap-3 bg-white dark:bg-[#40414f] border border-gray-200 dark:border-[#565869] rounded-2xl px-2 sm:px-4 py-2 sm:py-3 shadow-sm hover:shadow-md transition-shadow">
+        <div className="flex items-center gap-2 sm:gap-3 bg-white dark:bg-[#40414f] border-2 border-gray-300 dark:border-[#6b6d7a] rounded-2xl px-2 sm:px-4 py-2 sm:py-3 shadow-sm hover:shadow-md transition-shadow">
           {/* Left Side - Plus Button with Popover */}
           <Popover>
             <PopoverTrigger asChild>

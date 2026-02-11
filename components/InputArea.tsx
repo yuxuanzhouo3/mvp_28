@@ -17,7 +17,6 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ResizableTextarea } from "@/components/ui/resizable-textarea";
 import {
   Brain,
   Lightbulb,
@@ -45,7 +44,6 @@ import {
   Check,
   Plus,
   Download,
-  Circle,
   Upload,
   MapPin,
   Code,
@@ -56,7 +54,7 @@ import {
   FileText,
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
-import { useCamera, useAudioRecording, useIsMobile } from "@/hooks";
+import { useCamera, useAudioRecording, useIsMobile, useTencentASR } from "@/hooks";
 import { UploadedFilesList } from "@/features/chat/components/input/UploadedFilesList";
 import { StatusIndicators } from "@/features/chat/components/input/StatusIndicators";
 import { CameraPanel } from "@/features/chat/components/input/CameraPanel";
@@ -64,6 +62,56 @@ import { AudioRecordingPanel } from "@/features/chat/components/input/AudioRecor
 import type { AttachmentItem } from "@/types";
 import { GENERAL_MODEL_ID } from "@/utils/model-limits";
 import { IS_DOMESTIC_VERSION } from "@/config";
+
+type BrowserSpeechRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: (() => void) | null;
+  onresult: ((event: any) => void) | null;
+  onerror: ((event: any) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
+
+type BrowserSpeechRecognitionCtor = new () => BrowserSpeechRecognition;
+
+function normalizeVoiceText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function mergeVoicePrompt(baseText: string, nextText: string): string {
+  const base = baseText.trim();
+  const next = normalizeVoiceText(nextText);
+
+  if (!next) {
+    return base;
+  }
+
+  if (!base) {
+    return next;
+  }
+
+  if (base.endsWith(next)) {
+    return base;
+  }
+
+  const maxOverlap = Math.min(base.length, next.length);
+  for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
+    if (base.slice(-overlap) === next.slice(0, overlap)) {
+      return `${base}${next.slice(overlap)}`;
+    }
+  }
+
+  const hasCjk = /[\u4e00-\u9fff]/.test(base + next);
+  if (hasCjk) {
+    return `${base}${next}`;
+  }
+
+  return `${base} ${next}`;
+}
 
 interface InputAreaProps {
   prompt: string;
@@ -310,6 +358,288 @@ const InputArea = React.memo(function InputArea({
   // 录音面板状态
   const [isAudioPanelActive, setIsAudioPanelActive] = React.useState(false);
 
+  // Track and show the latest error across voice/camera/upload/location/pro chat
+  const errorSeq = React.useRef<number>(0);
+  const errorSeqMap = React.useRef<Record<string, number>>({});
+  const [latestError, setLatestError] = React.useState<string>("");
+
+  // 实时语音转文字（浏览器 SpeechRecognition）
+  const speechRecognitionRef = React.useRef<BrowserSpeechRecognition | null>(null);
+  const [isRealtimeVoiceInputActive, setIsRealtimeVoiceInputActive] = React.useState(false);
+  const [interimVoiceText, setInterimVoiceText] = React.useState("");
+  const promptRef = React.useRef(prompt);
+  const voiceCommittedPromptRef = React.useRef(prompt);
+
+  React.useEffect(() => {
+    promptRef.current = prompt;
+  }, [prompt]);
+
+  React.useEffect(() => {
+    if (!isRealtimeVoiceInputActive) {
+      voiceCommittedPromptRef.current = prompt;
+    }
+  }, [isRealtimeVoiceInputActive, prompt]);
+
+  // 腾讯云 ASR 实时语音识别（国内版）
+  const tencentASR = useTencentASR({
+    onTranscript: React.useCallback((text: string, isFinal: boolean) => {
+      const normalized = normalizeVoiceText(text);
+      if (!normalized) {
+        return;
+      }
+
+      if (isFinal) {
+        const mergedPrompt = mergeVoicePrompt(voiceCommittedPromptRef.current, normalized);
+        voiceCommittedPromptRef.current = mergedPrompt;
+        promptRef.current = mergedPrompt;
+        setPrompt(mergedPrompt);
+        setInterimVoiceText("");
+      } else {
+        setInterimVoiceText(normalized);
+      }
+    }, [setPrompt]),
+    onError: React.useCallback((error: string) => {
+      setLatestError(error);
+    }, []),
+    language: selectedLanguage === "zh" ? "zh-CN" : "en-US",
+  });
+
+  const getSpeechRecognitionCtor = React.useCallback((): BrowserSpeechRecognitionCtor | null => {
+    if (typeof window === "undefined") return null;
+    const win = window as Window & {
+      webkitSpeechRecognition?: BrowserSpeechRecognitionCtor;
+      SpeechRecognition?: BrowserSpeechRecognitionCtor;
+    };
+    return win.SpeechRecognition || win.webkitSpeechRecognition || null;
+  }, []);
+
+  const getRealtimeVoiceInputErrorMessage = React.useCallback(
+    (errorType: string) => {
+      const isZh = selectedLanguage === "zh";
+      switch (errorType) {
+        case "network":
+          return isZh
+            ? "实时语音服务不可用（network）。请检查网络，或在 HTTPS / localhost 环境下使用。"
+            : "Realtime voice service unavailable (network). Check your connection and use HTTPS / localhost.";
+        case "not-allowed":
+        case "service-not-allowed":
+          return isZh
+            ? "麦克风权限被拒绝，请在浏览器地址栏开启麦克风权限后重试。"
+            : "Microphone permission denied. Please allow microphone access and try again.";
+        case "audio-capture":
+          return isZh
+            ? "未检测到可用麦克风设备。"
+            : "No available microphone device was detected.";
+        case "language-not-supported":
+          return isZh
+            ? "当前浏览器不支持所选语音识别语言。"
+            : "The selected speech recognition language is not supported by this browser.";
+        default:
+          return isZh
+            ? `实时语音输入失败：${errorType}`
+            : `Realtime voice input failed: ${errorType}`;
+      }
+    },
+    [selectedLanguage]
+  );
+
+  const stopRealtimeVoiceInput = React.useCallback(() => {
+    // 国内版使用腾讯云 ASR
+    if (IS_DOMESTIC_VERSION) {
+      tencentASR.stop();
+      setIsRealtimeVoiceInputActive(false);
+
+      // 保留临时文本：如果有临时文本，合并到已提交的文本中
+      const finalPrompt = mergeVoicePrompt(voiceCommittedPromptRef.current, interimVoiceText);
+
+      setInterimVoiceText("");
+      promptRef.current = finalPrompt;
+      voiceCommittedPromptRef.current = finalPrompt;
+      setPrompt(finalPrompt);
+      return;
+    }
+
+    // 国际版使用浏览器 SpeechRecognition
+    const recognition = speechRecognitionRef.current;
+    if (!recognition) {
+      setIsRealtimeVoiceInputActive(false);
+      setInterimVoiceText("");
+      return;
+    }
+
+    try {
+      recognition.stop();
+    } catch {
+      // ignore
+    }
+
+    setIsRealtimeVoiceInputActive(false);
+    setInterimVoiceText("");
+  }, [interimVoiceText, tencentASR, setPrompt]);
+
+  const startRealtimeVoiceInput = React.useCallback(() => {
+    if (!appUser) return;
+
+    if (typeof window !== "undefined") {
+      const host = window.location.hostname;
+      const isLocalhost = host === "localhost" || host === "127.0.0.1" || host === "::1";
+      if (!window.isSecureContext && !isLocalhost) {
+        const message = selectedLanguage === "zh"
+          ? "实时语音输入需要在 HTTPS 或 localhost 环境下使用。"
+          : "Realtime voice input requires HTTPS or localhost.";
+        setLatestError(message);
+        return;
+      }
+    }
+
+    // 国内版使用腾讯云 ASR
+    if (IS_DOMESTIC_VERSION) {
+      voiceCommittedPromptRef.current = promptRef.current;
+      setIsRealtimeVoiceInputActive(true);
+      tencentASR.start();
+      return;
+    }
+
+    // 国际版使用浏览器 SpeechRecognition
+    const RecognitionCtor = getSpeechRecognitionCtor();
+    if (!RecognitionCtor) {
+      const message = selectedLanguage === "zh"
+        ? "当前浏览器不支持实时语音输入，请尝试使用 Chrome。"
+        : "Realtime voice input is not supported in this browser. Please try Chrome.";
+      setLatestError(message);
+      return;
+    }
+
+    if (!speechRecognitionRef.current) {
+      const recognition = new RecognitionCtor();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      recognition.onstart = () => {
+        voiceCommittedPromptRef.current = promptRef.current.trimEnd();
+        setIsRealtimeVoiceInputActive(true);
+      };
+
+      recognition.onresult = (event) => {
+        let finalTranscript = "";
+        let interimTranscript = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const result = event.results[i];
+          const transcript = (result?.[0]?.transcript || "").trim();
+          if (!transcript) continue;
+
+          if (result.isFinal) {
+            finalTranscript += `${transcript} `;
+          } else {
+            interimTranscript += `${transcript} `;
+          }
+        }
+
+        if (finalTranscript.trim()) {
+          const base = voiceCommittedPromptRef.current.trimEnd();
+          const next = finalTranscript.trim();
+          const mergedPrompt = base ? `${base} ${next}` : next;
+
+          voiceCommittedPromptRef.current = mergedPrompt;
+          promptRef.current = mergedPrompt;
+          setPrompt(mergedPrompt);
+        }
+
+        setInterimVoiceText(interimTranscript.trim());
+      };
+
+      recognition.onerror = (event) => {
+        const errorType = event?.error || "unknown";
+        if (errorType !== "no-speech" && errorType !== "aborted") {
+          setLatestError(getRealtimeVoiceInputErrorMessage(errorType));
+        }
+
+        const isFatalError = [
+          "network",
+          "not-allowed",
+          "service-not-allowed",
+          "audio-capture",
+          "language-not-supported",
+        ].includes(errorType);
+
+        if (isFatalError) {
+          setIsRealtimeVoiceInputActive(false);
+          setInterimVoiceText("");
+          try {
+            recognition.abort();
+          } catch {
+            // ignore
+          }
+          speechRecognitionRef.current = null;
+        }
+      };
+
+      recognition.onend = () => {
+        setIsRealtimeVoiceInputActive(false);
+        setInterimVoiceText("");
+        const committedPrompt = voiceCommittedPromptRef.current.trim();
+        promptRef.current = committedPrompt;
+        setPrompt(committedPrompt);
+      };
+
+      speechRecognitionRef.current = recognition;
+    }
+
+    const recognition = speechRecognitionRef.current;
+    if (!recognition) return;
+
+    recognition.lang = selectedLanguage === "zh" ? "zh-CN" : "en-US";
+
+    try {
+      recognition.start();
+    } catch (error) {
+      const message = selectedLanguage === "zh"
+        ? "实时语音输入启动失败，请稍后重试。"
+        : "Failed to start realtime voice input. Please retry.";
+      setLatestError(message);
+      setIsRealtimeVoiceInputActive(false);
+      setInterimVoiceText("");
+
+      try {
+        recognition.abort();
+      } catch {
+        // ignore
+      }
+
+      speechRecognitionRef.current = null;
+    }
+  }, [
+    appUser,
+    getRealtimeVoiceInputErrorMessage,
+    getSpeechRecognitionCtor,
+    selectedLanguage,
+    setPrompt,
+    tencentASR,
+  ]);
+
+  React.useEffect(() => {
+    return () => {
+      if (speechRecognitionRef.current) {
+        speechRecognitionRef.current.abort();
+        speechRecognitionRef.current = null;
+      }
+    };
+  }, []);
+
+  // 同步腾讯云 ASR 状态到组件状态
+  React.useEffect(() => {
+    if (IS_DOMESTIC_VERSION) {
+      setIsRealtimeVoiceInputActive(tencentASR.isActive);
+    }
+  }, [tencentASR.isActive]);
+
+  React.useEffect(() => {
+    if (!appUser && isRealtimeVoiceInputActive) {
+      stopRealtimeVoiceInput();
+    }
+  }, [appUser, isRealtimeVoiceInputActive, stopRealtimeVoiceInput]);
+
   // 国际版功能开发中提示（必须在 handleMediaCaptured 之前定义）
   const [featureInDevMessage, setFeatureInDevMessage] = React.useState<string>("");
 
@@ -437,11 +767,6 @@ const InputArea = React.memo(function InputArea({
     // Focus input so user can type immediately after selecting model
     setTimeout(() => focusTextarea(), 0);
   };
-
-  // Track and show the latest error across voice/camera/upload/location/pro chat
-  const errorSeq = React.useRef<number>(0);
-  const errorSeqMap = React.useRef<Record<string, number>>({});
-  const [latestError, setLatestError] = React.useState<string>("");
 
   React.useEffect(() => {
     const errorEntries = [
@@ -601,6 +926,21 @@ const InputArea = React.memo(function InputArea({
       </div>
     </button>
   );
+
+  const canUseRealtimeVoiceInput = appUser && !isLoading && !isStreaming;
+  const canSendTextMessage = prompt.trim().length > 0;
+  const showVoiceInputAsPrimaryAction = IS_DOMESTIC_VERSION && (isRealtimeVoiceInputActive || !canSendTextMessage);
+  const primaryActionTitle = showVoiceInputAsPrimaryAction
+    ? isRealtimeVoiceInputActive
+      ? (selectedLanguage === "zh" ? "停止语音输入" : "Stop Voice Input")
+      : (selectedLanguage === "zh" ? "实时语音输入" : "Realtime Voice Input")
+    : isStreaming
+    ? selectedLanguage === "zh"
+      ? "停止生成"
+      : "Stop Generation"
+    : selectedLanguage === "zh"
+    ? "发送消息"
+    : "Send Message";
   
   return (
     <div className="flex-shrink-0 overflow-x-hidden max-w-full">
@@ -623,10 +963,16 @@ const InputArea = React.memo(function InputArea({
             <textarea
               ref={textareaRef}
               placeholder={getLocalizedText("placeholder")}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              value={interimVoiceText ? mergeVoicePrompt(prompt, interimVoiceText) : prompt}
+              onChange={(e) => {
+                setPrompt(e.target.value);
+                if (isRealtimeVoiceInputActive) {
+                  setInterimVoiceText("");
+                  voiceCommittedPromptRef.current = e.target.value;
+                }
+              }}
               maxLength={2000}
-              className="w-full text-sm py-2 px-2 text-gray-900 dark:text-[#ececf1] bg-transparent border-0 focus:ring-0 focus:outline-none resize-none overflow-y-auto"
+              className="w-full text-sm py-2 px-2 text-gray-900 dark:text-[#ececf1] bg-transparent border-0 focus:ring-0 focus:outline-none resize-none overflow-y-auto scrollbar-hide"
               style={{ maxHeight: '240px', minHeight: '36px' }}
               rows={1}
               onKeyDown={(e) => {
@@ -637,6 +983,11 @@ const InputArea = React.memo(function InputArea({
 
                 // Enter: 发送消息
                 if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                  if (showVoiceInputAsPrimaryAction) {
+                    e.preventDefault();
+                    return;
+                  }
+
                   if (prompt.trim().length > 0 && !isLoading && !isStreaming) {
                     e.preventDefault();
                     handleSubmit();
@@ -650,7 +1001,7 @@ const InputArea = React.memo(function InputArea({
 
 
           {/* Bottom Action Buttons */}
-          <div className="order-2 w-full flex items-center gap-1.5 sm:gap-2 overflow-x-auto pt-1">
+          <div className="order-2 w-full flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pt-1">
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -1321,24 +1672,42 @@ const InputArea = React.memo(function InputArea({
             {/* Send Button */}
             <Button
               size="sm"
-              onClick={isStreaming ? stopStreaming : handleSubmit}
-              disabled={isStreaming ? false : !prompt.trim() || isLoading}
-              className={`h-9 w-9 sm:h-10 sm:w-10 ${
-                isStreaming
-                  ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25"
-                  : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/25"
-              } text-white rounded-full flex items-center justify-center transition-all duration-300 transform hover:scale-105 active:scale-95 flex-shrink-0`}
-              title={
-                isStreaming
-                  ? selectedLanguage === "zh"
-                    ? "停止生成"
-                    : "Stop Generation"
-                  : selectedLanguage === "zh"
-                  ? "发送消息"
-                  : "Send Message"
+              onClick={() => {
+                if (showVoiceInputAsPrimaryAction) {
+                  if (isRealtimeVoiceInputActive) {
+                    stopRealtimeVoiceInput();
+                  } else {
+                    startRealtimeVoiceInput();
+                  }
+                  return;
+                }
+
+                if (isStreaming) {
+                  stopStreaming();
+                  return;
+                }
+
+                handleSubmit();
+              }}
+              disabled={
+                showVoiceInputAsPrimaryAction
+                  ? !canUseRealtimeVoiceInput
+                  : (isStreaming ? false : !canSendTextMessage || isLoading)
               }
+              className={`h-9 w-9 sm:h-10 sm:w-10 ${
+                showVoiceInputAsPrimaryAction
+                  ? isRealtimeVoiceInputActive
+                    ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25"
+                    : "bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 shadow-lg shadow-indigo-500/25"
+                  : isStreaming
+                ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25"
+                : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/25"
+              } text-white rounded-full flex items-center justify-center transition-all duration-300 transform hover:scale-105 active:scale-95 flex-shrink-0`}
+              title={primaryActionTitle}
             >
-              {isStreaming ? (
+              {showVoiceInputAsPrimaryAction ? (
+                isRealtimeVoiceInputActive ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />
+              ) : isStreaming ? (
                 <Square className="w-4 h-4" />
               ) : (
                 <Send className="w-4 h-4" />

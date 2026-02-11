@@ -16,3 +16,4 @@ export { useMessageSubmission } from "./useMessageSubmission";
 export { useMobileGuestTrial } from "./useMobileGuestTrial";
 export { useIsMobile } from "./use-mobile";
 export { useIsIOSMobile } from "./use-ios-mobile";
+export { useTencentASR } from "./useTencentASR";

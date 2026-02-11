@@ -3178,12 +3178,12 @@ const loadMessagesForConversation = useCallback(
       return;
     }
     try {
-      // 首先检测是否真正在小程序环境中（通过 userAgent 或全局标识）
       const ua = navigator.userAgent.toLowerCase();
+
+      // 检测是否在小程序环境中
       const isInMiniProgram = ua.includes("miniprogram") ||
                                (window as any).__wxjs_environment === "miniprogram";
 
-      // 只有确认在小程序环境中，才尝试使用原生登录
       if (isInMiniProgram) {
         const wx = (window as any).wx;
         const mp = wx?.miniProgram;
@@ -3197,8 +3197,75 @@ const loadMessagesForConversation = useCallback(
         }
       }
 
+      // 检测是否在Android原生应用中
+      const isAndroidApp = ua.includes("morngpt") ||
+        (window as any).gonative !== undefined ||
+        (window as any).median !== undefined;
+
+      if (isAndroidApp) {
+        // Android原生应用：设置JavaScript回调函数接收code
+        console.log("[ChatProvider] In Android app, setting up native WeChat login callback");
+
+        const callbackName = "__wechatNativeAuthCallback";
+
+        (window as any)[callbackName] = async (payload: any) => {
+          console.log("[ChatProvider] Received native WeChat login callback:", payload);
+
+          if (!payload || typeof payload !== "object") {
+            toast.error(isZh ? "微信登录失败：无效回调" : "WeChat login failed: invalid callback");
+            return;
+          }
+
+          if (payload.errCode !== 0 || !payload.code) {
+            toast.error(payload.errStr || (isZh ? "微信登录已取消或失败" : "WeChat login cancelled or failed"));
+            return;
+          }
+
+          // 使用code调用后端API
+          try {
+            console.log("[ChatProvider] Calling /api/wxlogin with code");
+            const res = await fetch("/api/wxlogin", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code: payload.code }),
+            });
+
+            const data = await res.json();
+            console.log("[ChatProvider] /api/wxlogin response:", {
+              ok: res.ok,
+              dataOk: data.ok,
+              hasToken: !!data.token,
+              hasUserInfo: !!data.userInfo,
+            });
+
+            if (!res.ok || !data.ok) {
+              throw new Error(data.error || (isZh ? "登录失败" : "Login failed"));
+            }
+
+            // 登录成功，刷新页面以加载用户状态
+            console.log("[ChatProvider] Login successful, reloading page");
+            toast.success(isZh ? "登录成功" : "Login successful");
+            window.location.reload();
+          } catch (error) {
+            console.error("[ChatProvider] WeChat login API error:", error);
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : isZh
+                  ? "微信登录失败，请重试"
+                  : "WeChat login failed. Please try again."
+            );
+          }
+        };
+
+        const scheme = `wechat-login://start?callback=${encodeURIComponent(callbackName)}`;
+        console.log("[ChatProvider] Triggering native WeChat login, scheme:", scheme);
+        window.location.href = scheme;
+        return;
+      }
+
       // PC/手机浏览器环境，使用扫码登录
-      console.log("[ChatProvider] Not in MiniProgram, using QR code login");
+      console.log("[ChatProvider] Using QR code login");
       const nextPath = typeof window !== "undefined" ? window.location.pathname : "/";
       const res = await fetch(
         `/api/auth/wechat/qrcode${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`,

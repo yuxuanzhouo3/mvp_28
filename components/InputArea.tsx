@@ -1015,7 +1015,7 @@ const InputArea = React.memo(function InputArea({
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                className="w-[calc(100vw-2rem)] sm:w-64 p-2 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]"
+                className="w-[min(16rem,calc(100vw-3rem))] sm:w-56 p-1.5 bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]"
                 align="start"
                 side="top"
               >
@@ -1694,7 +1694,7 @@ const InputArea = React.memo(function InputArea({
                   ? !canUseRealtimeVoiceInput
                   : (isStreaming ? false : !canSendTextMessage || isLoading)
               }
-              className={`h-9 w-9 sm:h-10 sm:w-10 ${
+              className={`h-10 w-10 min-w-[2.5rem] p-0 aspect-square ${
                 showVoiceInputAsPrimaryAction
                   ? isRealtimeVoiceInputActive
                     ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25"
@@ -1702,7 +1702,7 @@ const InputArea = React.memo(function InputArea({
                   : isStreaming
                 ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25"
                 : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/25"
-              } text-white rounded-full flex items-center justify-center transition-all duration-300 transform hover:scale-105 active:scale-95 flex-shrink-0`}
+              } text-white rounded-full overflow-hidden flex items-center justify-center transition-colors duration-200 flex-shrink-0 focus-visible:ring-0 focus-visible:ring-offset-0`}
               title={primaryActionTitle}
             >
               {showVoiceInputAsPrimaryAction ? (

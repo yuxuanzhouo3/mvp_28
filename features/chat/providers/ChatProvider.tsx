@@ -3604,23 +3604,60 @@ const loadMessagesForConversation = useCallback(
 
       setPrompt((prev) => prev + (prev ? "\n\n" : "") + locationText);
     } catch (error) {
-      console.error("Location error:", error);
       let errorMessage = "Failed to get location";
 
-      if (error instanceof GeolocationPositionError) {
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
+      const errorObject =
+        typeof error === "object" && error !== null
+          ? (error as {
+              code?: number;
+              message?: string;
+              PERMISSION_DENIED?: number;
+              POSITION_UNAVAILABLE?: number;
+              TIMEOUT?: number;
+            })
+          : null;
+
+      const errorCode = errorObject?.code;
+      const PERMISSION_DENIED =
+        typeof errorObject?.PERMISSION_DENIED === "number"
+          ? errorObject.PERMISSION_DENIED
+          : 1;
+      const POSITION_UNAVAILABLE =
+        typeof errorObject?.POSITION_UNAVAILABLE === "number"
+          ? errorObject.POSITION_UNAVAILABLE
+          : 2;
+      const TIMEOUT =
+        typeof errorObject?.TIMEOUT === "number"
+          ? errorObject.TIMEOUT
+          : 3;
+
+      if (typeof errorCode === "number") {
+        switch (errorCode) {
+          case PERMISSION_DENIED:
             errorMessage =
               "Location access denied. Please enable location permissions.";
             break;
-          case error.POSITION_UNAVAILABLE:
+          case POSITION_UNAVAILABLE:
             errorMessage = "Location information unavailable.";
             break;
-          case error.TIMEOUT:
+          case TIMEOUT:
             errorMessage = "Location request timed out.";
             break;
+          default:
+            if (typeof errorObject?.message === "string" && errorObject.message.trim()) {
+              errorMessage = errorObject.message;
+            }
+            break;
         }
+      } else if (error instanceof Error && error.message) {
+        errorMessage = error.message;
       }
+
+      console.error("Location error:", {
+        code: typeof errorCode === "number" ? errorCode : "unknown",
+        message: errorMessage,
+        raw: error,
+      });
 
       setLocationError(errorMessage);
       setTimeout(() => setLocationError(""), 5000);

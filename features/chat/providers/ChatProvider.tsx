@@ -3158,8 +3158,88 @@ const loadMessagesForConversation = useCallback(
       return;
     }
     try {
-      // 使用 Server Action 启动 OAuth（Supabase 官方推荐方式）
-      await signInWithGoogle();
+      // 检测是否在 Android WebView 环境中
+      const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
+
+      if (isAndroidWebView) {
+        // Android WebView 环境：使用原生 Google Sign-In
+        console.log('[handleGoogleAuth] Android WebView detected, using native sign-in');
+
+        const { signInWithGoogle } = await import('@/lib/google-signin-bridge');
+        const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+
+        if (!clientId) {
+          throw new Error('Google Client ID not configured');
+        }
+
+        // 调用 Android 原生登录
+        const result = await signInWithGoogle(clientId);
+        console.log('[handleGoogleAuth] Native sign-in successful:', result);
+
+        // 调用后端 API 验证 Token
+        const response = await fetch('/api/auth/google-native', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            idToken: result.idToken,
+            email: result.email,
+            displayName: result.displayName,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Authentication failed');
+        }
+
+        const data = await response.json();
+        console.log('[handleGoogleAuth] Backend authentication successful:', data);
+
+        // 构建用户对象（参考邮箱登录的实现）
+        const mappedUser: AppUser = {
+          id: data.user.id,
+          email: data.user.email || "",
+          name: data.user.name || data.user.email || "User",
+          avatar: data.user.avatar || undefined,
+          isPro: false,
+          isPaid: false,
+          plan: data.user.plan || undefined,
+          planExp: data.user.planExp || undefined,
+          settings: {
+            theme: "light",
+            language: "zh",
+            notifications: true,
+            soundEnabled: true,
+            autoSave: true,
+            hideAds: false,
+          },
+        };
+
+        // 立即更新状态（不刷新页面）
+        setAppUser(mappedUser);
+        setIsLoggedIn(true);
+        setAuthDialogOpen(false);
+
+        // 保存计划信息到 localStorage
+        if (mappedUser.plan) {
+          setCurrentPlan(mappedUser.plan as "Basic" | "Pro" | "Enterprise");
+          localStorage.setItem("morngpt_current_plan", mappedUser.plan);
+          if (mappedUser.planExp) {
+            localStorage.setItem("morngpt_current_plan_exp", mappedUser.planExp);
+          }
+        }
+
+        // 刷新配额和加载对话
+        appUserRef.current = mappedUser;
+        void refreshQuota(mappedUser);
+        void loadConversations(mappedUser);
+
+        toast.success(currentLanguage === "zh" ? "登录成功" : "Sign-in successful");
+      } else {
+        // 浏览器环境：使用 Supabase OAuth
+        console.log('[handleGoogleAuth] Browser environment, using Supabase OAuth');
+        await signInWithGoogle();
+      }
     } catch (err) {
       // Server Action 中的 redirect() 会抛出 NEXT_REDIRECT 错误，这是正常行为
       if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) {

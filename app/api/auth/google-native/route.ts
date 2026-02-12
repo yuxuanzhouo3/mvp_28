@@ -172,7 +172,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 返回用户信息（不需要创建自定义 JWT，前端会直接使用用户信息）
+    // 创建自定义会话（生成 JWT token）
+    const jwt = require('jsonwebtoken');
+    const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-key-change-in-production';
+
+    const accessToken = jwt.sign(
+      {
+        sub: user.id,
+        email: user.email,
+        role: 'authenticated',
+      },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const refreshToken = jwt.sign(
+      {
+        sub: user.id,
+        email: user.email,
+      },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    const session = {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_in: 3600,
+      refresh_token_expires_in: 604800,
+      token_type: 'bearer',
+      user: {
+        id: user.id,
+        email: user.email,
+        role: 'authenticated',
+      },
+    };
+
     return NextResponse.json({
       success: true,
       user: {
@@ -181,6 +216,7 @@ export async function POST(request: NextRequest) {
         name: user.name,
         avatar: user.avatar,
       },
+      session,
     });
   } catch (error) {
     console.error('[google-native] Error:', error);

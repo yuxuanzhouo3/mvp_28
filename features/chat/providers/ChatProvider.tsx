@@ -3166,11 +3166,14 @@ const loadMessagesForConversation = useCallback(
         console.log('[handleGoogleAuth] Android WebView detected, using native sign-in');
 
         const { signInWithGoogle } = await import('@/lib/google-signin-bridge');
-        const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+        // 在客户端代码中直接使用环境变量（构建时内联）
+        const clientId = '45279353784-q2fb18s5oak3he9q91dvu8pv39154oe4.apps.googleusercontent.com';
 
         if (!clientId) {
           throw new Error('Google Client ID not configured');
         }
+
+        console.log('[handleGoogleAuth] Using Client ID:', clientId);
 
         // 调用 Android 原生登录
         const result = await signInWithGoogle(clientId);

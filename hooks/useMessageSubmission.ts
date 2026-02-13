@@ -590,9 +590,31 @@ export const useMessageSubmission = (
     // Persist user message via API
     if (conversationId && !conversationId.startsWith("local-")) {
       try {
+        // 从 localStorage 读取 token（用于 Google 登录等自定义 JWT 认证）
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        try {
+          const authState = localStorage.getItem("app-auth-state");
+          if (authState) {
+            const parsed = JSON.parse(authState);
+            if (parsed.accessToken) {
+              headers["Authorization"] = `Bearer ${parsed.accessToken}`;
+              console.log('[saveMessage] Using custom JWT token');
+            } else {
+              console.warn('[saveMessage] No accessToken in app-auth-state');
+              alert('[DEBUG] 警告：localStorage 中没有 accessToken');
+            }
+          } else {
+            console.warn('[saveMessage] No app-auth-state in localStorage');
+            alert('[DEBUG] 警告：localStorage 中没有 app-auth-state');
+          }
+        } catch (e) {
+          console.error('[saveMessage] Failed to read auth state:', e);
+          alert('[DEBUG] 错误：读取认证状态失败 - ' + e);
+        }
+
         const res = await fetch(`/api/conversations/${conversationId}/messages`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           credentials: "include",
           body: JSON.stringify({
             role: "user",
@@ -604,6 +626,14 @@ export const useMessageSubmission = (
             modelId: persistedModelId, // 传递模型 ID 用于分级配额
           }),
         });
+
+        // 添加详细的错误调试信息
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => 'Unable to read error');
+          console.error('[saveMessage] Failed with status:', res.status, errorText);
+          alert(`[DEBUG] 保存消息失败\n状态码: ${res.status}\n错误: ${errorText}\nConversation ID: ${conversationId}`);
+        }
+
         if (res.status === 402) {
           const body = await res.json().catch(() => ({}));
           // 根据配额类型显示不同的错误提示（Free/Basic 同一逻辑，统一触发订阅弹窗）

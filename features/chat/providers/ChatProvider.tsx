@@ -2327,22 +2327,24 @@ const loadMessagesForConversation = useCallback(
   // Load user data and theme from localStorage on mount
   useEffect(() => {
     const savedUser = localStorage.getItem("morngpt_user");
-    const savedSession = localStorage.getItem("morngpt_session");
     const savedTheme = localStorage.getItem("morngpt_theme");
     const savedPlan = localStorage.getItem("morngpt_current_plan");
     const savedPlanExp = localStorage.getItem("morngpt_current_plan_exp");
     const savedCustomShortcuts = localStorage.getItem("customShortcuts");
 
-    // 恢复 session（用于 Android WebView Google 登录）
-    if (savedSession && !savedUser) {
+    // 优先恢复 Android Native Google Sign-In 的认证状态
+    const restoreAuthState = async () => {
       try {
-        const session = JSON.parse(savedSession);
-        if (session.user) {
+        const { getStoredAuthState } = await import('@/lib/auth-state-manager');
+        const authState = getStoredAuthState();
+
+        if (authState && authState.user && !savedUser) {
+          console.log('[ChatProvider] 恢复 Android Native 认证状态:', authState.user);
           const mappedUser: AppUser = {
-            id: session.user.id,
-            email: session.user.email,
-            name: session.user.email || "User",
-            avatar: undefined,
+            id: authState.user.id,
+            email: authState.user.email,
+            name: authState.user.name || authState.user.email || "User",
+            avatar: authState.user.avatar || undefined,
             isPro: false,
             isPaid: false,
             plan: savedPlan || undefined,
@@ -2359,12 +2361,19 @@ const loadMessagesForConversation = useCallback(
           setAppUser(mappedUser);
           setIsLoggedIn(true);
           appUserRef.current = mappedUser;
+          return true;
         }
       } catch (e) {
-        console.error('Failed to restore session:', e);
-        localStorage.removeItem("morngpt_session");
+        console.error('恢复认证状态失败:', e);
       }
-    }
+      return false;
+    };
+
+    restoreAuthState().then((restored) => {
+      if (restored) {
+        console.log('[ChatProvider] 认证状态恢复成功');
+      }
+    });
 
     // Check for shared conversation in URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -3224,9 +3233,23 @@ const loadMessagesForConversation = useCallback(
 
         const data = await response.json();
 
-        // 保存 session 到 localStorage（关键！）
+        // 使用 auth-state-manager 保存完整的认证状态（关键！）
         if (data.session) {
-          localStorage.setItem('morngpt_session', JSON.stringify(data.session));
+          const { saveAuthState } = await import('@/lib/auth-state-manager');
+          saveAuthState(
+            data.session.access_token,
+            data.session.refresh_token,
+            {
+              id: data.user.id,
+              email: data.user.email,
+              name: data.user.name,
+              avatar: data.user.avatar,
+            },
+            {
+              accessTokenExpiresIn: data.session.expires_in || 3600,
+              refreshTokenExpiresIn: data.session.refresh_token_expires_in || 604800,
+            }
+          );
         }
 
         const mappedUser: AppUser = {

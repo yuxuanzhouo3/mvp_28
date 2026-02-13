@@ -104,18 +104,43 @@ export async function POST(req: Request) {
     // ============================================================
     // 用户认证
     // ============================================================
-    const supabase = await createClient();
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    
-    if (userError || !userData?.user) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized: Please login first" }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
-      );
-    }
+    let userId: string;
+    let userMeta: any = {};
 
-    const userId = userData.user.id;
-    const userMeta = userData.user.user_metadata as any;
+    // 尝试从 Authorization header 获取自定义 JWT token（Android Native Google Sign-In）
+    const authHeader = req.headers.get("authorization");
+    const customToken = authHeader?.replace(/^Bearer\s+/i, "");
+
+    if (customToken) {
+      // 使用自定义 JWT 认证（Android Native Google Sign-In）
+      try {
+        const jwt = require('jsonwebtoken');
+        const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-key-change-in-production';
+        const decoded = jwt.verify(customToken, JWT_SECRET) as any;
+        userId = decoded.sub;
+        console.log('[chat/stream] Using custom JWT auth for user:', userId);
+      } catch (error) {
+        console.error('[chat/stream] Custom JWT verification failed:', error);
+        return new Response(
+          JSON.stringify({ success: false, error: "Unauthorized: Invalid token" }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    } else {
+      // 使用 Supabase 认证
+      const supabase = await createClient();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !userData?.user) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Unauthorized: Please login first" }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      userId = userData.user.id;
+      userMeta = userData.user.user_metadata as any;
+    }
 
     // 获取钱包信息（seed 可能触发延期降级落库，因此这里需要二次读取）
     let wallet = await getSupabaseUserWallet(userId);

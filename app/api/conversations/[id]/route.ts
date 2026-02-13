@@ -53,49 +53,61 @@ export async function DELETE(
         const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-key-change-in-production';
         const decoded = jwt.verify(customToken, JWT_SECRET) as any;
         userId = decoded.sub;
-        console.log('[conversation] Using custom JWT auth for user:', userId);
+        console.log('[DELETE] ✅ Using custom JWT auth for user:', userId);
+        console.log('[DELETE] 🔑 Token source:', cookieStore.get('custom-jwt-token')?.value ? 'cookie' : 'header');
         // 使用 service role 客户端绕过 RLS 策略
         supabase = await createServiceRoleClient();
+        console.log('[DELETE] 🔧 Using service role client to bypass RLS');
       } catch (error) {
-        console.error('[conversation] Custom JWT verification failed:', error);
+        console.error('[DELETE] ❌ Custom JWT verification failed:', error);
         return new Response("Unauthorized", { status: 401 });
       }
     } else {
       // 使用 Supabase 认证
+      console.log('[DELETE] 🔵 Using Supabase authentication');
       supabase = await createClient();
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError || !userData?.user) {
+        console.error('[DELETE] ❌ Supabase auth failed:', userError);
         return new Response("Unauthorized", { status: 401 });
       }
       userId = userData.user.id;
+      console.log('[DELETE] ✅ Supabase auth success for user:', userId);
     }
+
+    console.log(`[DELETE] 🔍 Verifying conversation ${id} belongs to user ${userId}`);
 
     // 先验证对话是否存在且属于当前用户
     const { data: existingConv, error: checkError } = await supabase
       .from("conversations")
-      .select("id")
+      .select("id, user_id")
       .eq("id", id)
       .eq("user_id", userId)
       .single();
 
     if (checkError || !existingConv) {
-      console.error("Conversation not found or unauthorized", checkError);
+      console.error(`[DELETE] ❌ Conversation not found. Error:`, checkError);
+      console.error(`[DELETE] ❌ Query params: id=${id}, user_id=${userId}`);
       return new Response("Not found", { status: 404 });
     }
 
+    console.log(`[DELETE] ✅ Conversation verified:`, existingConv);
+
     // 确认存在后再删除
-    const { error } = await supabase
+    console.log(`[DELETE] 🗑️ Deleting conversation ${id} for user ${userId}`);
+
+    const { error, count } = await supabase
       .from("conversations")
-      .delete()
+      .delete({ count: 'exact' })
       .eq("id", id)
       .eq("user_id", userId);
 
     if (error) {
-      console.error("Delete conversation error", error);
+      console.error("[DELETE] ❌ Delete failed:", error);
       return new Response("Failed to delete conversation", { status: 500 });
     }
 
-    console.log(`[conversation] Successfully deleted conversation ${id} for user ${userId}`);
+    console.log(`[DELETE] ✅ Successfully deleted! Affected rows: ${count}`);
     return new Response(null, { status: 204 });
   }
 

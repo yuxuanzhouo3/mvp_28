@@ -177,13 +177,15 @@ export async function POST(req: NextRequest) {
         updated_at: new Date(),
       });
     } else {
-      // Supabase 存储 - 根据认证方式选择客户端
+      // Supabase 存储 - 使用之前已经确定的 useServiceRole
       const { cookies } = await import('next/headers');
       const cookieStore = await cookies();
       const customToken = cookieStore.get('custom-jwt-token')?.value;
       const useServiceRole = !!customToken;
 
       const supabase = useServiceRole ? await createServiceRoleClient() : await createClient();
+
+      console.log('[share/create] Using', useServiceRole ? 'service role' : 'regular', 'client for user:', userId);
 
       // 1. 清理该对话的过期分享
       await supabase

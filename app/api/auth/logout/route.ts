@@ -4,18 +4,28 @@ import { IS_DOMESTIC_VERSION } from "@/config";
 export const runtime = "nodejs";
 
 export async function POST() {
-  // 版本隔离：国际版不使用 auth-token（CloudBase）会话
-  if (!IS_DOMESTIC_VERSION) {
-    return new NextResponse(null, { status: 404 });
+  const res = NextResponse.json({ success: true });
+
+  if (IS_DOMESTIC_VERSION) {
+    // 国内版：清除 CloudBase auth-token
+    res.cookies.set("auth-token", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 0,
+      path: "/",
+    });
+  } else {
+    // 国际版：清除自定义 JWT token
+    res.cookies.set("custom-jwt-token", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 0,
+      path: "/",
+    });
+    console.log('✅ [logout] Custom JWT token cleared from cookie');
   }
 
-  const res = NextResponse.json({ success: true });
-  res.cookies.set("auth-token", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 0,
-    path: "/",
-  });
   return res;
 }

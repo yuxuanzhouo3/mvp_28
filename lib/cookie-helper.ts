@@ -35,11 +35,18 @@ export function getCookie(name: string): string | null {
 
 /**
  * 删除 cookie（客户端）
+ * 注意：必须使用与设置时相同的属性（SameSite, Secure）才能正确删除
  */
 export function deleteCookie(name: string): void {
   if (typeof window === 'undefined') return;
 
-  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+  // 使用与 setCookie 相同的属性来确保能正确删除
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure`;
+
+  // 同时尝试不带 Secure 属性的删除（兼容 HTTP 环境）
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax`;
+
+  console.log(`🔵 [deleteCookie] 已删除 cookie: ${name}`);
 }
 
 /**

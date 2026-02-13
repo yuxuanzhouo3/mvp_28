@@ -4298,44 +4298,62 @@ const loadMessagesForConversation = useCallback(
   async function deleteChat(chatId: string) {
     const isLocalChat = chatId.startsWith("local-");
 
+    alert(`[1] 开始删除对话: ${chatId}`);
+
     try {
       if (!appUser) {
-        // guests are not allowed to manage conversations; prompt login
+        alert("[2] 未登录，需要登录");
         requireLogin();
         return;
       }
 
+      alert(`[3] 用户已登录，isLocalChat=${isLocalChat}, isDomestic=${isDomestic}`);
+
       // Local-only conversations (free quota) are never persisted; skip remote delete
       if (isLocalChat) {
+        alert("[4] 本地对话，跳过远程删除");
         // no remote call needed
       } else if (isDomestic) {
+        alert("[5] 国内版，准备调用 DELETE API");
         // 依赖 cookie 认证（custom-jwt-token），不使用 localStorage
         const res = await fetch(`/api/conversations/${chatId}`, {
           method: "DELETE",
           credentials: "include",
         });
+        alert(`[6] DELETE API 响应状态: ${res.status}`);
         // 404: conversation may already be deleted or belong to another session/user; treat as idempotent success.
         if (res.status === 404) {
+          alert("[7] 404 - 对话可能已被删除");
           // no-op
         } else if (!res.ok) {
           const msg = await res.text();
+          alert(`[8] 删除失败: ${res.status} - ${msg}`);
           throw new Error(`Delete failed ${res.status}: ${msg || "unknown"}`);
+        } else {
+          alert("[9] 删除成功");
         }
       } else {
+        alert("[10] 国际版，准备调用 DELETE API");
         // 国际版：调用后端 API（支持 cookie-based JWT 认证）
         const res = await fetch(`/api/conversations/${chatId}`, {
           method: "DELETE",
           credentials: "include",
         });
+        alert(`[11] DELETE API 响应状态: ${res.status}`);
         if (res.status === 404) {
+          alert("[12] 404 - 对话可能已被删除");
           // 404: conversation may already be deleted
         } else if (!res.ok) {
           const msg = await res.text();
+          alert(`[13] 删除失败: ${res.status} - ${msg}`);
           throw new Error(`Delete failed ${res.status}: ${msg || "unknown"}`);
+        } else {
+          alert("[14] 删除成功");
         }
       }
     } catch (err) {
       console.error("Failed to delete conversation", err);
+      alert(`[15] 捕获错误: ${err}`);
       alert(
         isZh
           ? "删除对话失败，请稍后再试。"

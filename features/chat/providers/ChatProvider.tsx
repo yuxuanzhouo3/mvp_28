@@ -3479,9 +3479,6 @@ const loadMessagesForConversation = useCallback(
     alert("handleLogout: 开始执行退出登录");
 
     try {
-      // 🔥 关键修复：立即清除 cookie 和 localStorage，然后刷新页面
-      // 避免被其他操作（如 signOutGoogle、clearAuthState）中断
-
       // 1. 清除 cookie 中的 JWT token
       try {
         const { deleteCookie } = await import('@/lib/cookie-helper');
@@ -3504,7 +3501,20 @@ const loadMessagesForConversation = useCallback(
         console.error('❌ 清除 localStorage 失败:', error);
       }
 
-      // 3. 立即刷新页面，跳过其他可能导致中断的清理步骤
+      // 3. 清除 Android 端的 Google 登录缓存（不等待完成，避免中断）
+      try {
+        const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
+        if (isAndroidWebView) {
+          const { signOutGoogle } = await import('@/lib/google-signin-bridge');
+          // 不使用 await，让它在后台执行
+          signOutGoogle().catch(err => console.error('Android signOut error:', err));
+          console.log('🔄 Android Google 登出已触发（后台执行）');
+        }
+      } catch (error) {
+        console.error('❌ 触发 Android Google 登出失败:', error);
+      }
+
+      // 4. 立即刷新页面
       alert("handleLogout: 即将刷新页面");
       console.log('🔄 [handleLogout] 立即刷新页面以完成退出登录');
 

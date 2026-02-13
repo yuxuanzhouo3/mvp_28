@@ -3806,9 +3806,23 @@ const loadMessagesForConversation = useCallback(
 
     // Persist the partial assistant message if available
     if (streamingMsg && streamingMsg.content && currentChatId) {
+      // 获取 Authorization header
+      const headers: HeadersInit = { "Content-Type": "application/json" };
+      try {
+        const authState = localStorage.getItem("app-auth-state");
+        if (authState) {
+          const parsed = JSON.parse(authState);
+          if (parsed.accessToken) {
+            headers["Authorization"] = `Bearer ${parsed.accessToken}`;
+          }
+        }
+      } catch (e) {
+        // localStorage 读取失败，继续使用 cookie
+      }
+
       fetch(`/api/conversations/${currentChatId}/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({
           role: "assistant",
@@ -4316,9 +4330,24 @@ const loadMessagesForConversation = useCallback(
       if (isLocalChat) {
         // no remote call needed
       } else if (isDomestic) {
+        // 获取 Authorization header
+        const headers: HeadersInit = {};
+        try {
+          const authState = localStorage.getItem("app-auth-state");
+          if (authState) {
+            const parsed = JSON.parse(authState);
+            if (parsed.accessToken) {
+              headers["Authorization"] = `Bearer ${parsed.accessToken}`;
+            }
+          }
+        } catch (e) {
+          // localStorage 读取失败，继续使用 cookie
+        }
+
         const res = await fetch(`/api/conversations/${chatId}`, {
           method: "DELETE",
           credentials: "include",
+          headers,
         });
         // 404: conversation may already be deleted or belong to another session/user; treat as idempotent success.
         if (res.status === 404) {
@@ -4397,9 +4426,23 @@ const loadMessagesForConversation = useCallback(
     if (appUser && editingChatId) {
       try {
         if (isDomestic) {
+          // 获取 Authorization header
+          const headers: HeadersInit = { "Content-Type": "application/json" };
+          try {
+            const authState = localStorage.getItem("app-auth-state");
+            if (authState) {
+              const parsed = JSON.parse(authState);
+              if (parsed.accessToken) {
+                headers["Authorization"] = `Bearer ${parsed.accessToken}`;
+              }
+            }
+          } catch (e) {
+            // localStorage 读取失败，继续使用 cookie
+          }
+
           const res = await fetch(`/api/conversations/${editingChatId}`, {
             method: "PATCH",
-            headers: { "Content-Type": "application/json" },
+            headers,
             credentials: "include",
             body: JSON.stringify({ title: editingTitle }),
           });
@@ -4943,8 +4986,23 @@ const loadMessagesForConversation = useCallback(
       // If no messages cached, try fetching (paid users only)
       if ((!messagesToExport || messagesToExport.length === 0) && appUser) {
         try {
+          // 获取 Authorization header
+          const headers: HeadersInit = {};
+          try {
+            const authState = localStorage.getItem("app-auth-state");
+            if (authState) {
+              const parsed = JSON.parse(authState);
+              if (parsed.accessToken) {
+                headers["Authorization"] = `Bearer ${parsed.accessToken}`;
+              }
+            }
+          } catch (e) {
+            // localStorage 读取失败，继续使用 cookie
+          }
+
           const res = await fetch(`/api/conversations/${chatId}/messages`, {
             credentials: "include",
+            headers,
           });
           if (res.ok) {
             const data = await res.json();
@@ -5080,9 +5138,23 @@ const loadMessagesForConversation = useCallback(
       }
 
       try {
+        // 获取 Authorization header
+        const headers: HeadersInit = { "Content-Type": "application/json" };
+        try {
+          const authState = localStorage.getItem("app-auth-state");
+          if (authState) {
+            const parsed = JSON.parse(authState);
+            if (parsed.accessToken) {
+              headers["Authorization"] = `Bearer ${parsed.accessToken}`;
+            }
+          }
+        } catch (e) {
+          // localStorage 读取失败，继续使用 cookie
+        }
+
         const res = await fetch(`/api/conversations/${activeChatId}/messages`, {
           method: "DELETE",
-          headers: { "Content-Type": "application/json" },
+          headers,
           credentials: "include",
           body: JSON.stringify({ messageId }),
         });

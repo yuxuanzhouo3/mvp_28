@@ -3487,7 +3487,7 @@ const loadMessagesForConversation = useCallback(
           const cookies = document.cookie.split(';');
           for (const cookie of cookies) {
             const cookieName = cookie.split('=')[0].trim();
-            if (cookieName.startsWith('sb-') && cookieName.includes('auth-token')) {
+            if (cookieName.startsWith('sb-') || cookieName.includes('auth')) {
               deleteCookie(cookieName);
             }
           }
@@ -3496,17 +3496,25 @@ const loadMessagesForConversation = useCallback(
         console.error('清除 cookie 失败:', error);
       }
 
-      // 2. 清除 localStorage 中的关键认证状态
+      // 2. 清除所有 localStorage 数据
       try {
-        localStorage.removeItem("app-auth-state");
-        localStorage.removeItem("morngpt_user");
-        localStorage.removeItem("morngpt_current_plan");
-        localStorage.removeItem("morngpt_current_plan_exp");
+        if (typeof localStorage !== 'undefined') {
+          localStorage.clear();
+        }
       } catch (error) {
         console.error('清除 localStorage 失败:', error);
       }
 
-      // 3. 清除 Supabase session（邮箱登录）- 不等待完成，避免中断
+      // 3. 清除所有 sessionStorage 数据
+      try {
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.clear();
+        }
+      } catch (error) {
+        console.error('清除 sessionStorage 失败:', error);
+      }
+
+      // 4. 清除 Supabase session（邮箱登录）- 不等待完成，避免中断
       try {
         if (supabase) {
           supabase.auth.signOut().catch(err => console.error('Supabase signOut error:', err));
@@ -3515,7 +3523,7 @@ const loadMessagesForConversation = useCallback(
         console.error('触发 Supabase 登出失败:', error);
       }
 
-      // 4. 清除 Android 端的 Google 登录缓存（不等待完成，避免中断）
+      // 5. 清除 Android 端的 Google 登录缓存（不等待完成，避免中断）
       try {
         const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
         if (isAndroidWebView) {
@@ -3526,7 +3534,7 @@ const loadMessagesForConversation = useCallback(
         console.error('触发 Android Google 登出失败:', error);
       }
 
-      // 5. 立即刷新页面
+      // 6. 立即刷新页面
       if (typeof window !== 'undefined') {
         window.location.href = '/';
       }
@@ -4319,62 +4327,43 @@ const loadMessagesForConversation = useCallback(
   async function deleteChat(chatId: string) {
     const isLocalChat = chatId.startsWith("local-");
 
-    alert(`[1] 开始删除对话: ${chatId}`);
-
     try {
       if (!appUser) {
-        alert("[2] 未登录，需要登录");
         requireLogin();
         return;
       }
 
-      alert(`[3] 用户已登录，isLocalChat=${isLocalChat}, isDomestic=${isDomestic}`);
-
       // Local-only conversations (free quota) are never persisted; skip remote delete
       if (isLocalChat) {
-        alert("[4] 本地对话，跳过远程删除");
         // no remote call needed
       } else if (isDomestic) {
-        alert("[5] 国内版，准备调用 DELETE API");
         // 依赖 cookie 认证（custom-jwt-token），不使用 localStorage
         const res = await fetch(`/api/conversations/${chatId}`, {
           method: "DELETE",
           credentials: "include",
         });
-        alert(`[6] DELETE API 响应状态: ${res.status}`);
         // 404: conversation may already be deleted or belong to another session/user; treat as idempotent success.
         if (res.status === 404) {
-          alert("[7] 404 - 对话可能已被删除");
           // no-op
         } else if (!res.ok) {
           const msg = await res.text();
-          alert(`[8] 删除失败: ${res.status} - ${msg}`);
           throw new Error(`Delete failed ${res.status}: ${msg || "unknown"}`);
-        } else {
-          alert("[9] 删除成功");
         }
       } else {
-        alert("[10] 国际版，准备调用 DELETE API");
         // 国际版：调用后端 API（支持 cookie-based JWT 认证）
         const res = await fetch(`/api/conversations/${chatId}`, {
           method: "DELETE",
           credentials: "include",
         });
-        alert(`[11] DELETE API 响应状态: ${res.status}`);
         if (res.status === 404) {
-          alert("[12] 404 - 对话可能已被删除");
           // 404: conversation may already be deleted
         } else if (!res.ok) {
           const msg = await res.text();
-          alert(`[13] 删除失败: ${res.status} - ${msg}`);
           throw new Error(`Delete failed ${res.status}: ${msg || "unknown"}`);
-        } else {
-          alert("[14] 删除成功");
         }
       }
     } catch (err) {
       console.error("Failed to delete conversation", err);
-      alert(`[15] 捕获错误: ${err}`);
       alert(
         isZh
           ? "删除对话失败，请稍后再试。"

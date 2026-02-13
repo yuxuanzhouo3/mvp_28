@@ -3158,16 +3158,10 @@ const loadMessagesForConversation = useCallback(
       return;
     }
     try {
-      alert('[DEBUG 1] handleGoogleAuth 被调用');
-
       // 检测是否在 Android WebView 环境中
       const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
 
-      alert(`[DEBUG 2] 环境检测: isAndroidWebView=${isAndroidWebView}`);
-
       if (isAndroidWebView) {
-        alert('[DEBUG 3] 进入 Android WebView 分支');
-
         const { signInWithGoogle } = await import('@/lib/google-signin-bridge');
         const clientId = '45279353784-q2fb18s5oak3he9q91dvu8pv39154oe4.apps.googleusercontent.com';
 
@@ -3175,13 +3169,8 @@ const loadMessagesForConversation = useCallback(
           throw new Error('Google Client ID not configured');
         }
 
-        alert('[DEBUG 4] 准备调用 signInWithGoogle');
-
         // 调用 Android 原生登录
         const result = await signInWithGoogle(clientId);
-        alert(`[DEBUG 5] Bridge 调用成功: email=${result.email}`);
-
-        alert('[DEBUG 6] 准备调用后端 API');
 
         // 调用后端 API 验证 Token
         const response = await fetch('/api/auth/google-native', {
@@ -3194,21 +3183,16 @@ const loadMessagesForConversation = useCallback(
           }),
         });
 
-        alert(`[DEBUG 7] 后端 API 响应状态: ${response.status}`);
-
-        alert(`[DEBUG 8] response.ok = ${response.ok}`);
         if (!response.ok) {
-          alert('[DEBUG 9] 进入错误处理分支');
           const errorData = await response.json();
           throw new Error(errorData.error || 'Authentication failed');
         }
 
-        alert('[DEBUG 10] 准备解析响应数据');
         const data = await response.json();
-        alert(`[DEBUG 11] 响应数据: success=${data.success}, hasUser=${!!data.user}`);
 
         // 构建用户对象（参考邮箱登录的实现）
         alert('[DEBUG 12] 准备构建用户对象');
+        alert(`[DEBUG 12.5] data.user 内容: id=${data.user?.id}, email=${data.user?.email}, name=${data.user?.name}`);
         const mappedUser: AppUser = {
           id: data.user.id,
           email: data.user.email || "",

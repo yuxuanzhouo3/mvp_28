@@ -3158,17 +3158,16 @@ const loadMessagesForConversation = useCallback(
       return;
     }
     try {
-      alert('[DEBUG 1] handleGoogleAuth 被调用');
+      console.log('[DEBUG 1] handleGoogleAuth 被调用');
 
       // 检测是否在 Android WebView 环境中
       const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
 
-      alert(`[DEBUG 2] 环境检测: isAndroidWebView=${isAndroidWebView}, GoogleSignIn=${typeof (window as any).GoogleSignIn}`);
+      console.log(`[DEBUG 2] 环境检测: isAndroidWebView=${isAndroidWebView}, GoogleSignIn=${typeof (window as any).GoogleSignIn}`);
 
       if (isAndroidWebView) {
         // Android WebView 环境：使用原生 Google Sign-In
-        console.log('[handleGoogleAuth] Android WebView detected, using native sign-in');
-        alert('[DEBUG 3] 进入 Android WebView 分支');
+        console.log('[DEBUG 3] 进入 Android WebView 分支');
 
         const { signInWithGoogle } = await import('@/lib/google-signin-bridge');
         // 在客户端代码中直接使用环境变量（构建时内联）
@@ -3178,13 +3177,18 @@ const loadMessagesForConversation = useCallback(
           throw new Error('Google Client ID not configured');
         }
 
-        console.log('[handleGoogleAuth] Using Client ID:', clientId);
-        alert('[DEBUG 4] 准备调用 signInWithGoogle');
+        console.log('[DEBUG 4] 准备调用 signInWithGoogle, Client ID:', clientId);
 
         // 调用 Android 原生登录
         const result = await signInWithGoogle(clientId);
-        console.log('[handleGoogleAuth] Native sign-in successful:', result);
-        alert(`[DEBUG 5] Bridge 调用成功: ${JSON.stringify(result)}`);
+        console.log('[DEBUG 5] Bridge 调用成功:', {
+          success: result.success,
+          hasIdToken: !!result.idToken,
+          email: result.email,
+          displayName: result.displayName
+        });
+
+        console.log('[DEBUG 6] 准备调用后端 API');
 
         // 调用后端 API 验证 Token
         const response = await fetch('/api/auth/google-native', {
@@ -3197,15 +3201,26 @@ const loadMessagesForConversation = useCallback(
           }),
         });
 
+        console.log('[DEBUG 7] 后端 API 响应状态:', response.status);
+
         if (!response.ok) {
+          console.log('[DEBUG 8] 后端 API 返回错误');
           const errorData = await response.json();
+          console.log('[DEBUG 9] 错误数据:', errorData);
           throw new Error(errorData.error || 'Authentication failed');
         }
 
+        console.log('[DEBUG 10] 准备解析响应数据');
         const data = await response.json();
-        console.log('[handleGoogleAuth] Backend authentication successful:', data);
+        console.log('[DEBUG 11] 后端响应数据:', {
+          success: data.success,
+          hasUser: !!data.user,
+          hasSession: !!data.session,
+          userId: data.user?.id
+        });
 
         // 构建用户对象（参考邮箱登录的实现）
+        console.log('[DEBUG 12] 准备构建用户对象');
         const mappedUser: AppUser = {
           id: data.user.id,
           email: data.user.email || "",
@@ -3225,10 +3240,15 @@ const loadMessagesForConversation = useCallback(
           },
         };
 
+        console.log('[DEBUG 13] 用户对象构建完成:', mappedUser);
+
         // 立即更新状态（不刷新页面）
+        console.log('[DEBUG 14] 准备更新状态');
         setAppUser(mappedUser);
         setIsLoggedIn(true);
         setAuthDialogOpen(false);
+
+        console.log('[DEBUG 15] 状态更新完成');
 
         // 保存计划信息到 localStorage
         if (mappedUser.plan) {
@@ -3244,6 +3264,7 @@ const loadMessagesForConversation = useCallback(
         void refreshQuota(mappedUser);
         void loadConversations(mappedUser);
 
+        console.log('[DEBUG 16] 登录流程完成');
         toast.success(currentLanguage === "zh" ? "登录成功" : "Sign-in successful");
       } else {
         // 浏览器环境：使用 Supabase OAuth

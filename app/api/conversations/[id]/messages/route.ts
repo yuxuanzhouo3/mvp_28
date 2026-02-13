@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { isAfter } from "date-fns";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
@@ -127,7 +127,8 @@ export async function GET(
         const decoded = jwt.verify(customToken, JWT_SECRET) as any;
         userId = decoded.sub;
         console.log('[messages] Using custom JWT auth for user:', userId);
-        supabase = await createClient();
+        // 使用 service role 客户端绕过 RLS 策略
+        supabase = await createServiceRoleClient();
       } catch (error) {
         console.error('[messages] Custom JWT verification failed:', error);
         return new Response("Unauthorized", { status: 401 });
@@ -246,13 +247,40 @@ export async function POST(
   };
 
   if (!isDomesticRequest(req)) {
-    const supabase = await createClient();
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError || !userData?.user) {
-      return new Response("Unauthorized", { status: 401 });
+    let userId: string;
+    let userMeta: any = {};
+    let supabase: any;
+
+    // 尝试从 Authorization header 获取自定义 JWT token（Android Native Google Sign-In）
+    const authHeader = req.headers.get("authorization");
+    const customToken = authHeader?.replace(/^Bearer\s+/i, "");
+
+    if (customToken) {
+      // 使用自定义 JWT 认证（Android Native Google Sign-In）
+      try {
+        const jwt = require('jsonwebtoken');
+        const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-key-change-in-production';
+        const decoded = jwt.verify(customToken, JWT_SECRET) as any;
+        userId = decoded.sub;
+        console.log('[messages POST] Using custom JWT auth for user:', userId);
+        // 使用 service role 客户端绕过 RLS 策略
+        supabase = await createServiceRoleClient();
+      } catch (error) {
+        console.error('[messages POST] Custom JWT verification failed:', error);
+        return new Response("Unauthorized", { status: 401 });
+      }
+    } else {
+      // 使用 Supabase 认证
+      supabase = await createClient();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData?.user) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      userId = userData.user.id;
+      userMeta = userData.user.user_metadata as any;
     }
-    const userId = userData.user.id;
-    const plan = getPlanInfo(userData.user.user_metadata);
+
+    const plan = getPlanInfo(userMeta);
     const effectivePlanLower = plan.planLower || "free";
     const isBasicUser = effectivePlanLower === "basic";
 

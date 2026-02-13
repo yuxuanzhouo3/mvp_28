@@ -3193,6 +3193,16 @@ const loadMessagesForConversation = useCallback(
         // 构建用户对象（参考邮箱登录的实现）
         alert('[DEBUG 12] 准备构建用户对象');
         alert(`[DEBUG 12.5] data.user 内容: id=${data.user?.id}, email=${data.user?.email}, name=${data.user?.name}`);
+
+        alert('[DEBUG 13] 准备保存 session');
+        // 保存 session 到 localStorage（关键！）
+        if (data.session) {
+          localStorage.setItem('morngpt_session', JSON.stringify(data.session));
+          alert('[DEBUG 14] session 已保存');
+        } else {
+          alert('[DEBUG 14] 警告：没有 session 数据');
+        }
+
         const mappedUser: AppUser = {
           id: data.user.id,
           email: data.user.email || "",
@@ -3212,15 +3222,15 @@ const loadMessagesForConversation = useCallback(
           },
         };
 
-        console.log('[DEBUG 13] 用户对象构建完成:', mappedUser);
+        alert('[DEBUG 15] 用户对象构建完成');
 
         // 立即更新状态（不刷新页面）
-        console.log('[DEBUG 14] 准备更新状态');
+        alert('[DEBUG 16] 准备更新状态');
         setAppUser(mappedUser);
         setIsLoggedIn(true);
         setAuthDialogOpen(false);
 
-        console.log('[DEBUG 15] 状态更新完成');
+        alert('[DEBUG 17] 状态更新完成');
 
         // 保存计划信息到 localStorage
         if (mappedUser.plan) {
@@ -3232,11 +3242,12 @@ const loadMessagesForConversation = useCallback(
         }
 
         // 刷新配额和加载对话
+        alert('[DEBUG 18] 准备刷新配额和加载对话');
         appUserRef.current = mappedUser;
         void refreshQuota(mappedUser);
         void loadConversations(mappedUser);
 
-        console.log('[DEBUG 16] 登录流程完成');
+        alert('[DEBUG 19] 登录流程完成');
         toast.success(currentLanguage === "zh" ? "登录成功" : "Sign-in successful");
       } else {
         // 浏览器环境：使用 Supabase OAuth

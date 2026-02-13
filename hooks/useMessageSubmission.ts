@@ -1264,6 +1264,16 @@ export const useMessageSubmission = (
         true // replaceOldest = true
       );
 
+      // 如果仍然需要确认（不应该发生，但需要处理）
+      if (result.needConfirmReplace) {
+        console.error('[confirmReplaceConversation] Still got 409 after replaceOldest=true');
+        alert(selectedLanguage === "zh"
+          ? "创建对话失败，请重试或联系支持"
+          : "Failed to create conversation. Please try again or contact support.");
+        cancelReplaceConversation();
+        return;
+      }
+
       if (result.id) {
         // 创建成功，更新对话列表（不设置消息，让 handleSubmit 来处理）
         const newChat: ChatSession = {

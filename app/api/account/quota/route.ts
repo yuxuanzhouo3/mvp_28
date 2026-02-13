@@ -240,12 +240,37 @@ export async function GET(req: NextRequest) {
   }
 
   // 国际版：使用 Supabase 新表结构 (user_wallets)
-  const supabase = await createClient();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData?.user) {
-    return new Response("Unauthorized", { status: 401 });
+  // 同时支持 Android Native Google Sign-In 的自定义 JWT 认证
+  let userId: string;
+  let userMeta: any = {};
+
+  // 尝试从 Authorization header 获取自定义 JWT token（Android Native Google Sign-In）
+  const authHeader = req.headers.get("authorization");
+  const customToken = authHeader?.replace(/^Bearer\s+/i, "");
+
+  if (customToken) {
+    // 使用自定义 JWT 认证（Android Native Google Sign-In）
+    try {
+      const jwt = require('jsonwebtoken');
+      const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-key';
+      const decoded = jwt.verify(customToken, JWT_SECRET) as any;
+      userId = decoded.sub;
+      console.log('[quota] Using custom JWT auth for user:', userId);
+    } catch (error) {
+      console.error('[quota] Custom JWT verification failed:', error);
+      return new Response("Unauthorized", { status: 401 });
+    }
+  } else {
+    // 使用 Supabase 认证
+    const supabase = await createClient();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData?.user) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    userId = userData.user.id;
+    userMeta = userData.user.user_metadata as any;
   }
-  const userId = userData.user.id;
+
   const today = getTodayString();
   const currentMonth = getCurrentYearMonth();
 

@@ -34,7 +34,28 @@ export async function fetchQuotaShared(url: string = "/api/account/quota") {
   }
   inFlight[url] = (async () => {
     try {
-      const res = await fetch(url, { credentials: "include" });
+      // 尝试从 localStorage 获取自定义 JWT token（Android Native Google Sign-In）
+      const headers: HeadersInit = {};
+
+      if (typeof window !== "undefined") {
+        try {
+          const authState = localStorage.getItem("app-auth-state");
+          if (authState) {
+            const parsed = JSON.parse(authState);
+            if (parsed.accessToken) {
+              headers["Authorization"] = `Bearer ${parsed.accessToken}`;
+              console.log('[quota-fetcher] Using custom JWT auth');
+            }
+          }
+        } catch (e) {
+          // localStorage 读取失败，继续使用 cookie
+        }
+      }
+
+      const res = await fetch(url, {
+        credentials: "include",
+        headers
+      });
       if (!res.ok) {
         throw new Error(`quota fetch failed ${res.status}`);
       }

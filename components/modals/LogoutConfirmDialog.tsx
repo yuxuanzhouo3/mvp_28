@@ -49,7 +49,12 @@ export default function LogoutConfirmDialog({
               {isZh ? "取消" : "Cancel"}
             </Button>
             <Button
-              onClick={onConfirm}
+              onClick={() => {
+                console.log("🔵 [LogoutConfirmDialog] Sign Out 按钮被点击");
+                alert("即将调用 onConfirm 回调"); // 添加 alert 以便在 Android 环境下验证
+                onConfirm();
+                console.log("🔵 [LogoutConfirmDialog] onConfirm 回调已调用");
+              }}
               className="flex-1 bg-red-600 hover:bg-red-700 text-white"
             >
               {isZh ? "退出登录" : "Sign Out"}

@@ -3158,12 +3158,17 @@ const loadMessagesForConversation = useCallback(
       return;
     }
     try {
+      alert('[DEBUG 1] handleGoogleAuth 被调用');
+
       // 检测是否在 Android WebView 环境中
       const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
+
+      alert(`[DEBUG 2] 环境检测: isAndroidWebView=${isAndroidWebView}, GoogleSignIn=${typeof (window as any).GoogleSignIn}`);
 
       if (isAndroidWebView) {
         // Android WebView 环境：使用原生 Google Sign-In
         console.log('[handleGoogleAuth] Android WebView detected, using native sign-in');
+        alert('[DEBUG 3] 进入 Android WebView 分支');
 
         const { signInWithGoogle } = await import('@/lib/google-signin-bridge');
         // 在客户端代码中直接使用环境变量（构建时内联）
@@ -3174,10 +3179,12 @@ const loadMessagesForConversation = useCallback(
         }
 
         console.log('[handleGoogleAuth] Using Client ID:', clientId);
+        alert('[DEBUG 4] 准备调用 signInWithGoogle');
 
         // 调用 Android 原生登录
         const result = await signInWithGoogle(clientId);
         console.log('[handleGoogleAuth] Native sign-in successful:', result);
+        alert(`[DEBUG 5] Bridge 调用成功: ${JSON.stringify(result)}`);
 
         // 调用后端 API 验证 Token
         const response = await fetch('/api/auth/google-native', {

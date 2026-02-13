@@ -840,12 +840,24 @@ export const useMessageSubmission = (
           conversationId,
         });
 
+        // 从 localStorage 读取 token（用于 Google 登录等自定义 JWT 认证）
+        let token: string | undefined;
+        try {
+          const authState = localStorage.getItem("app-auth-state");
+          if (authState) {
+            const parsed = JSON.parse(authState);
+            token = parsed.accessToken || undefined;
+          }
+        } catch (e) {
+          // localStorage 读取失败，继续使用 undefined
+        }
+
         try {
           await apiService.sendMessageStream(
             userMessage.content,
             modelId,
             undefined,
-            undefined,
+            token,
             detectedLanguage,
             historyForSend,
             sendImages,

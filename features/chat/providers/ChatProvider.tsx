@@ -3475,19 +3475,13 @@ const loadMessagesForConversation = useCallback(
   };
 
   const handleLogout = async () => {
-    console.log("🔵 [handleLogout] 开始执行退出登录");
-    alert("handleLogout: 开始执行退出登录");
-
     try {
       // 1. 清除 cookie 中的 JWT token
       try {
         const { deleteCookie } = await import('@/lib/cookie-helper');
         deleteCookie('custom-jwt-token');
-        console.log('✅ Cookie JWT token 已清除');
-        alert("handleLogout: Cookie 已清除");
       } catch (error) {
-        console.error('❌ 清除 cookie JWT token 失败:', error);
-        alert("handleLogout: Cookie 清除失败 - " + error);
+        console.error('清除 cookie JWT token 失败:', error);
       }
 
       // 2. 清除 localStorage 中的关键认证状态
@@ -3496,9 +3490,8 @@ const loadMessagesForConversation = useCallback(
         localStorage.removeItem("morngpt_user");
         localStorage.removeItem("morngpt_current_plan");
         localStorage.removeItem("morngpt_current_plan_exp");
-        console.log('✅ localStorage 认证状态已清除');
       } catch (error) {
-        console.error('❌ 清除 localStorage 失败:', error);
+        console.error('清除 localStorage 失败:', error);
       }
 
       // 3. 清除 Android 端的 Google 登录缓存（不等待完成，避免中断）
@@ -3506,23 +3499,18 @@ const loadMessagesForConversation = useCallback(
         const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
         if (isAndroidWebView) {
           const { signOutGoogle } = await import('@/lib/google-signin-bridge');
-          // 不使用 await，让它在后台执行
           signOutGoogle().catch(err => console.error('Android signOut error:', err));
-          console.log('🔄 Android Google 登出已触发（后台执行）');
         }
       } catch (error) {
-        console.error('❌ 触发 Android Google 登出失败:', error);
+        console.error('触发 Android Google 登出失败:', error);
       }
 
       // 4. 立即刷新页面
-      alert("handleLogout: 即将刷新页面");
-      console.log('🔄 [handleLogout] 立即刷新页面以完成退出登录');
-
       if (typeof window !== 'undefined') {
         window.location.href = '/';
       }
     } catch (error) {
-      console.error("❌ [handleLogout] 退出登录失败:", error);
+      console.error("退出登录失败:", error);
       alert(isZh ? `退出登录失败: ${error}` : `Logout failed: ${error}`);
     }
   };
@@ -4321,24 +4309,10 @@ const loadMessagesForConversation = useCallback(
       if (isLocalChat) {
         // no remote call needed
       } else if (isDomestic) {
-        // 获取 Authorization header
-        const headers: HeadersInit = {};
-        try {
-          const authState = localStorage.getItem("app-auth-state");
-          if (authState) {
-            const parsed = JSON.parse(authState);
-            if (parsed.accessToken) {
-              headers["Authorization"] = `Bearer ${parsed.accessToken}`;
-            }
-          }
-        } catch (e) {
-          // localStorage 读取失败，继续使用 cookie
-        }
-
+        // 依赖 cookie 认证（custom-jwt-token），不使用 localStorage
         const res = await fetch(`/api/conversations/${chatId}`, {
           method: "DELETE",
           credentials: "include",
-          headers,
         });
         // 404: conversation may already be deleted or belong to another session/user; treat as idempotent success.
         if (res.status === 404) {
@@ -4348,12 +4322,17 @@ const loadMessagesForConversation = useCallback(
           throw new Error(`Delete failed ${res.status}: ${msg || "unknown"}`);
         }
       } else {
-        const { error } = await supabase
-          .from("conversations")
-          .delete()
-          .eq("id", chatId)
-          .eq("user_id", appUser.id);
-        if (error) throw error;
+        // 国际版：调用后端 API（支持 cookie-based JWT 认证）
+        const res = await fetch(`/api/conversations/${chatId}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (res.status === 404) {
+          // 404: conversation may already be deleted
+        } else if (!res.ok) {
+          const msg = await res.text();
+          throw new Error(`Delete failed ${res.status}: ${msg || "unknown"}`);
+        }
       }
     } catch (err) {
       console.error("Failed to delete conversation", err);

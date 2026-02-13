@@ -45,8 +45,6 @@ export function deleteCookie(name: string): void {
 
   // 同时尝试不带 Secure 属性的删除（兼容 HTTP 环境）
   document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax`;
-
-  console.log(`🔵 [deleteCookie] 已删除 cookie: ${name}`);
 }
 
 /**

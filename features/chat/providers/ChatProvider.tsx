@@ -2355,7 +2355,7 @@ const loadMessagesForConversation = useCallback(
         const { getStoredAuthState } = await import('@/lib/auth-state-manager');
         const authState = getStoredAuthState();
 
-        if (authState && authState.user && !savedUser) {
+        if (authState && authState.user) {
           console.log('[ChatProvider] 恢复 Android Native 认证状态:', authState.user);
           const mappedUser: AppUser = {
             id: authState.user.id,
@@ -2389,6 +2389,19 @@ const loadMessagesForConversation = useCallback(
     restoreAuthState().then((restored) => {
       if (restored) {
         console.log('[ChatProvider] 认证状态恢复成功');
+        return; // 如果恢复成功，不再处理 savedUser
+      }
+
+      // 如果没有 Android Native 认证状态，才使用 savedUser
+      if (savedUser) {
+        try {
+          const parsedUser = JSON.parse(savedUser);
+          setAppUser(parsedUser);
+          setIsLoggedIn(true);
+          appUserRef.current = parsedUser;
+        } catch (e) {
+          console.error('解析 savedUser 失败:', e);
+        }
       }
     });
 

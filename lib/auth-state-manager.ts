@@ -121,3 +121,46 @@ export function isAuthenticated(): boolean {
   // 检查 token 是否仍然有效（不尝试刷新）
   return Date.now() < accessTokenExpiresAt - 60000;
 }
+
+/**
+ * 获取认证头（同步版本，不触发自动刷新）
+ * 用于不需要自动刷新的场景（如日志、分析等）
+ */
+export function getAuthHeader(): { Authorization: string } | null {
+  const authState = getStoredAuthState();
+  if (!authState) return null;
+
+  const accessTokenExpiresAt =
+    authState.savedAt + authState.tokenMeta.accessTokenExpiresIn * 1000;
+
+  // 检查 token 是否仍然有效（不尝试刷新）
+  if (Date.now() > accessTokenExpiresAt - 60000) {
+    return null;
+  }
+
+  return { Authorization: `Bearer ${authState.accessToken}` };
+}
+
+/**
+ * 获取认证头（异步版本，支持自动刷新）
+ * 用于 API 请求时自动刷新过期 token
+ */
+export async function getAuthHeaderAsync(): Promise<{
+  Authorization: string;
+} | null> {
+  const authState = getStoredAuthState();
+  if (!authState) return null;
+
+  const accessTokenExpiresAt =
+    authState.savedAt + authState.tokenMeta.accessTokenExpiresIn * 1000;
+
+  // 提前 60 秒判定为过期（留出时间刷新）
+  if (Date.now() <= accessTokenExpiresAt - 60000) {
+    // Token 仍然有效，直接返回
+    return { Authorization: `Bearer ${authState.accessToken}` };
+  }
+
+  // Token 已过期，直接返回 null（mvp28-fix 暂不支持自动刷新）
+  console.log("⏰ [Auth] Access token 已过期");
+  return null;
+}

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { isAfter } from "date-fns";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
@@ -61,7 +61,8 @@ export async function GET(req: NextRequest) {
         const decoded = jwt.verify(customToken, JWT_SECRET) as any;
         userId = decoded.sub;
         console.log('[conversations] Using custom JWT auth for user:', userId);
-        supabase = await createClient();
+        // 使用 service role 客户端绕过 RLS 策略
+        supabase = await createServiceRoleClient();
       } catch (error) {
         console.error('[conversations] Custom JWT verification failed:', error);
         return new Response("Unauthorized", { status: 401 });
@@ -182,7 +183,8 @@ export async function POST(req: NextRequest) {
         const decoded = jwt.verify(customToken, JWT_SECRET) as any;
         userId = decoded.sub;
         console.log('[conversations] Using custom JWT auth for user:', userId);
-        supabase = await createClient();
+        // 使用 service role 客户端绕过 RLS 策略
+        supabase = await createServiceRoleClient();
       } catch (error) {
         console.error('[conversations] Custom JWT verification failed:', error);
         return new Response("Unauthorized", { status: 401 });

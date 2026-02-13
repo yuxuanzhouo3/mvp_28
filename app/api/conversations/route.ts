@@ -83,6 +83,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase
       .from("conversations")
       .select("id, title, model, created_at, updated_at, model_type, expert_model_id")
+      .eq("user_id", userId) // 🔒 关键：只查询当前用户的对话
       .order("created_at", { ascending: true }); // 按创建时间升序，方便找最早的
 
     if (error) {
@@ -215,6 +216,7 @@ export async function POST(req: NextRequest) {
       const { data: existingConvs, error: countError } = await supabase
         .from("conversations")
         .select("id, created_at")
+        .eq("user_id", userId) // 🔒 关键：只查询当前用户的对话
         .order("created_at", { ascending: true });
 
       if (countError) {

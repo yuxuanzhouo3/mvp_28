@@ -242,8 +242,13 @@ export default function ModalHub(props: ModalHubProps) {
         open={showLogoutConfirmDialog}
         onOpenChange={setShowLogoutConfirmDialog}
         onConfirm={() => {
+          console.log("🔵 [ModalHub] onConfirm 回调被调用");
+          alert("ModalHub: 即将关闭对话框并调用 handleLogout"); // 添加 alert
           setShowLogoutConfirmDialog(false);
+          console.log("🔵 [ModalHub] 对话框已关闭，即将调用 handleLogout");
+          alert("ModalHub: 即将调用 handleLogout"); // 添加 alert
           handleLogout();
+          console.log("🔵 [ModalHub] handleLogout 已调用");
         }}
       />
 

@@ -243,6 +243,7 @@ export async function GET(req: NextRequest) {
   // 同时支持 Android Native Google Sign-In 的自定义 JWT 认证
   let userId: string;
   let userMeta: any = {};
+  let supabase: any;
 
   // 尝试从 Authorization header 获取自定义 JWT token（Android Native Google Sign-In）
   const authHeader = req.headers.get("authorization");
@@ -256,13 +257,15 @@ export async function GET(req: NextRequest) {
       const decoded = jwt.verify(customToken, JWT_SECRET) as any;
       userId = decoded.sub;
       console.log('[quota] Using custom JWT auth for user:', userId);
+      // 创建 supabase 客户端用于数据库查询
+      supabase = await createClient();
     } catch (error) {
       console.error('[quota] Custom JWT verification failed:', error);
       return new Response("Unauthorized", { status: 401 });
     }
   } else {
     // 使用 Supabase 认证
-    const supabase = await createClient();
+    supabase = await createClient();
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData?.user) {
       return new Response("Unauthorized", { status: 401 });
@@ -282,7 +285,6 @@ export async function GET(req: NextRequest) {
     .single();
 
   // 从 user_wallets 获取套餐信息（优先），user_metadata 作为回退
-  const userMeta = userData.user.user_metadata as any;
   const rawPlan = walletRowPre?.plan || walletRowPre?.subscription_tier || userMeta?.plan || userMeta?.subscriptionTier || "";
   const rawPlanLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
   const planExp = walletRowPre?.plan_exp

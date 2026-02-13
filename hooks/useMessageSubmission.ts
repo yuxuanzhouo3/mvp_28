@@ -1032,9 +1032,24 @@ export const useMessageSubmission = (
 
               // Free用户使用local-前缀的conversationId，不落库
               if (conversationId && !conversationId.startsWith("local-")) {
+                // 从 localStorage 读取 token（用于 Google 登录等自定义 JWT 认证）
+                const headers: Record<string, string> = { "Content-Type": "application/json" };
+                try {
+                  const authState = localStorage.getItem("app-auth-state");
+                  if (authState) {
+                    const parsed = JSON.parse(authState);
+                    if (parsed.accessToken) {
+                      headers["Authorization"] = `Bearer ${parsed.accessToken}`;
+                      console.log('[saveAssistantMessage] Using custom JWT token');
+                    }
+                  }
+                } catch (e) {
+                  console.error('[saveAssistantMessage] Failed to read auth state:', e);
+                }
+
                 fetch(`/api/conversations/${conversationId}/messages`, {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers,
                   credentials: "include",
                   body: JSON.stringify({
                     role: "assistant",

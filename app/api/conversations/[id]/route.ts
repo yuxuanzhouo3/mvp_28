@@ -63,6 +63,20 @@ export async function DELETE(
       userId = userData.user.id;
     }
 
+    // 先验证对话是否存在且属于当前用户
+    const { data: existingConv, error: checkError } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("id", id)
+      .eq("user_id", userId)
+      .single();
+
+    if (checkError || !existingConv) {
+      console.error("Conversation not found or unauthorized", checkError);
+      return new Response("Not found", { status: 404 });
+    }
+
+    // 确认存在后再删除
     const { error } = await supabase
       .from("conversations")
       .delete()
@@ -74,6 +88,7 @@ export async function DELETE(
       return new Response("Failed to delete conversation", { status: 500 });
     }
 
+    console.log(`[conversation] Successfully deleted conversation ${id} for user ${userId}`);
     return new Response(null, { status: 204 });
   }
 
@@ -172,6 +187,20 @@ export async function PATCH(
       userId = userData.user.id;
     }
 
+    // 先验证对话是否存在且属于当前用户
+    const { data: existingConv, error: checkError } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("id", id)
+      .eq("user_id", userId)
+      .single();
+
+    if (checkError || !existingConv) {
+      console.error("Conversation not found or unauthorized", checkError);
+      return new Response("Not found", { status: 404 });
+    }
+
+    // 确认存在后再更新
     const { error } = await supabase
       .from("conversations")
       .update({ title, updated_at: new Date().toISOString() })
@@ -183,6 +212,7 @@ export async function PATCH(
       return new Response("Failed to update", { status: 500 });
     }
 
+    console.log(`[conversation] Successfully updated title for conversation ${id} for user ${userId}`);
     return Response.json({ success: true });
   }
 

@@ -3470,71 +3470,87 @@ const loadMessagesForConversation = useCallback(
   };
 
   const handleLogout = async () => {
-    if(false) console.log("handleLogout called"); // Debug log
+    console.log("🔵 [handleLogout] 开始执行退出登录");
 
-    // 清除 Android 端的 Google 登录缓存
     try {
-      const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
-      if (isAndroidWebView) {
-        const { signOutGoogle } = await import('@/lib/google-signin-bridge');
-        await signOutGoogle();
-        console.log('✅ Android Google 登录已清除');
+      // 清除 Android 端的 Google 登录缓存
+      try {
+        const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
+        console.log("🔵 [handleLogout] isAndroidWebView:", isAndroidWebView);
+        if (isAndroidWebView) {
+          const { signOutGoogle } = await import('@/lib/google-signin-bridge');
+          await signOutGoogle();
+          console.log('✅ Android Google 登录已清除');
+        }
+      } catch (error) {
+        console.error('❌ 清除 Android Google 登录失败:', error);
       }
-    } catch (error) {
-      console.error('❌ 清除 Android Google 登录失败:', error);
-    }
 
-    // 清除 Web 端的认证状态
-    try {
-      const { clearAuthState } = await import('@/lib/auth-state-manager');
-      clearAuthState();
-    } catch (error) {
-      console.error('❌ 清除认证状态失败:', error);
-    }
-
-    if (isDomestic) {
-      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-    } else {
-      await supabase.auth.signOut();
-    }
-    setAppUser(null);
-    setCurrentPlan(null);
-
-    // Clear all user-specific data
-    Object.keys(localStorage).forEach((key) => {
-      if (
-        key.startsWith("morngpt_chats_") ||
-        key.startsWith("morngpt_bookmarks_")
-      ) {
-        localStorage.removeItem(key);
+      // 清除 Web 端的认证状态
+      try {
+        const { clearAuthState } = await import('@/lib/auth-state-manager');
+        clearAuthState();
+        console.log('✅ Web 认证状态已清除');
+      } catch (error) {
+        console.error('❌ 清除认证状态失败:', error);
       }
-    });
-    localStorage.removeItem("morngpt_current_plan");
-    localStorage.removeItem("morngpt_current_plan_exp");
-    localStorage.removeItem("morngpt_user");
 
-    setChatSessions([]);
-    setCurrentChatId("");
-    setMessages([]);
-    setPromptHistory([]);
-    setBookmarkedMessages([]);
-    setCurrentPlan(null);
-    hasLoadedConversationsRef.current = false;
-    loadConversationsPendingRef.current = false;
-    loadedConversationsForUserRef.current = null;
-    try {
-      localStorage.removeItem("morngpt_user");
+      console.log("🔵 [handleLogout] isDomestic:", isDomestic);
+      if (isDomestic) {
+        await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+        console.log('✅ 国内版登出API调用完成');
+      } else {
+        await supabase.auth.signOut();
+        console.log('✅ Supabase 登出完成');
+      }
+
+      setAppUser(null);
+      setCurrentPlan(null);
+      console.log('✅ 用户状态已清除');
+
+      // Clear all user-specific data
+      Object.keys(localStorage).forEach((key) => {
+        if (
+          key.startsWith("morngpt_chats_") ||
+          key.startsWith("morngpt_bookmarks_")
+        ) {
+          localStorage.removeItem(key);
+        }
+      });
       localStorage.removeItem("morngpt_current_plan");
-    } catch (e) {
-      // ignore
+      localStorage.removeItem("morngpt_current_plan_exp");
+      localStorage.removeItem("morngpt_user");
+      console.log('✅ localStorage 已清除');
+
+      setChatSessions([]);
+      setCurrentChatId("");
+      setMessages([]);
+      setPromptHistory([]);
+      setBookmarkedMessages([]);
+      setCurrentPlan(null);
+      hasLoadedConversationsRef.current = false;
+      loadConversationsPendingRef.current = false;
+      loadedConversationsForUserRef.current = null;
+      try {
+        localStorage.removeItem("morngpt_user");
+        localStorage.removeItem("morngpt_current_plan");
+      } catch (e) {
+        // ignore
+      }
+      console.log('✅ 会话状态已重置');
+
+      // Close any open dialogs
+      setShowSettingsDialog(false);
+      setShowUpgradeDialog(false);
+      setShowPaymentDialog(false);
+      console.log('✅ 对话框已关闭');
+
+      console.log("🎉 [handleLogout] 退出登录完成");
+      alert(isZh ? "已退出登录" : "Successfully logged out!");
+    } catch (error) {
+      console.error("❌ [handleLogout] 退出登录失败:", error);
+      alert(isZh ? `退出登录失败: ${error}` : `Logout failed: ${error}`);
     }
-
-    // Close any open dialogs
-    setShowSettingsDialog(false);
-    setShowUpgradeDialog(false);
-    setShowPaymentDialog(false);
-
-    alert(isZh ? "已退出登录" : "Successfully logged out!");
   };
 
   const handleUpgradeClick = (plan: (typeof pricingPlans)[0]) => {

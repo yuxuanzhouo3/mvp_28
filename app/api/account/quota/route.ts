@@ -253,7 +253,7 @@ export async function GET(req: NextRequest) {
     // 使用自定义 JWT 认证（Android Native Google Sign-In）
     try {
       const jwt = require('jsonwebtoken');
-      const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-key';
+      const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-key-change-in-production';
       const decoded = jwt.verify(customToken, JWT_SECRET) as any;
       userId = decoded.sub;
       console.log('[quota] Using custom JWT auth for user:', userId);

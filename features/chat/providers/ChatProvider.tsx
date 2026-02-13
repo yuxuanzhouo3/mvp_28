@@ -3196,24 +3196,19 @@ const loadMessagesForConversation = useCallback(
 
         alert(`[DEBUG 7] 后端 API 响应状态: ${response.status}`);
 
+        alert(`[DEBUG 8] response.ok = ${response.ok}`);
         if (!response.ok) {
-          console.log('[DEBUG 8] 后端 API 返回错误');
+          alert('[DEBUG 9] 进入错误处理分支');
           const errorData = await response.json();
-          console.log('[DEBUG 9] 错误数据:', errorData);
           throw new Error(errorData.error || 'Authentication failed');
         }
 
-        console.log('[DEBUG 10] 准备解析响应数据');
+        alert('[DEBUG 10] 准备解析响应数据');
         const data = await response.json();
-        console.log('[DEBUG 11] 后端响应数据:', {
-          success: data.success,
-          hasUser: !!data.user,
-          hasSession: !!data.session,
-          userId: data.user?.id
-        });
+        alert(`[DEBUG 11] 响应数据: success=${data.success}, hasUser=${!!data.user}`);
 
         // 构建用户对象（参考邮箱登录的实现）
-        console.log('[DEBUG 12] 准备构建用户对象');
+        alert('[DEBUG 12] 准备构建用户对象');
         const mappedUser: AppUser = {
           id: data.user.id,
           email: data.user.email || "",

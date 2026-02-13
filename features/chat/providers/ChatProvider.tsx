@@ -846,9 +846,27 @@ const loadMessagesForConversation = useCallback(
       loadConversationsPendingRef.current = true;
       setIsSidebarLoading(true);
       try {
+        // 尝试从 localStorage 获取自定义 JWT token（Android Native Google Sign-In）
+        const headers: HeadersInit = {};
+        if (typeof window !== "undefined") {
+          try {
+            const authState = localStorage.getItem("app-auth-state");
+            if (authState) {
+              const parsed = JSON.parse(authState);
+              if (parsed.accessToken) {
+                headers["Authorization"] = `Bearer ${parsed.accessToken}`;
+                console.log('[loadConversations] Using custom JWT auth');
+              }
+            }
+          } catch (e) {
+            // localStorage 读取失败，继续使用 cookie
+          }
+        }
+
         const res = await fetch("/api/conversations", {
           cache: "no-store",
           credentials: "include",
+          headers,
         });
         if (res.status === 401) {
           setAppUser(null);

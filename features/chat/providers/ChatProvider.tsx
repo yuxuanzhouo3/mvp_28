@@ -2327,10 +2327,44 @@ const loadMessagesForConversation = useCallback(
   // Load user data and theme from localStorage on mount
   useEffect(() => {
     const savedUser = localStorage.getItem("morngpt_user");
+    const savedSession = localStorage.getItem("morngpt_session");
     const savedTheme = localStorage.getItem("morngpt_theme");
     const savedPlan = localStorage.getItem("morngpt_current_plan");
     const savedPlanExp = localStorage.getItem("morngpt_current_plan_exp");
     const savedCustomShortcuts = localStorage.getItem("customShortcuts");
+
+    // 恢复 session（用于 Android WebView Google 登录）
+    if (savedSession && !savedUser) {
+      try {
+        const session = JSON.parse(savedSession);
+        if (session.user) {
+          const mappedUser: AppUser = {
+            id: session.user.id,
+            email: session.user.email,
+            name: session.user.email || "User",
+            avatar: undefined,
+            isPro: false,
+            isPaid: false,
+            plan: savedPlan || undefined,
+            planExp: savedPlanExp || undefined,
+            settings: {
+              theme: "light",
+              language: "zh",
+              notifications: true,
+              soundEnabled: true,
+              autoSave: true,
+              hideAds: false,
+            },
+          };
+          setAppUser(mappedUser);
+          setIsLoggedIn(true);
+          appUserRef.current = mappedUser;
+        }
+      } catch (e) {
+        console.error('Failed to restore session:', e);
+        localStorage.removeItem("morngpt_session");
+      }
+    }
 
     // Check for shared conversation in URL
     const urlParams = new URLSearchParams(window.location.search);

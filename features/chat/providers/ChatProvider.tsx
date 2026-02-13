@@ -1119,6 +1119,42 @@ const loadMessagesForConversation = useCallback(
         }
       }
 
+      // 在检查 Supabase session 之前，先检查 localStorage 中的 Android Native 认证状态
+      try {
+        const { getStoredAuthState } = await import('@/lib/auth-state-manager');
+        const authState = getStoredAuthState();
+
+        if (authState && authState.user) {
+          console.log('[syncSession] Found Android Native auth state, using it:', authState.user);
+          const mappedUser: AppUser = {
+            id: authState.user.id,
+            email: authState.user.email,
+            name: authState.user.name || authState.user.email || "User",
+            avatar: authState.user.avatar || undefined,
+            isPro: false,
+            isPaid: false,
+            plan: undefined,
+            planExp: undefined,
+            settings: {
+              theme: "light",
+              language: "zh",
+              notifications: true,
+              soundEnabled: true,
+              autoSave: true,
+              hideAds: false,
+            },
+          };
+          setAppUser(mappedUser);
+          setIsLoggedIn(true);
+          setShowAuthDialog(false);
+          appUserRef.current = mappedUser;
+          void loadConversations(mappedUser);
+          return; // 使用 Android Native 认证状态，不再检查 Supabase
+        }
+      } catch (e) {
+        console.error('[syncSession] Failed to check Android Native auth state:', e);
+      }
+
       // Supabase（国际版）
       const { data, error } = await supabase.auth.getSession();
       if (!mounted) return;

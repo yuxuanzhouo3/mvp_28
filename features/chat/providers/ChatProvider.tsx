@@ -3687,8 +3687,6 @@ const loadMessagesForConversation = useCallback(
   };
 
   const confirmLogout = () => {
-    console.log("🔵 [confirmLogout] 函数被调用");
-    alert("退出登录确认对话框即将打开"); // 添加 alert 以便在 Android 环境下验证
     setShowLogoutConfirmDialog(true);
   };
 

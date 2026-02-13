@@ -3494,7 +3494,16 @@ const loadMessagesForConversation = useCallback(
         console.error('清除 localStorage 失败:', error);
       }
 
-      // 3. 清除 Android 端的 Google 登录缓存（不等待完成，避免中断）
+      // 3. 清除 Supabase session（邮箱登录）- 不等待完成，避免中断
+      try {
+        if (supabase) {
+          supabase.auth.signOut().catch(err => console.error('Supabase signOut error:', err));
+        }
+      } catch (error) {
+        console.error('触发 Supabase 登出失败:', error);
+      }
+
+      // 4. 清除 Android 端的 Google 登录缓存（不等待完成，避免中断）
       try {
         const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
         if (isAndroidWebView) {
@@ -3505,7 +3514,7 @@ const loadMessagesForConversation = useCallback(
         console.error('触发 Android Google 登出失败:', error);
       }
 
-      // 4. 立即刷新页面
+      // 5. 立即刷新页面
       if (typeof window !== 'undefined') {
         window.location.href = '/';
       }

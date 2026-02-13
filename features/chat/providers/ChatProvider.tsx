@@ -3190,17 +3190,9 @@ const loadMessagesForConversation = useCallback(
 
         const data = await response.json();
 
-        // 构建用户对象（参考邮箱登录的实现）
-        alert('[DEBUG 12] 准备构建用户对象');
-        alert(`[DEBUG 12.5] data.user 内容: id=${data.user?.id}, email=${data.user?.email}, name=${data.user?.name}`);
-
-        alert('[DEBUG 13] 准备保存 session');
         // 保存 session 到 localStorage（关键！）
         if (data.session) {
           localStorage.setItem('morngpt_session', JSON.stringify(data.session));
-          alert('[DEBUG 14] session 已保存');
-        } else {
-          alert('[DEBUG 14] 警告：没有 session 数据');
         }
 
         const mappedUser: AppUser = {
@@ -3222,22 +3214,19 @@ const loadMessagesForConversation = useCallback(
           },
         };
 
-        alert('[DEBUG 15] 用户对象构建完成');
-
         // 立即更新状态（不刷新页面）
-        alert('[DEBUG 16] 准备更新状态');
-
-        alert('[DEBUG 16.1] 调用 setAppUser');
         setAppUser(mappedUser);
-        alert('[DEBUG 16.2] setAppUser 完成');
-
-        alert('[DEBUG 16.3] 调用 setIsLoggedIn');
         setIsLoggedIn(true);
         alert('[DEBUG 16.4] setIsLoggedIn 完成');
 
         alert('[DEBUG 16.5] 调用 setAuthDialogOpen');
-        setAuthDialogOpen(false);
-        alert('[DEBUG 16.6] setAuthDialogOpen 完成');
+        try {
+          setAuthDialogOpen(false);
+          alert('[DEBUG 16.6] setAuthDialogOpen 完成');
+        } catch (dialogError) {
+          alert('[DEBUG 16.6] setAuthDialogOpen 失败，但继续执行');
+          console.error('setAuthDialogOpen error:', dialogError);
+        }
 
         alert('[DEBUG 17] 状态更新完成');
 

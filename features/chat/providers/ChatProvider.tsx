@@ -3476,6 +3476,7 @@ const loadMessagesForConversation = useCallback(
 
   const handleLogout = async () => {
     console.log("🔵 [handleLogout] 开始执行退出登录");
+    alert("handleLogout: 开始执行退出登录"); // 添加 alert
 
     try {
       // 清除 Android 端的 Google 登录缓存
@@ -3505,8 +3506,10 @@ const loadMessagesForConversation = useCallback(
         const { deleteCookie } = await import('@/lib/cookie-helper');
         deleteCookie('custom-jwt-token');
         console.log('✅ Cookie JWT token 已清除');
+        alert("handleLogout: Cookie 已清除"); // 添加 alert
       } catch (error) {
         console.error('❌ 清除 cookie JWT token 失败:', error);
+        alert("handleLogout: Cookie 清除失败 - " + error); // 添加 alert
       }
 
       console.log("🔵 [handleLogout] isDomestic:", isDomestic);
@@ -3560,6 +3563,7 @@ const loadMessagesForConversation = useCallback(
       console.log('✅ 对话框已关闭');
 
       console.log("🎉 [handleLogout] 退出登录完成");
+      alert("handleLogout: 即将刷新页面"); // 添加 alert
 
       // 强制刷新页面以确保所有状态被清除
       // 这对于 Android WebView 环境特别重要

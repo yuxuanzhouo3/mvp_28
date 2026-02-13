@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { IS_DOMESTIC_VERSION } from "@/config";
 import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
@@ -48,12 +48,40 @@ export async function POST(req: NextRequest) {
       }
       userId = user.id;
     } else {
-      const supabase = await createClient();
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError || !userData?.user) {
-        return Response.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      // 优先从 cookie 中读取自定义 JWT token，如果没有再从 Authorization header 读取
+      const { cookies } = await import('next/headers');
+      const cookieStore = await cookies();
+      let customToken = cookieStore.get('custom-jwt-token')?.value;
+      let useServiceRole = false;
+
+      if (!customToken) {
+        // 如果 cookie 中没有，尝试从 Authorization header 读取
+        const authHeader = req.headers.get("authorization");
+        customToken = authHeader?.replace(/^Bearer\s+/i, "");
       }
-      userId = userData.user.id;
+
+      if (customToken) {
+        // 使用自定义 JWT 认证（Android Native Google Sign-In）
+        try {
+          const jwt = require('jsonwebtoken');
+          const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-key-change-in-production';
+          const decoded = jwt.verify(customToken, JWT_SECRET) as any;
+          userId = decoded.sub;
+          useServiceRole = true;
+          console.log('[share/create] Using custom JWT auth for user:', userId);
+        } catch (error) {
+          console.error('[share/create] Custom JWT verification failed:', error);
+          return Response.json({ success: false, error: "Unauthorized" }, { status: 401 });
+        }
+      } else {
+        // 使用 Supabase 认证
+        const supabase = await createClient();
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError || !userData?.user) {
+          return Response.json({ success: false, error: "Unauthorized" }, { status: 401 });
+        }
+        userId = userData.user.id;
+      }
     }
 
     const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
@@ -149,8 +177,13 @@ export async function POST(req: NextRequest) {
         updated_at: new Date(),
       });
     } else {
-      // Supabase 存储
-      const supabase = await createClient();
+      // Supabase 存储 - 根据认证方式选择客户端
+      const { cookies } = await import('next/headers');
+      const cookieStore = await cookies();
+      const customToken = cookieStore.get('custom-jwt-token')?.value;
+      const useServiceRole = !!customToken;
+
+      const supabase = useServiceRole ? await createServiceRoleClient() : await createClient();
 
       // 1. 清理该对话的过期分享
       await supabase

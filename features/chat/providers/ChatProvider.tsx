@@ -3252,58 +3252,13 @@ const loadMessagesForConversation = useCallback(
           );
         }
 
-        const mappedUser: AppUser = {
-          id: data.user.id,
-          email: data.user.email || "",
-          name: data.user.name || data.user.email || "User",
-          avatar: data.user.avatar || undefined,
-          isPro: false,
-          isPaid: false,
-          plan: data.user.plan || undefined,
-          planExp: data.user.planExp || undefined,
-          settings: {
-            theme: "light",
-            language: "zh",
-            notifications: true,
-            soundEnabled: true,
-            autoSave: true,
-            hideAds: false,
-          },
-        };
-
-        // 立即更新状态（不刷新页面）
-        setAppUser(mappedUser);
-        setIsLoggedIn(true);
-        alert('[DEBUG 16.4] setIsLoggedIn 完成');
-
-        alert('[DEBUG 16.5] 调用 setAuthDialogOpen');
-        try {
-          setAuthDialogOpen(false);
-          alert('[DEBUG 16.6] setAuthDialogOpen 完成');
-        } catch (dialogError) {
-          alert('[DEBUG 16.6] setAuthDialogOpen 失败，但继续执行');
-          console.error('setAuthDialogOpen error:', dialogError);
-        }
-
-        alert('[DEBUG 17] 状态更新完成');
-
-        // 保存计划信息到 localStorage
-        if (mappedUser.plan) {
-          setCurrentPlan(mappedUser.plan as "Basic" | "Pro" | "Enterprise");
-          localStorage.setItem("morngpt_current_plan", mappedUser.plan);
-          if (mappedUser.planExp) {
-            localStorage.setItem("morngpt_current_plan_exp", mappedUser.planExp);
-          }
-        }
-
-        // 刷新配额和加载对话
-        alert('[DEBUG 18] 准备刷新配额和加载对话');
-        appUserRef.current = mappedUser;
-        void refreshQuota(mappedUser);
-        void loadConversations(mappedUser);
-
-        alert('[DEBUG 19] 登录流程完成');
+        // 显示成功提示
         toast.success(currentLanguage === "zh" ? "登录成功" : "Sign-in successful");
+
+        // 刷新页面以重新加载认证状态
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
       } else {
         // 浏览器环境：使用 Supabase OAuth
         console.log('[handleGoogleAuth] Browser environment, using Supabase OAuth');

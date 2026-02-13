@@ -3158,37 +3158,30 @@ const loadMessagesForConversation = useCallback(
       return;
     }
     try {
-      console.log('[DEBUG 1] handleGoogleAuth 被调用');
+      alert('[DEBUG 1] handleGoogleAuth 被调用');
 
       // 检测是否在 Android WebView 环境中
       const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
 
-      console.log(`[DEBUG 2] 环境检测: isAndroidWebView=${isAndroidWebView}, GoogleSignIn=${typeof (window as any).GoogleSignIn}`);
+      alert(`[DEBUG 2] 环境检测: isAndroidWebView=${isAndroidWebView}`);
 
       if (isAndroidWebView) {
-        // Android WebView 环境：使用原生 Google Sign-In
-        console.log('[DEBUG 3] 进入 Android WebView 分支');
+        alert('[DEBUG 3] 进入 Android WebView 分支');
 
         const { signInWithGoogle } = await import('@/lib/google-signin-bridge');
-        // 在客户端代码中直接使用环境变量（构建时内联）
         const clientId = '45279353784-q2fb18s5oak3he9q91dvu8pv39154oe4.apps.googleusercontent.com';
 
         if (!clientId) {
           throw new Error('Google Client ID not configured');
         }
 
-        console.log('[DEBUG 4] 准备调用 signInWithGoogle, Client ID:', clientId);
+        alert('[DEBUG 4] 准备调用 signInWithGoogle');
 
         // 调用 Android 原生登录
         const result = await signInWithGoogle(clientId);
-        console.log('[DEBUG 5] Bridge 调用成功:', {
-          success: result.success,
-          hasIdToken: !!result.idToken,
-          email: result.email,
-          displayName: result.displayName
-        });
+        alert(`[DEBUG 5] Bridge 调用成功: email=${result.email}`);
 
-        console.log('[DEBUG 6] 准备调用后端 API');
+        alert('[DEBUG 6] 准备调用后端 API');
 
         // 调用后端 API 验证 Token
         const response = await fetch('/api/auth/google-native', {
@@ -3201,7 +3194,7 @@ const loadMessagesForConversation = useCallback(
           }),
         });
 
-        console.log('[DEBUG 7] 后端 API 响应状态:', response.status);
+        alert(`[DEBUG 7] 后端 API 响应状态: ${response.status}`);
 
         if (!response.ok) {
           console.log('[DEBUG 8] 后端 API 返回错误');

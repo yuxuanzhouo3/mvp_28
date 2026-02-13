@@ -3226,9 +3226,18 @@ const loadMessagesForConversation = useCallback(
 
         // 立即更新状态（不刷新页面）
         alert('[DEBUG 16] 准备更新状态');
+
+        alert('[DEBUG 16.1] 调用 setAppUser');
         setAppUser(mappedUser);
+        alert('[DEBUG 16.2] setAppUser 完成');
+
+        alert('[DEBUG 16.3] 调用 setIsLoggedIn');
         setIsLoggedIn(true);
+        alert('[DEBUG 16.4] setIsLoggedIn 完成');
+
+        alert('[DEBUG 16.5] 调用 setAuthDialogOpen');
         setAuthDialogOpen(false);
+        alert('[DEBUG 16.6] setAuthDialogOpen 完成');
 
         alert('[DEBUG 17] 状态更新完成');
 

@@ -3476,12 +3476,24 @@ const loadMessagesForConversation = useCallback(
 
   const handleLogout = async () => {
     try {
-      // 1. 清除 cookie 中的 JWT token
+      // 1. 清除所有 cookie（包括 custom-jwt-token 和 Supabase session）
       try {
         const { deleteCookie } = await import('@/lib/cookie-helper');
+        // 清除自定义 JWT token
         deleteCookie('custom-jwt-token');
+
+        // 清除所有 Supabase session cookie（sb-*-auth-token）
+        if (typeof document !== 'undefined') {
+          const cookies = document.cookie.split(';');
+          for (const cookie of cookies) {
+            const cookieName = cookie.split('=')[0].trim();
+            if (cookieName.startsWith('sb-') && cookieName.includes('auth-token')) {
+              deleteCookie(cookieName);
+            }
+          }
+        }
       } catch (error) {
-        console.error('清除 cookie JWT token 失败:', error);
+        console.error('清除 cookie 失败:', error);
       }
 
       // 2. 清除 localStorage 中的关键认证状态

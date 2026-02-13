@@ -3334,6 +3334,11 @@ const loadMessagesForConversation = useCallback(
               refreshTokenExpiresIn: data.session.refresh_token_expires_in || 604800,
             }
           );
+
+          // 同时将 JWT token 存储到 cookie 中（解决 Android 环境 localStorage 问题）
+          const { setCookie } = await import('@/lib/cookie-helper');
+          setCookie('custom-jwt-token', data.session.access_token, 7);
+          console.log('✅ [Google Login] JWT token saved to cookie');
         }
 
         // 显示成功提示
@@ -3493,6 +3498,15 @@ const loadMessagesForConversation = useCallback(
         console.log('✅ Web 认证状态已清除');
       } catch (error) {
         console.error('❌ 清除认证状态失败:', error);
+      }
+
+      // 清除 cookie 中的 JWT token
+      try {
+        const { deleteCookie } = await import('@/lib/cookie-helper');
+        deleteCookie('custom-jwt-token');
+        console.log('✅ Cookie JWT token 已清除');
+      } catch (error) {
+        console.error('❌ 清除 cookie JWT token 失败:', error);
       }
 
       console.log("🔵 [handleLogout] isDomestic:", isDomestic);

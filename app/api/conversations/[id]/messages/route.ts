@@ -115,9 +115,16 @@ export async function GET(
     let userMeta: any = {};
     let supabase: any;
 
-    // 尝试从 Authorization header 获取自定义 JWT token（Android Native Google Sign-In）
-    const authHeader = req.headers.get("authorization");
-    const customToken = authHeader?.replace(/^Bearer\s+/i, "");
+    // 优先从 cookie 中读取自定义 JWT token，如果没有再从 Authorization header 读取
+    const { cookies } = await import('next/headers');
+    const cookieStore = await cookies();
+    let customToken = cookieStore.get('custom-jwt-token')?.value;
+
+    if (!customToken) {
+      // 如果 cookie 中没有，尝试从 Authorization header 读取
+      const authHeader = req.headers.get("authorization");
+      customToken = authHeader?.replace(/^Bearer\s+/i, "");
+    }
 
     if (customToken) {
       // 使用自定义 JWT 认证（Android Native Google Sign-In）
@@ -251,9 +258,16 @@ export async function POST(
     let userMeta: any = {};
     let supabase: any;
 
-    // 尝试从 Authorization header 获取自定义 JWT token（Android Native Google Sign-In）
-    const authHeader = req.headers.get("authorization");
-    const customToken = authHeader?.replace(/^Bearer\s+/i, "");
+    // 优先从 cookie 中读取自定义 JWT token，如果没有再从 Authorization header 读取
+    const { cookies } = await import('next/headers');
+    const cookieStore = await cookies();
+    let customToken = cookieStore.get('custom-jwt-token')?.value;
+
+    if (!customToken) {
+      // 如果 cookie 中没有，尝试从 Authorization header 读取
+      const authHeader = req.headers.get("authorization");
+      customToken = authHeader?.replace(/^Bearer\s+/i, "");
+    }
 
     if (customToken) {
       // 使用自定义 JWT 认证（Android Native Google Sign-In）

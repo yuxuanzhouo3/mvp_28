@@ -3471,6 +3471,27 @@ const loadMessagesForConversation = useCallback(
 
   const handleLogout = async () => {
     if(false) console.log("handleLogout called"); // Debug log
+
+    // 清除 Android 端的 Google 登录缓存
+    try {
+      const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
+      if (isAndroidWebView) {
+        const { signOutGoogle } = await import('@/lib/google-signin-bridge');
+        await signOutGoogle();
+        console.log('✅ Android Google 登录已清除');
+      }
+    } catch (error) {
+      console.error('❌ 清除 Android Google 登录失败:', error);
+    }
+
+    // 清除 Web 端的认证状态
+    try {
+      const { clearAuthState } = await import('@/lib/auth-state-manager');
+      clearAuthState();
+    } catch (error) {
+      console.error('❌ 清除认证状态失败:', error);
+    }
+
     if (isDomestic) {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     } else {

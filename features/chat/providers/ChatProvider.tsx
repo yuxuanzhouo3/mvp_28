@@ -3476,99 +3476,39 @@ const loadMessagesForConversation = useCallback(
 
   const handleLogout = async () => {
     console.log("🔵 [handleLogout] 开始执行退出登录");
-    alert("handleLogout: 开始执行退出登录"); // 添加 alert
+    alert("handleLogout: 开始执行退出登录");
 
     try {
-      // 清除 Android 端的 Google 登录缓存
-      try {
-        const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
-        console.log("🔵 [handleLogout] isAndroidWebView:", isAndroidWebView);
-        if (isAndroidWebView) {
-          const { signOutGoogle } = await import('@/lib/google-signin-bridge');
-          await signOutGoogle();
-          console.log('✅ Android Google 登录已清除');
-        }
-      } catch (error) {
-        console.error('❌ 清除 Android Google 登录失败:', error);
-      }
+      // 🔥 关键修复：立即清除 cookie 和 localStorage，然后刷新页面
+      // 避免被其他操作（如 signOutGoogle、clearAuthState）中断
 
-      // 清除 Web 端的认证状态
-      try {
-        const { clearAuthState } = await import('@/lib/auth-state-manager');
-        clearAuthState();
-        console.log('✅ Web 认证状态已清除');
-      } catch (error) {
-        console.error('❌ 清除认证状态失败:', error);
-      }
-
-      // 清除 cookie 中的 JWT token
+      // 1. 清除 cookie 中的 JWT token
       try {
         const { deleteCookie } = await import('@/lib/cookie-helper');
         deleteCookie('custom-jwt-token');
         console.log('✅ Cookie JWT token 已清除');
-        alert("handleLogout: Cookie 已清除"); // 添加 alert
+        alert("handleLogout: Cookie 已清除");
       } catch (error) {
         console.error('❌ 清除 cookie JWT token 失败:', error);
-        alert("handleLogout: Cookie 清除失败 - " + error); // 添加 alert
+        alert("handleLogout: Cookie 清除失败 - " + error);
       }
 
-      console.log("🔵 [handleLogout] isDomestic:", isDomestic);
-      if (isDomestic) {
-        await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-        console.log('✅ 国内版登出API调用完成');
-      } else {
-        await supabase.auth.signOut();
-        console.log('✅ Supabase 登出完成');
-      }
-
-      setAppUser(null);
-      setCurrentPlan(null);
-      console.log('✅ 用户状态已清除');
-
-      // Clear all user-specific data
-      Object.keys(localStorage).forEach((key) => {
-        if (
-          key.startsWith("morngpt_chats_") ||
-          key.startsWith("morngpt_bookmarks_")
-        ) {
-          localStorage.removeItem(key);
-        }
-      });
-      localStorage.removeItem("morngpt_current_plan");
-      localStorage.removeItem("morngpt_current_plan_exp");
-      localStorage.removeItem("morngpt_user");
-      console.log('✅ localStorage 已清除');
-
-      setChatSessions([]);
-      setCurrentChatId("");
-      setMessages([]);
-      setPromptHistory([]);
-      setBookmarkedMessages([]);
-      setCurrentPlan(null);
-      hasLoadedConversationsRef.current = false;
-      loadConversationsPendingRef.current = false;
-      loadedConversationsForUserRef.current = null;
+      // 2. 清除 localStorage 中的关键认证状态
       try {
+        localStorage.removeItem("app-auth-state");
         localStorage.removeItem("morngpt_user");
         localStorage.removeItem("morngpt_current_plan");
-      } catch (e) {
-        // ignore
+        localStorage.removeItem("morngpt_current_plan_exp");
+        console.log('✅ localStorage 认证状态已清除');
+      } catch (error) {
+        console.error('❌ 清除 localStorage 失败:', error);
       }
-      console.log('✅ 会话状态已重置');
 
-      // Close any open dialogs
-      setShowSettingsDialog(false);
-      setShowUpgradeDialog(false);
-      setShowPaymentDialog(false);
-      console.log('✅ 对话框已关闭');
+      // 3. 立即刷新页面，跳过其他可能导致中断的清理步骤
+      alert("handleLogout: 即将刷新页面");
+      console.log('🔄 [handleLogout] 立即刷新页面以完成退出登录');
 
-      console.log("🎉 [handleLogout] 退出登录完成");
-      alert("handleLogout: 即将刷新页面"); // 添加 alert
-
-      // 强制刷新页面以确保所有状态被清除
-      // 这对于 Android WebView 环境特别重要
       if (typeof window !== 'undefined') {
-        console.log('🔄 [handleLogout] 刷新页面以完成退出登录');
         window.location.href = '/';
       }
     } catch (error) {

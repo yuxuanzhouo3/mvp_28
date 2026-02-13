@@ -3560,7 +3560,13 @@ const loadMessagesForConversation = useCallback(
       console.log('✅ 对话框已关闭');
 
       console.log("🎉 [handleLogout] 退出登录完成");
-      alert(isZh ? "已退出登录" : "Successfully logged out!");
+
+      // 强制刷新页面以确保所有状态被清除
+      // 这对于 Android WebView 环境特别重要
+      if (typeof window !== 'undefined') {
+        console.log('🔄 [handleLogout] 刷新页面以完成退出登录');
+        window.location.href = '/';
+      }
     } catch (error) {
       console.error("❌ [handleLogout] 退出登录失败:", error);
       alert(isZh ? `退出登录失败: ${error}` : `Logout failed: ${error}`);
@@ -3710,7 +3716,8 @@ const loadMessagesForConversation = useCallback(
   };
 
   const confirmLogout = () => {
-    if(false) console.log("confirmLogout called"); // Debug log
+    console.log("🔵 [confirmLogout] 函数被调用");
+    alert("退出登录确认对话框即将打开"); // 添加 alert 以便在 Android 环境下验证
     setShowLogoutConfirmDialog(true);
   };
 

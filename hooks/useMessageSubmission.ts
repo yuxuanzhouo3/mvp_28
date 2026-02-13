@@ -130,9 +130,28 @@ export const useMessageSubmission = (
     expertModelId?: string | null,
     replaceOldest?: boolean,
   ): Promise<{ id: string; needConfirmReplace?: boolean; oldestConversation?: any; currentCount?: number; conversationLimit?: number }> => {
+    // 从 localStorage 读取 token（用于 Google 登录等自定义 JWT 认证）
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    try {
+      const authState = localStorage.getItem("app-auth-state");
+      if (authState) {
+        const parsed = JSON.parse(authState);
+        if (parsed.accessToken) {
+          headers["Authorization"] = `Bearer ${parsed.accessToken}`;
+          console.log('[createServerConversation] Using custom JWT token for authentication');
+        } else {
+          console.warn('[createServerConversation] No accessToken found in app-auth-state');
+        }
+      } else {
+        console.warn('[createServerConversation] No app-auth-state found in localStorage');
+      }
+    } catch (e) {
+      console.error('[createServerConversation] Failed to read auth state:', e);
+    }
+
     const res = await fetch("/api/conversations", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       credentials: "include",
       body: JSON.stringify({ title, model, modelType, expertModelId, replaceOldest }),
     });

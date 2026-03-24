@@ -1,0 +1,736 @@
+import React, { useCallback, useState, useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Crown, Check, Zap, CreditCard, Sparkles, Star, Shield, Rocket, Loader2 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
+import { pricingPlans as pricingPlansRaw } from "@/constants/pricing";
+import { AddonPackageTab } from "./AddonPackageTab";
+import { SubscriptionTermsContent } from "@/components/legal";
+import { useIsMobile, useIsIOSMobile } from "@/hooks";
+
+type UpgradeTabType = "subscription" | "addon";
+
+interface PricingPlan {
+  name: string;
+  nameZh?: string;
+  price: string;
+  priceZh?: string;
+  annualPrice: string;
+  annualPriceZh?: string;
+  period: string;
+  features: string[];
+  popular?: boolean;
+}
+
+interface UpgradeDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  selectedPaidModel?: any;
+  billingPeriod: "monthly" | "annual";
+  setBillingPeriod: (period: "monthly" | "annual") => void;
+  pricingPlans: PricingPlan[];
+  selectedPlanInDialog?: PricingPlan;
+  setSelectedPlanInDialog: (plan: PricingPlan | undefined) => void;
+  handleUpgradeClick?: (plan: PricingPlan) => void;
+  appUserId?: string | null;
+  defaultTab?: UpgradeTabType;
+  currentPlan?: string | null;
+  currentPlanExp?: string | null;
+}
+
+// 套餐配色方案
+const getPlanTheme = (name: string) => {
+  const lower = name.toLowerCase();
+  if (lower.includes("basic") || lower.includes("基础"))
+    return {
+      gradient: "from-emerald-500 to-teal-600",
+      bgGradient: "from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30",
+      border: "border-emerald-200 dark:border-emerald-800",
+      selectedBorder: "border-emerald-500",
+      ring: "ring-emerald-500/30",
+      text: "text-emerald-600 dark:text-emerald-400",
+      check: "text-emerald-500",
+      icon: <Star className="w-6 h-6" />,
+    };
+  if (lower.includes("pro") || lower.includes("专业"))
+    return {
+      gradient: "from-violet-500 to-purple-600",
+      bgGradient: "from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30",
+      border: "border-violet-200 dark:border-violet-800",
+      selectedBorder: "border-violet-500",
+      ring: "ring-violet-500/30",
+      text: "text-violet-600 dark:text-violet-400",
+      check: "text-violet-500",
+      icon: <Rocket className="w-6 h-6" />,
+    };
+  if (lower.includes("enterprise") || lower.includes("企业"))
+    return {
+      gradient: "from-amber-500 to-orange-600",
+      bgGradient: "from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30",
+      border: "border-amber-200 dark:border-amber-800",
+      selectedBorder: "border-amber-500",
+      ring: "ring-amber-500/30",
+      text: "text-amber-600 dark:text-amber-400",
+      check: "text-amber-500",
+      icon: <Shield className="w-6 h-6" />,
+    };
+  return {
+    gradient: "from-blue-500 to-indigo-600",
+    bgGradient: "from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30",
+    border: "border-blue-200 dark:border-blue-800",
+    selectedBorder: "border-blue-500",
+    ring: "ring-blue-500/30",
+    text: "text-blue-600 dark:text-blue-400",
+    check: "text-blue-500",
+    icon: <Crown className="w-6 h-6" />,
+  };
+};
+
+export const UpgradeDialog: React.FC<UpgradeDialogProps> = ({
+  open,
+  onOpenChange,
+  selectedPaidModel,
+  billingPeriod,
+  setBillingPeriod,
+  pricingPlans,
+  selectedPlanInDialog,
+  setSelectedPlanInDialog,
+  handleUpgradeClick = () => {},
+  appUserId,
+  defaultTab = "subscription",
+  currentPlan,
+  currentPlanExp,
+}) => {
+  const { currentLanguage, isDomesticVersion } = useLanguage();
+  const isMobile = useIsMobile();
+  const isIOSMobile = useIsIOSMobile();
+  const isZh = currentLanguage === "zh";
+
+  // iOS环境下不显示订阅弹窗
+  if (isIOSMobile) {
+    return null;
+  }
+  // 国内版移动端品牌名
+  const brandName = isDomesticVersion && isMobile ? "晨佑 AI" : "MornGPT";
+  const tr = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
+  const [activeTab, setActiveTab] = useState<UpgradeTabType>(defaultTab);
+  // 国内版默认支付宝，国际版默认 Stripe
+  const [selectedPayment, setSelectedPayment] = useState<"stripe" | "paypal" | "alipay" | "wechat">(
+    isDomesticVersion ? "alipay" : "stripe"
+  );
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [agreeRules, setAgreeRules] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+  // 显示层：国内版一律用人民币展示（PayPal 也显示人民币），国际版用美元
+  const useRmb = isDomesticVersion;
+  const planRank: Record<string, number> = { basic: 1, pro: 2, enterprise: 3 };
+  const msPerDay = 1000 * 60 * 60 * 24;
+
+  const normalizePlanName = useCallback((p?: string | null) => {
+    const lower = (p || "").toLowerCase();
+    if (lower === "basic" || lower === "基础版") return "Basic";
+    if (lower === "pro" || lower === "专业版") return "Pro";
+    if (lower === "enterprise" || lower === "企业版") return "Enterprise";
+    return p || "";
+  }, []);
+
+  const resolvePlanByName = useCallback(
+    (name?: string | null) => {
+      if (!name) return undefined;
+      const lower = name.toLowerCase();
+      return pricingPlansRaw.find(
+        (p) =>
+          p.name.toLowerCase() === lower ||
+          (p.nameZh && p.nameZh.toLowerCase() === lower),
+      );
+    },
+    [],
+  );
+
+  const getPlanAmount = useCallback(
+    (planKey: string, period: "monthly" | "annual", useDomesticPrice: boolean) => {
+      const plan = resolvePlanByName(planKey);
+      if (!plan) return 0;
+      const label =
+        period === "annual"
+          ? useDomesticPrice
+            ? plan.annualPriceZh || plan.annualPrice
+            : plan.annualPrice
+          : useDomesticPrice
+            ? plan.priceZh || plan.price
+            : plan.price;
+      const numeric = parseFloat(label.replace(/[^0-9.]/g, "") || "0");
+      return period === "annual" ? numeric * 12 : numeric;
+    },
+    [resolvePlanByName],
+  );
+
+  const localizedPlans = (pricingPlans || pricingPlansRaw).map((p) => ({
+    ...p,
+    name: isZh ? p.nameZh || p.name : p.name,
+    price: useRmb && p.priceZh ? p.priceZh : p.price,
+    annualPrice: useRmb && p.annualPriceZh ? p.annualPriceZh : p.annualPrice,
+    features: p.features.map((f) => {
+      if (!f.includes("|")) return f;
+      const [en, zh] = f.split("|");
+      return isZh ? zh || en : en;
+    }),
+  }));
+
+  // 弹窗打开时自动选择中间的套餐（Pro）
+  useEffect(() => {
+    if (open && activeTab === "subscription" && !selectedPlanInDialog) {
+      const middlePlan = localizedPlans[1];
+      if (middlePlan) {
+        setSelectedPlanInDialog(middlePlan);
+      }
+    }
+  }, [open, activeTab]);
+
+  const handleSubscribe = async () => {
+    if (!selectedPlanInDialog) return;
+    setIsProcessing(true);
+
+    // 根据支付方式选择不同的 API 端点
+    let endpoint = "/api/payment/stripe/create";
+    if (selectedPayment === "paypal") {
+      endpoint = "/api/payment/paypal/create";
+    } else if (selectedPayment === "alipay") {
+      endpoint = "/api/payment/alipay/create";
+    } else if (selectedPayment === "wechat") {
+      endpoint = "/api/payment/wechat/create";
+    }
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productType: "SUBSCRIPTION",
+          planName: selectedPlanInDialog.name,
+          billingPeriod: billingPeriod === "annual" ? "annual" : "monthly",
+          userId: appUserId || undefined,
+        }),
+      });
+      const data = await res.json();
+
+      if (selectedPayment === "alipay") {
+        // 支付宝返回 HTML 表单
+        if (data?.success && data?.formHtml) {
+          const div = document.createElement("div");
+          div.innerHTML = data.formHtml;
+          document.body.appendChild(div);
+          const form = div.querySelector("form");
+          if (form) {
+            form.submit();
+          } else if (data.formHtml.startsWith("http")) {
+            window.location.href = data.formHtml;
+          } else {
+            alert(tr("Failed to create payment", "支付创建失败"));
+          }
+        } else {
+          alert(data?.error || tr("Failed to create payment", "支付创建失败"));
+        }
+      } else if (selectedPayment === "wechat") {
+        // 微信支付返回二维码链接
+        if (data?.success && data?.code_url) {
+          // 跳转到支付页面显示二维码
+          const paymentUrl = `/payment/wechat?code_url=${encodeURIComponent(data.code_url)}&out_trade_no=${data.out_trade_no}&amount=${data.amount}`;
+          window.location.href = paymentUrl;
+        } else {
+          alert(data?.error || tr("Failed to create payment", "支付创建失败"));
+        }
+      } else {
+        // Stripe 和 PayPal 使用 URL 跳转
+        const redirect = selectedPayment === "stripe" ? data?.url : data?.approvalUrl;
+        if (data?.success && redirect) {
+          window.location.href = redirect as string;
+        } else {
+          alert(data?.error || tr("Failed to create payment", "支付创建失败"));
+        }
+      }
+    } catch (err) {
+      alert(tr("Network error, please try again", "网络错误，请重试"));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const pricingInfo = React.useMemo(() => {
+    if (!selectedPlanInDialog) {
+      return { payable: null, targetAmount: null, isUpgrade: false, remainingDays: 0, convertedDays: 0, remainingValue: 0, freeUpgrade: false, symbol: "" };
+    }
+
+    const target = resolvePlanByName(selectedPlanInDialog.name);
+    if (!target) {
+      return { payable: null, targetAmount: null, isUpgrade: false, remainingDays: 0, convertedDays: 0, remainingValue: 0, freeUpgrade: false, symbol: "" };
+    }
+
+    const symbol = useRmb ? "￥" : "$";
+    const baseTargetAmount = getPlanAmount(target.name, billingPeriod, useRmb);
+    const targetAmount = baseTargetAmount;
+    const priceLabel = billingPeriod === "annual" ? selectedPlanInDialog.annualPrice || selectedPlanInDialog.price : selectedPlanInDialog.price;
+    const trimmed = priceLabel.trim();
+
+    const currentKey = normalizePlanName(currentPlan);
+    const currentRank = planRank[currentKey.toLowerCase()] || 0;
+    const targetRank = planRank[target.name.toLowerCase()] || 0;
+    const now = Date.now();
+    const exp = currentPlanExp ? new Date(currentPlanExp).getTime() : null;
+    const currentActive = exp ? exp > now : false;
+    const isUpgrade = currentActive && targetRank > currentRank && currentRank > 0;
+
+    if (!isUpgrade) {
+      return { payable: targetAmount, targetAmount, isUpgrade: false, remainingDays: 0, convertedDays: 0, freeUpgrade: false, symbol };
+    }
+
+    const remainingDays = Math.max(0, Math.ceil(((exp || now) - now) / msPerDay));
+    const currentMonthly = getPlanAmount(currentKey, "monthly", useRmb);
+    // 目标套餐价格：根据用户选择的计费周期（月费或年费总价）
+    const targetPrice = getPlanAmount(target.name, billingPeriod, useRmb);
+    const targetMonthly = getPlanAmount(target.name, "monthly", useRmb);
+
+    // 计算当前套餐剩余价值
+    const currentDailyPrice = currentMonthly / 30;
+    const targetDailyPrice = targetMonthly / 30;
+    const remainingValue = remainingDays * currentDailyPrice;
+
+    // 目标套餐天数
+    const targetDays = billingPeriod === "annual" ? 365 : 30;
+
+    // 新升级逻辑：
+    // 1. 如果剩余价值 ≥ 目标套餐价格：免费升级，剩余价值全部折算成目标套餐天数
+    // 2. 如果剩余价值 < 目标套餐价格：补差价，获得目标套餐天数（30天或365天）
+    const freeUpgrade = remainingValue >= targetPrice;
+
+    let payable: number;
+    let convertedDays: number;
+
+    if (freeUpgrade) {
+      // 免费升级：剩余价值全部折算成目标套餐天数
+      payable = 0.01; // 最低支付金额
+      convertedDays = Math.floor(remainingValue / targetDailyPrice);
+    } else {
+      // 补差价：支付差额，获得目标套餐天数
+      payable = Math.max(0.01, targetPrice - remainingValue);
+      convertedDays = targetDays;
+    }
+
+    payable = Math.round(payable * 100) / 100;
+
+    return {
+      payable,
+      targetAmount,
+      isUpgrade: true,
+      remainingDays,
+      convertedDays,
+      remainingValue: Math.round(remainingValue * 100) / 100,
+      freeUpgrade,
+      symbol
+    };
+  }, [billingPeriod, currentPlan, currentPlanExp, getPlanAmount, isDomesticVersion, normalizePlanName, planRank, selectedPayment, selectedPlanInDialog, useRmb, resolvePlanByName, msPerDay]);
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="w-[95vw] sm:max-w-4xl bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-[#0f1015] dark:via-[#14151a] dark:to-[#0f1015] border-0 shadow-2xl rounded-2xl overflow-hidden">
+          {/* 装饰性背景 */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="absolute top-0 left-1/4 w-64 h-64 bg-gradient-to-br from-blue-400/10 to-purple-500/10 rounded-full blur-3xl" />
+            <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-gradient-to-br from-emerald-400/10 to-teal-500/10 rounded-full blur-3xl" />
+        </div>
+
+        <div className="relative z-10 p-2 md:p-4 overflow-x-hidden">
+          {/* 标题区 */}
+          <DialogHeader className="text-center mb-2 md:mb-3">
+            <DialogTitle className="flex items-center justify-center space-x-1.5 md:space-x-2 text-base md:text-lg font-bold">
+              <div className="p-1 md:p-1.5 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-lg shadow-lg shadow-orange-500/25">
+                <Crown className="w-3 h-3 md:w-4 md:h-4 text-white" />
+              </div>
+              <span className="text-gray-900 dark:text-white font-bold">
+              {selectedPaidModel
+                ? tr(`Upgrade to Access ${selectedPaidModel.name}`, `升级以解锁 ${selectedPaidModel.name}`)
+                : isMobile && isDomesticVersion
+                  ? tr("Choose Your Plan", "选择您的套餐")
+                  : tr(`Choose Your ${brandName} Plan`, `选择你的 ${brandName} 套餐`)}
+            </span>
+          </DialogTitle>
+        </DialogHeader>
+
+          {/* Tab 切换 */}
+          <div className="flex items-center justify-center mb-2 md:mb-3">
+            <div className="bg-white/80 dark:bg-white/5 backdrop-blur-sm rounded-lg md:rounded-xl p-0.5 flex shadow-lg border border-gray-200/50 dark:border-white/10">
+            <Button
+                variant="ghost"
+              size="sm"
+                onClick={() => { setActiveTab("subscription"); setSelectedPlanInDialog?.(undefined); }}
+                className={`px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-semibold rounded-md md:rounded-lg transition-all duration-300 ${
+                activeTab === "subscription"
+                    ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/25"
+                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100/50 dark:hover:bg-white/5"
+              }`}
+            >
+              <Crown className="w-2.5 h-2.5 md:w-3 md:h-3 mr-0.5 md:mr-1" />
+              {tr("Subscription Plans", "订阅套餐")}
+            </Button>
+            <Button
+                variant="ghost"
+              size="sm"
+                onClick={() => { setActiveTab("addon"); setSelectedPlanInDialog?.(undefined); }}
+                className={`px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-semibold rounded-md md:rounded-lg transition-all duration-300 ${
+                activeTab === "addon"
+                    ? "bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/25"
+                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100/50 dark:hover:bg-white/5"
+              }`}
+            >
+              <Zap className="w-2.5 h-2.5 md:w-3 md:h-3 mr-0.5 md:mr-1" />
+              {tr("Credit Packs", "额度加油包")}
+            </Button>
+          </div>
+        </div>
+
+        {/* 加油包 Tab */}
+        {activeTab === "addon" && (
+          <AddonPackageTab appUserId={appUserId} />
+        )}
+
+        {/* 订阅套餐 Tab */}
+        {activeTab === "subscription" && (
+            <>
+              {/* 月付/年付切换 */}
+              <div className="flex items-center justify-center mb-2 md:mb-3">
+                <div className="bg-white/80 dark:bg-white/5 backdrop-blur-sm rounded-lg md:rounded-xl p-0.5 flex shadow-lg border border-gray-200/50 dark:border-white/10">
+                <Button
+                    variant="ghost"
+                  size="sm"
+                  onClick={() => setBillingPeriod("monthly")}
+                    className={`px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-semibold rounded-md md:rounded-lg transition-all duration-300 ${
+                    billingPeriod === "monthly"
+                        ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900 shadow-lg"
+                        : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                  }`}
+                >
+                  {tr("Monthly", "月付")}
+                </Button>
+                <Button
+                    variant="ghost"
+                  size="sm"
+                  onClick={() => setBillingPeriod("annual")}
+                    className={`px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-semibold rounded-md md:rounded-lg transition-all duration-300 ${
+                    billingPeriod === "annual"
+                        ? "bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/25"
+                        : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                  }`}
+                >
+                    {tr("Annual", "年付")}
+                    <Badge className="ml-0.5 md:ml-1 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-[8px] md:text-[9px] px-1 py-0 font-bold border-0">
+                      -30%
+                    </Badge>
+                </Button>
+              </div>
+            </div>
+
+              {/* 移动端滑动提示 */}
+              <div className="md:hidden flex items-center justify-center gap-1.5 mb-2 text-[9px] text-gray-500 dark:text-gray-400">
+                <span>←</span>
+                <span>{isZh ? "左右滑动查看套餐" : "Swipe to view plans"}</span>
+                <span>→</span>
+              </div>
+
+              {/* 套餐卡片 - 移动端横向滑动，桌面端三列网格 */}
+              <div className="flex md:grid md:grid-cols-3 gap-3 md:gap-3 overflow-x-auto md:overflow-visible snap-x snap-mandatory md:snap-none scrollbar-hide py-1 pb-2 mb-2 md:mb-3 -mx-2 px-2">
+                {localizedPlans.map((plan, index) => {
+                  const isSelected = selectedPlanInDialog?.name === plan.name;
+                  const theme = getPlanTheme(plan.name);
+
+                  return (
+                <div
+                  key={plan.name}
+                      onClick={() => { setSelectedPlanInDialog(plan); handleUpgradeClick(plan); }}
+                      className={`relative cursor-pointer transition-all duration-300 group flex-shrink-0 w-[48vw] md:w-auto snap-center ${
+                        isSelected ? "scale-[1.02]" : "hover:scale-[1.01]"
+                      }`}
+                      style={{ animationDelay: `${index * 100}ms` }}
+                    >
+                      {/* 选中时的外发光效果 */}
+                      {isSelected && (
+                        <div className={`absolute inset-0 bg-gradient-to-r ${theme.gradient} opacity-20 blur-xl rounded-xl -z-10`} />
+                      )}
+
+                      <div className={`relative h-full rounded-lg md:rounded-xl border transition-all duration-300 overflow-hidden ${
+                        isSelected
+                          ? `${theme.selectedBorder} shadow-2xl ring-2 ${theme.ring}`
+                          : `${theme.border} hover:shadow-xl`
+                      }`}>
+                        {/* 卡片背景渐变 */}
+                        <div className={`absolute inset-0 bg-gradient-to-br ${theme.bgGradient} opacity-50`} />
+                        <div className="absolute inset-0 bg-white/60 dark:bg-[#14151a]/60 backdrop-blur-sm" />
+
+                        {/* 热门标签 */}
+                  {plan.popular && (
+                          <div className="absolute -top-px left-1/2 transform -translate-x-1/2">
+                              <Badge className={`bg-gradient-to-r ${theme.gradient} text-white px-1.5 md:px-2 py-0 md:py-0.5 text-[9px] md:text-[10px] font-bold shadow-lg border-0 rounded-b-md md:rounded-b-lg rounded-t-none`}>
+                                <Sparkles className="w-2.5 h-2.5 md:w-3 md:h-3 mr-0.5" />
+                                {tr("Most Popular", "最受欢迎")}
+                              </Badge>
+                    </div>
+                  )}
+
+                        {/* 选中指示器 */}
+                        {isSelected && (
+                          <div className="absolute top-2 right-2 z-10">
+                            <div className={`w-5 h-5 md:w-6 md:h-6 rounded-full bg-gradient-to-r ${theme.gradient} flex items-center justify-center shadow-lg`}>
+                              <Check className="w-2.5 h-2.5 md:w-3.5 md:h-3.5 text-white" />
+                      </div>
+                    </div>
+                  )}
+
+                        <div className={`relative p-2 md:p-3 ${plan.popular ? "pt-4 md:pt-5" : ""}`}>
+                          {/* 套餐图标和名称 */}
+                          <div className="flex items-center gap-1.5 md:gap-2 mb-2 md:mb-2.5">
+                            <div className={`w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl bg-gradient-to-br ${theme.gradient} flex items-center justify-center shadow-lg`}>
+                              <div className="text-white scale-75 md:scale-90">{theme.icon}</div>
+                            </div>
+                            <h3 className="text-sm md:text-base font-bold text-gray-900 dark:text-white">{plan.name}</h3>
+                          </div>
+
+                          {/* 价格区域 */}
+                          <div className="mb-2 md:mb-3 py-2 md:py-2.5 border-y border-gray-200/50 dark:border-white/10">
+                            <div className="flex items-baseline gap-0.5">
+                              <span className={`text-xl md:text-2xl font-extrabold ${theme.text}`}>
+                          {billingPeriod === "annual" ? plan.annualPrice : plan.price}
+                        </span>
+                              <span className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs">
+                                /{tr("mo", "月")}
+                        </span>
+                      </div>
+                      {billingPeriod === "annual" && (
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[10px] md:text-xs text-gray-400 line-through">
+                                  {plan.price}
+                                </span>
+                                <Badge className="bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-[8px] md:text-[9px] px-1 md:px-1.5 py-0 font-bold border-0">
+                                  {tr("Save 30%", "省30%")}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+
+                          {/* 特性列表 */}
+                          <ul className="space-y-1.5 md:space-y-2">
+                            {plan.features.map((feature, idx) => (
+                              <li key={idx} className="flex items-start gap-1.5 md:gap-2">
+                                <div className={`w-3.5 h-3.5 md:w-4 md:h-4 rounded-full bg-gradient-to-r ${theme.gradient} flex items-center justify-center flex-shrink-0 mt-0.5`}>
+                                  <Check className="w-2 h-2 md:w-2.5 md:h-2.5 text-white" />
+                                </div>
+                                <span className="text-[10px] md:text-xs text-gray-700 dark:text-gray-300 leading-tight">{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                          {/* 选择提示 */}
+                          <div className={`mt-2 md:mt-3 pt-2 md:pt-2.5 border-t border-gray-200/50 dark:border-white/10 text-center`}>
+                            <span className={`text-[10px] md:text-xs font-medium transition-colors ${
+                              isSelected
+                                ? theme.text
+                                : "text-gray-400 dark:text-gray-500"
+                            }`}>
+                              {isSelected
+                                ? (isZh ? "✓ 已选择此套餐" : "✓ Selected")
+                                : (isZh ? "点击选择此套餐" : "Click to select")}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                </div>
+                  );
+                })}
+              </div>
+
+              {/* 支付区域 */}
+              <div className={`transition-all duration-300 ${selectedPlanInDialog ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+                <div className="p-2 md:p-3 bg-white/80 dark:bg-white/5 backdrop-blur-sm rounded-lg md:rounded-xl border border-gray-200/50 dark:border-white/10 shadow-lg">
+                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-3">
+                      {/* 支付方式选择 */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] md:text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center">
+                          <CreditCard className="w-3 h-3 mr-1" />
+                          {tr("Payment:", "支付方式:")}
+                        </span>
+                        <div className="flex gap-1.5">
+                          {/* 国内版：支付宝、微信 */}
+                          {isDomesticVersion && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPayment("alipay")}
+                                className={`px-2 py-1 rounded-md text-[10px] md:text-xs font-semibold transition-all duration-300 ${
+                                  selectedPayment === "alipay"
+                                    ? "bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg"
+                                    : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
+                                }`}
+                              >
+                                💳 支付宝
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPayment("wechat")}
+                                className={`px-2 py-1 rounded-md text-[10px] md:text-xs font-semibold transition-all duration-300 ${
+                                  selectedPayment === "wechat"
+                                    ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg"
+                                    : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
+                                }`}
+                              >
+                                💬 微信支付
+                              </button>
+                            </>
+                          )}
+                          {/* 国际版：Stripe、PayPal */}
+                          {!isDomesticVersion && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPayment("stripe")}
+                                className={`px-2 py-1 rounded-md text-[10px] md:text-xs font-semibold transition-all duration-300 ${
+                                  selectedPayment === "stripe"
+                                    ? "bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg"
+                                    : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
+                                }`}
+                              >
+                                💳 Stripe
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPayment("paypal")}
+                                className={`px-2 py-1 rounded-md text-[10px] md:text-xs font-semibold transition-all duration-300 ${
+                                  selectedPayment === "paypal"
+                                    ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg"
+                                    : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
+                                }`}
+                              >
+                                🅿️ PayPal
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        {/* 隐私与订阅确认 - 独立一行 */}
+                        <label className="flex items-start gap-1.5 text-[10px] text-gray-600 dark:text-gray-300">
+                          <input
+                            type="checkbox"
+                            checked={agreeRules}
+                            onChange={(e) => setAgreeRules(e.target.checked)}
+                            className="mt-0.5 h-3 w-3 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:bg-transparent dark:border-gray-600"
+                          />
+                          <span className="leading-snug flex flex-wrap items-center gap-0.5">
+                            {tr("I have read and agree to the", "我已阅读并同意")}
+                            <button type="button" className="underline hover:text-indigo-600 dark:hover:text-indigo-400" onClick={() => setShowTerms(true)}>
+                              {tr("Subscription Terms", "《订阅规则》")}
+                            </button>
+                          </span>
+                        </label>
+
+                        {/* 支付按钮 - 独立一行 */}
+                        <div className="flex justify-end">
+                          <Button
+                            disabled={isProcessing || !selectedPlanInDialog || !agreeRules}
+                            onClick={handleSubscribe}
+                            className="h-8 md:h-9 px-3 md:px-5 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 hover:from-blue-600 hover:via-indigo-600 hover:to-purple-700 text-white font-bold text-xs md:text-sm rounded-lg shadow-lg shadow-indigo-500/30 transition-all duration-300 hover:shadow-xl hover:scale-[1.02]"
+                          >
+                            {isProcessing ? (
+                              <>
+                                <Loader2 className="w-3 h-3 md:w-4 md:h-4 animate-spin mr-1.5" />
+                                {tr("Processing...", "处理中...")}
+                              </>
+                            ) : (
+                              <>
+                                <Rocket className="w-3 h-3 md:w-4 md:h-4 mr-1.5" />
+                                {pricingInfo.payable !== null
+                                  ? `${tr("Subscribe", "订阅")} ${pricingInfo.symbol}${pricingInfo.payable.toFixed(2)}`
+                                  : tr("Select a Plan", "请选择套餐")}
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                  {/* 升级折算提示 */}
+                {pricingInfo.isUpgrade && (
+                    <div className={`mt-2 md:mt-2.5 p-2 rounded-lg border text-center text-[10px] md:text-xs ${
+                      pricingInfo.freeUpgrade
+                        ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/50"
+                        : "bg-blue-50 dark:bg-blue-950/30 border-blue-200/50"
+                    }`}>
+                      {pricingInfo.freeUpgrade ? (
+                        <span className="text-emerald-700 dark:text-emerald-300">
+                          🎁 {tr("Free upgrade! Your remaining", "免费升级！剩余")} {pricingInfo.remainingDays} {tr("days converted to", "天折算为")} {pricingInfo.convertedDays} {tr("days on new plan", "天新套餐")}
+                        </span>
+                      ) : (
+                        <span className="text-blue-700 dark:text-blue-300">
+                          📊 {tr("Your remaining", "剩余")} {pricingInfo.remainingDays} {tr("days deducted. Pay only", "天已抵扣，仅需支付")} {pricingInfo.symbol}{pricingInfo.payable?.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 订阅规则弹窗 */}
+      <Dialog open={showTerms} onOpenChange={setShowTerms}>
+        <DialogContent className="w-[95vw] sm:max-w-2xl lg:max-w-4xl max-h-[90vh] sm:max-h-[85vh] overflow-hidden rounded-xl sm:rounded-2xl p-0 border-0 shadow-2xl">
+          {/* 装饰性背景 */}
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900" />
+          <div className="absolute top-0 right-0 w-32 sm:w-48 lg:w-64 h-32 sm:h-48 lg:h-64 bg-gradient-to-br from-emerald-400/10 to-teal-500/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-32 sm:w-48 lg:w-64 h-32 sm:h-48 lg:h-64 bg-gradient-to-br from-blue-400/10 to-cyan-500/10 rounded-full blur-3xl" />
+
+          <div className="relative z-10 flex flex-col h-full max-h-[90vh] sm:max-h-[85vh]">
+            <DialogHeader className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200/80 dark:border-gray-700/80 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm flex-shrink-0">
+              <DialogTitle className="flex items-center gap-2 sm:gap-3 text-base sm:text-lg font-bold text-gray-900 dark:text-white">
+                <div className="p-1.5 sm:p-2 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg sm:rounded-xl shadow-lg shadow-emerald-500/25">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <span>{tr("Subscription Terms", "订阅规则")}</span>
+              </DialogTitle>
+              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1 ml-8 sm:ml-12">
+                {tr("Please read the following subscription terms carefully", "请仔细阅读以下订阅规则")}
+              </p>
+            </DialogHeader>
+
+            <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-3 sm:py-4 bg-white/50 dark:bg-slate-800/50">
+              <SubscriptionTermsContent isDomestic={isDomesticVersion} />
+            </div>
+
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200/80 dark:border-gray-700/80 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm flex-shrink-0">
+              <button
+                onClick={() => {
+                  setShowTerms(false);
+                  setAgreeRules(true);
+                }}
+                className="w-full py-2 sm:py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-sm sm:text-base font-medium rounded-lg sm:rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 hover:-translate-y-0.5"
+              >
+                {tr("I have read and agree", "我已阅读并同意")}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};

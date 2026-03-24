@@ -1,0 +1,729 @@
+import { NextRequest } from "next/server";
+import { isAfter } from "date-fns";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { IS_DOMESTIC_VERSION } from "@/config";
+import { CloudBaseAuthService } from "@/lib/cloudbase/auth";
+import { CloudBaseConnector } from "@/lib/cloudbase/connector";
+import { checkDailyExternalQuota, checkQuota, seedWalletForPlan } from "@/services/wallet";
+import {
+  getModelCategory,
+  isGeneralModel,
+  isExternalModel,
+  isAdvancedMultimodalModel,
+  getFreeDailyLimit,
+  getBasicDailyLimit,
+  getFreeMonthlyPhotoLimit,
+  getBasicMonthlyPhotoLimit,
+  getFreeMonthlyVideoAudioLimit,
+  getBasicMonthlyVideoAudioLimit,
+  getFreeContextMsgLimit,
+  getBasicContextMsgLimit,
+  getProDailyLimit,
+  getProMonthlyPhotoLimit,
+  getProMonthlyVideoAudioLimit,
+  getProContextMsgLimit,
+  getEnterpriseDailyLimit,
+  getEnterpriseMonthlyPhotoLimit,
+  getEnterpriseMonthlyVideoAudioLimit,
+  getEnterpriseContextMsgLimit,
+  getTodayString,
+  getCurrentYearMonth,
+  getQuotaExceededMessage,
+  getImageCount,
+  getVideoAudioCount,
+  MediaPayload,
+} from "@/utils/model-limits";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+async function getDomesticUser(req: NextRequest) {
+  const raw = req.cookies.get("auth-token")?.value;
+  const token = raw ? decodeURIComponent(raw) : null;
+  if (!token) return null;
+  const auth = new CloudBaseAuthService();
+  return await auth.validateToken(token);
+}
+
+function isDomesticRequest(req: NextRequest) {
+  // 版本隔离：仅根据部署环境决定（避免 en 环境因残留 auth-token 误访问国内数据）
+  return IS_DOMESTIC_VERSION;
+}
+
+function getPlanInfo(meta: any) {
+  const rawPlan =
+    (meta?.plan as string | undefined) ||
+    (meta?.subscriptionTier as string | undefined) ||
+    "";
+  const rawPlanLower = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "";
+  const planExp = meta?.plan_exp ? new Date(meta.plan_exp) : null;
+  const planActive = planExp ? isAfter(planExp, new Date()) : true;
+  const planLower = planActive ? rawPlanLower : "free";
+  const isBasic = planLower === "basic";
+  const isProPlan = planLower === "pro";
+  const isEnterprise = planLower === "enterprise";
+  const isUnlimitedFlag = !!meta?.pro && !isBasic && !isProPlan && !isEnterprise;
+  const isFree = !isEnterprise && !isProPlan && !isBasic && !isUnlimitedFlag;
+  return { planLower, isPro: isProPlan && planActive, isBasic, isFree, isEnterprise, isUnlimitedFlag, planActive, planExp };
+}
+
+/**
+ * 使用 wallet 校验媒体配额（仅检查，不扣减）
+ */
+async function validateMediaQuotaWithWallet(params: {
+  userId: string;
+  planLower: string;
+  modelId: string;
+  mediaPayload: MediaPayload;
+  language?: string;
+}): Promise<{ allowed: boolean; error?: string }> {
+  const { userId, planLower, modelId, mediaPayload, language = "zh" } = params;
+  const category = getModelCategory(modelId);
+  const imageCount = getImageCount(mediaPayload);
+  const videoAudioCount = getVideoAudioCount(mediaPayload);
+
+  // 非多模态或纯文本不校验媒体额度
+  if (category !== "advanced_multimodal" || (imageCount === 0 && videoAudioCount === 0)) {
+    return { allowed: true };
+  }
+
+  // 确保 wallet 存在并按套餐初始化
+  await seedWalletForPlan(userId, planLower || "free");
+  const quota = await checkQuota(userId, imageCount, videoAudioCount);
+
+  if (!quota.hasEnoughQuota) {
+    const errorKey =
+      quota.totalImageBalance < imageCount ? "monthly_photo" : "monthly_video_audio";
+    return {
+      allowed: false,
+      error: getQuotaExceededMessage(errorKey as any, language),
+    };
+  }
+
+  return { allowed: true };
+}
+
+// Get messages for a conversation
+export async function GET(
+  req: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> },
+) {
+  const { id: conversationId } = await paramsPromise;
+
+  if (!isDomesticRequest(req)) {
+    let userId: string;
+    let userMeta: any = {};
+    let supabase: any;
+
+    // 优先从 cookie 中读取自定义 JWT token，如果没有再从 Authorization header 读取
+    const { cookies } = await import('next/headers');
+    const cookieStore = await cookies();
+    let customToken = cookieStore.get('custom-jwt-token')?.value;
+
+    if (!customToken) {
+      // 如果 cookie 中没有，尝试从 Authorization header 读取
+      const authHeader = req.headers.get("authorization");
+      customToken = authHeader?.replace(/^Bearer\s+/i, "");
+    }
+
+    if (customToken) {
+      // 使用自定义 JWT 认证（Android Native Google Sign-In）
+      try {
+        const jwt = require('jsonwebtoken');
+        const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-key-change-in-production';
+        const decoded = jwt.verify(customToken, JWT_SECRET) as any;
+        userId = decoded.sub;
+        console.log('[messages] Using custom JWT auth for user:', userId);
+        // 使用 service role 客户端绕过 RLS 策略
+        supabase = await createServiceRoleClient();
+      } catch (error) {
+        console.error('[messages] Custom JWT verification failed:', error);
+        return new Response("Unauthorized", { status: 401 });
+      }
+    } else {
+      // 使用 Supabase 认证
+      supabase = await createClient();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData?.user) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      userId = userData.user.id;
+      userMeta = userData.user.user_metadata as any;
+    }
+
+    const plan = getPlanInfo(userMeta);
+
+    // Free 用户或本地会话不返回历史
+    if (conversationId.startsWith("local-")) {
+      return Response.json([]);
+    }
+
+    const { data, error } = await supabase
+      .from("messages")
+      .select("id, role, content, created_at, image_file_ids, video_file_ids, audio_file_ids")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("List messages error", error);
+      return new Response("Failed to list messages", { status: 500 });
+    }
+
+    const list = (data || []).map((m: any) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      created_at: m.created_at,
+      imageFileIds: Array.isArray(m.image_file_ids) ? m.image_file_ids : [],
+      videoFileIds: Array.isArray(m.video_file_ids) ? m.video_file_ids : [],
+      audioFileIds: Array.isArray(m.audio_file_ids) ? m.audio_file_ids : [],
+      // 兼容前端旧字段读取
+      images: Array.isArray(m.image_file_ids) ? m.image_file_ids : [],
+      videos: Array.isArray(m.video_file_ids) ? m.video_file_ids : [],
+      audios: Array.isArray(m.audio_file_ids) ? m.audio_file_ids : [],
+    }));
+
+    return Response.json(list);
+  }
+
+  // domestic -> CloudBase
+  const user = await getDomesticUser(req);
+  if (!user) return new Response("Unauthorized", { status: 401 });
+  const plan = getPlanInfo(user.metadata);
+
+  // 本地会话不返回历史
+  if (conversationId.startsWith("local-")) {
+    return Response.json([]);
+  }
+
+  const connector = new CloudBaseConnector();
+  await connector.initialize();
+  const db = connector.getClient();
+
+  try {
+    const collection = db.collection("messages");
+    let res = await collection.where({ conversationId, userId: user.id }).get();
+    let records = res?.data || [];
+
+    // 防御性兜底：如果按 userId 查不到，先按会话 ID 拿全部再过滤 userId，避免索引/类型问题
+    if (!records.length) {
+      const allByConv = await collection.where({ conversationId }).get();
+      records = (allByConv?.data || []).filter((m: any) => m.userId === user.id);
+    }
+
+    const list = (records || [])
+      .map((m: any) => ({
+        id: m._id,
+        role: m.role,
+        content: m.content,
+        created_at: m.createdAt,
+        imageFileIds: m.imageFileIds || [],
+        videoFileIds: m.videoFileIds || [],
+        audioFileIds: (m as any).audioFileIds || [],
+      }))
+      .sort(
+        (a: any, b: any) =>
+          new Date(a.created_at || 0).getTime() -
+          new Date(b.created_at || 0).getTime(),
+      );
+
+    return Response.json(list);
+  } catch (error) {
+    console.error("CloudBase list messages error", error);
+    return new Response("Failed to list messages", { status: 500 });
+  }
+}
+
+// Insert a message into a conversation
+export async function POST(
+  req: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> },
+) {
+  const { id: conversationId } = await paramsPromise;
+  const reqBody = await req.json();
+  const {
+    role,
+    content,
+    client_id,
+    tokens,
+    images,
+    imageFileIds,
+    videos,
+    videoFileIds,
+    audios,
+    audioFileIds,
+    modelId, // 新增：当前使用的模型 ID
+  } = reqBody;
+
+  const normalizedClientId =
+    typeof client_id === "string" && client_id.trim().length > 0
+      ? client_id.trim()
+      : null;
+
+  // 构建媒体 payload
+  const mediaPayload: MediaPayload = {
+    images: Array.isArray(images) ? images : Array.isArray(imageFileIds) ? imageFileIds : [],
+    videos: Array.isArray(videos) ? videos : Array.isArray(videoFileIds) ? videoFileIds : [],
+    audios: Array.isArray(audios) ? audios : Array.isArray(audioFileIds) ? audioFileIds : [],
+  };
+
+  if (!isDomesticRequest(req)) {
+    let userId: string;
+    let userMeta: any = {};
+    let supabase: any;
+
+    // 优先从 cookie 中读取自定义 JWT token，如果没有再从 Authorization header 读取
+    const { cookies } = await import('next/headers');
+    const cookieStore = await cookies();
+    let customToken = cookieStore.get('custom-jwt-token')?.value;
+
+    if (!customToken) {
+      // 如果 cookie 中没有，尝试从 Authorization header 读取
+      const authHeader = req.headers.get("authorization");
+      customToken = authHeader?.replace(/^Bearer\s+/i, "");
+    }
+
+    if (customToken) {
+      // 使用自定义 JWT 认证（Android Native Google Sign-In）
+      try {
+        const jwt = require('jsonwebtoken');
+        const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-key-change-in-production';
+        const decoded = jwt.verify(customToken, JWT_SECRET) as any;
+        userId = decoded.sub;
+        console.log('[messages POST] Using custom JWT auth for user:', userId);
+        // 使用 service role 客户端绕过 RLS 策略
+        supabase = await createServiceRoleClient();
+      } catch (error) {
+        console.error('[messages POST] Custom JWT verification failed:', error);
+        return new Response("Unauthorized", { status: 401 });
+      }
+    } else {
+      // 使用 Supabase 认证
+      supabase = await createClient();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData?.user) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      userId = userData.user.id;
+      userMeta = userData.user.user_metadata as any;
+    }
+
+    const plan = getPlanInfo(userMeta);
+    const effectivePlanLower = plan.planLower || "free";
+
+    // Enforce daily quota on user messages (只校验，不扣减)
+    // 注意：只有外部模型才扣除 daily external quota，MornGPT 专家模型不扣除
+    const currentModelId = modelId || "";
+    const shouldCheckDailyQuota = role === "user" && isExternalModel(currentModelId);
+
+    if (shouldCheckDailyQuota) {
+      const today = new Date().toISOString().split("T")[0];
+      const limit = (() => {
+        if (effectivePlanLower === "enterprise") {
+          return getEnterpriseDailyLimit();
+        }
+        if (effectivePlanLower === "pro") {
+          return getProDailyLimit();
+        }
+        if (effectivePlanLower === "basic") {
+          return getBasicDailyLimit();
+        }
+        return getFreeDailyLimit();
+      })();
+
+      // 使用 user_wallets 表跟踪每日配额
+      let used = 0;
+      const { data: walletRow, error: walletErr } = await supabase
+        .from("user_wallets")
+        .select("daily_external_day, daily_external_used, daily_external_plan, monthly_image_balance, monthly_video_balance")
+        .eq("user_id", userId)
+        .single();
+
+      if (walletErr && walletErr.code !== "PGRST116") {
+        console.error("Quota fetch error", walletErr);
+        return new Response("Failed to check quota", { status: 500 });
+      }
+
+      // 检查是否是同一天/同一套餐，如果不是则重置计数（仅重置，不在此处扣减）
+      const walletDay = walletRow?.daily_external_day;
+      const walletPlan = walletRow?.daily_external_plan;
+      const isNewDay = walletDay !== today;
+      const isPlanChanged = !!walletPlan && walletPlan !== effectivePlanLower;
+
+      if (isNewDay || isPlanChanged) {
+        used = 0;
+        const { error: resetErr } = await supabase
+          .from("user_wallets")
+          .update({
+            daily_external_used: 0,
+            daily_external_day: today,
+            daily_external_plan: effectivePlanLower,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", userId);
+        if (resetErr) {
+          console.error("Quota reset error", resetErr);
+          return new Response("Failed to reset quota", { status: 500 });
+        }
+      } else {
+        used = walletRow?.daily_external_used ?? 0;
+      }
+
+      if (used >= limit) {
+        return new Response(
+          JSON.stringify({
+            error: "Daily quota reached",
+            remaining: 0,
+            limit,
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      // 注意：此处只做“校验”，不做“扣减”。实际扣减在 AI 成功输出后由 /chat/stream 执行，避免无响应误扣。
+    }
+
+    // 国际版高级多模态额度预检查（按模型类型计费单位）
+    if (role === "user" && isAdvancedMultimodalModel(currentModelId)) {
+      const modelIdLower = currentModelId.toLowerCase();
+      const requestImageCount = getImageCount(mediaPayload);
+      const requestVideoAudioCount = getVideoAudioCount(mediaPayload);
+      const quotaImageCount = modelIdLower === "gemma-3-4b-it" ? Math.max(1, requestImageCount) : requestImageCount;
+      const quotaVideoAudioCount =
+        modelIdLower === "voxtral-mini-latest" || modelIdLower === "twelvelabs-pegasus-1.2"
+          ? Math.max(1, requestVideoAudioCount)
+          : requestVideoAudioCount;
+
+      const { data: walletRow, error: walletErr } = await supabase
+        .from("user_wallets")
+        .select("monthly_image_balance, monthly_video_balance")
+        .eq("user_id", userId)
+        .single();
+
+      if (walletErr && walletErr.code !== "PGRST116") {
+        console.error("Multimodal quota fetch error", walletErr);
+        return new Response("Failed to check quota", { status: 500 });
+      }
+
+      // 若钱包记录尚未初始化，则放行；真实扣费仍在 /chat/stream 执行
+      if (walletRow) {
+        const monthlyImageBalance = walletRow.monthly_image_balance ?? 0;
+        const monthlyVideoBalance = walletRow.monthly_video_balance ?? 0;
+
+        if (quotaImageCount > 0 && monthlyImageBalance < quotaImageCount) {
+          return new Response(
+            JSON.stringify({
+              error: getQuotaExceededMessage("monthly_photo", "en"),
+              quotaType: "monthly_photo",
+              remaining: Math.max(0, monthlyImageBalance),
+            }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
+
+        if (quotaVideoAudioCount > 0 && monthlyVideoBalance < quotaVideoAudioCount) {
+          return new Response(
+            JSON.stringify({
+              error: getQuotaExceededMessage("monthly_video_audio", "en"),
+              quotaType: "monthly_video_audio",
+              remaining: Math.max(0, monthlyVideoBalance),
+            }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
+      }
+    }
+
+    // Free 用户或本地会话不落库消息
+    if (conversationId.startsWith("local-")) {
+      return new Response(null, { status: 201 });
+    }
+
+    // Idempotency: avoid duplicate inserts for the same client_id in a conversation
+    if (normalizedClientId) {
+      const { data: existing, error: existingErr } = await supabase
+        .from("messages")
+        .select("id, content, image_file_ids, video_file_ids, audio_file_ids")
+        .eq("conversation_id", conversationId)
+        .eq("user_id", userId)
+        .eq("client_id", normalizedClientId)
+        .maybeSingle();
+
+      if (existingErr) {
+        console.warn("[messages][dedupe] lookup failed", existingErr);
+      } else if (existing) {
+        const existingContent = typeof existing.content === "string" ? existing.content : "";
+        const nextContent = typeof content === "string" ? content : "";
+        const existingImages = Array.isArray((existing as any).image_file_ids) ? (existing as any).image_file_ids : [];
+        const existingVideos = Array.isArray((existing as any).video_file_ids) ? (existing as any).video_file_ids : [];
+        const existingAudios = Array.isArray((existing as any).audio_file_ids) ? (existing as any).audio_file_ids : [];
+        const shouldUpdateContent = nextContent.length > existingContent.length;
+        const shouldUpdateMedia =
+          JSON.stringify(existingImages) !== JSON.stringify(mediaPayload.images) ||
+          JSON.stringify(existingVideos) !== JSON.stringify(mediaPayload.videos) ||
+          JSON.stringify(existingAudios) !== JSON.stringify(mediaPayload.audios);
+
+        if (shouldUpdateContent || shouldUpdateMedia) {
+          const { error: updateErr } = await supabase
+            .from("messages")
+            .update({
+              content: shouldUpdateContent ? content : existingContent,
+              tokens: tokens || null,
+              image_file_ids: mediaPayload.images,
+              video_file_ids: mediaPayload.videos,
+              audio_file_ids: mediaPayload.audios,
+            })
+            .eq("id", existing.id)
+            .eq("conversation_id", conversationId)
+            .eq("user_id", userId);
+          if (updateErr) {
+            console.error("[messages][dedupe] update failed", updateErr);
+          }
+        }
+
+        await supabase
+          .from("conversations")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", conversationId)
+          .eq("user_id", userId);
+
+        return new Response(null, { status: 200 });
+      }
+    }
+
+    const { error } = await supabase.from("messages").insert({
+      conversation_id: conversationId,
+      user_id: userId,
+      role,
+      content,
+      client_id: normalizedClientId,
+      tokens: tokens || null,
+      image_file_ids: mediaPayload.images,
+      video_file_ids: mediaPayload.videos,
+      audio_file_ids: mediaPayload.audios,
+    });
+    if (error) {
+      console.error("Insert message error", error);
+      return new Response("Failed to insert message", { status: 500 });
+    }
+
+    await supabase
+      .from("conversations")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", conversationId)
+      .eq("user_id", userId);
+
+    return new Response(null, { status: 201 });
+  }
+
+  // domestic -> CloudBase
+  const user = await getDomesticUser(req);
+  if (!user) return new Response("Unauthorized", { status: 401 });
+  const plan = getPlanInfo(user.metadata);
+
+  const connector = new CloudBaseConnector();
+  await connector.initialize();
+  const db = connector.getClient();
+
+  try {
+    // ============================================================
+    // 国内版媒体配额校验（仅检查，扣减在 AI 成功后）
+    // ============================================================
+    if (role === "user") {
+      const currentModelId = modelId || "qwen3-omni-flash";
+      const quotaResult = await validateMediaQuotaWithWallet({
+        userId: user.id,
+        planLower: plan.planLower || "free",
+        modelId: currentModelId,
+        mediaPayload,
+        language: "zh",
+      });
+
+      if (!quotaResult.allowed) {
+        return new Response(
+          JSON.stringify({
+            error: quotaResult.error,
+            remaining: 0,
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      // 国内版：外部模型 & Omni 纯文本对话，检查每日外部模型额度（只校验，扣减在 AI 成功输出后）
+      const category = getModelCategory(currentModelId);
+      const imageCount = getImageCount(mediaPayload);
+      const videoAudioCount = getVideoAudioCount(mediaPayload);
+      const shouldCheckDailyExternal =
+        category === "external" ||
+        (category === "advanced_multimodal" && imageCount === 0 && videoAudioCount === 0);
+
+      if (shouldCheckDailyExternal) {
+        const effectivePlanLower = plan.planActive ? plan.planLower || "free" : "free";
+        const dailyCheck = await checkDailyExternalQuota(user.id, effectivePlanLower, 1);
+        if (!dailyCheck.allowed) {
+          return new Response(
+            JSON.stringify({
+              error: getQuotaExceededMessage("daily", "zh"),
+              quotaType: "daily",
+              remaining: 0,
+              limit: dailyCheck.limit,
+            }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
+      }
+    }
+
+    // Free 用户或本地会话：不落库，仅返回成功
+    if (conversationId.startsWith("local-")) {
+      return new Response(null, { status: 201 });
+    }
+
+    const now = new Date().toISOString();
+
+    // Idempotency: avoid duplicate inserts for the same clientId in a conversation
+    if (normalizedClientId) {
+      const existRes = await db
+        .collection("messages")
+        .where({ conversationId, userId: user.id, clientId: normalizedClientId })
+        .get();
+      const existing = (existRes?.data || [])[0] as any | undefined;
+      if (existing?._id) {
+        const existingContent = typeof existing.content === "string" ? existing.content : "";
+        const nextContent = typeof content === "string" ? content : "";
+        const shouldUpdate = nextContent.length > existingContent.length;
+        if (shouldUpdate) {
+          await db.collection("messages").doc(existing._id).update({
+            content,
+            tokens: tokens || null,
+            updatedAt: now,
+          });
+        }
+
+        // touch conversation
+        await db.collection("conversations").doc(conversationId).update({
+          updatedAt: now,
+        });
+
+        return Response.json({ id: existing._id }, { status: 200 });
+      }
+    }
+
+    const addRes = await db.collection("messages").add({
+      conversationId,
+      userId: user.id,
+      role,
+      content,
+      clientId: normalizedClientId,
+      tokens: tokens || null,
+      createdAt: now,
+      imageFileIds: mediaPayload.images,
+      videoFileIds: mediaPayload.videos,
+      audioFileIds: mediaPayload.audios,
+    });
+
+    // touch conversation
+    await db.collection("conversations").doc(conversationId).update({
+      updatedAt: now,
+    });
+
+    return Response.json({ id: addRes.id }, { status: 201 });
+  } catch (error) {
+    console.error("CloudBase insert message error", error);
+    return new Response("Failed to insert message", { status: 500 });
+  }
+}
+
+// Delete a message from a conversation
+export async function DELETE(
+  req: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> },
+) {
+  const { id: conversationId } = await paramsPromise;
+  const { messageId } = await req.json();
+
+  if (!messageId) {
+    return new Response("messageId required", { status: 400 });
+  }
+
+  if (!isDomesticRequest(req)) {
+    const supabase = await createClient();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData?.user) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    const userId = userData.user.id;
+
+    const { data: msg, error: fetchErr } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("id", messageId)
+      .eq("conversation_id", conversationId)
+      .eq("user_id", userId)
+      .single();
+
+    if (fetchErr || !msg) {
+      return new Response("Message not found", { status: 404 });
+    }
+
+    const { error } = await supabase
+      .from("messages")
+      .delete()
+      .eq("id", messageId)
+      .eq("conversation_id", conversationId)
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Delete message error", error);
+      return new Response("Failed to delete message", { status: 500 });
+    }
+
+    await supabase
+      .from("conversations")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", conversationId)
+      .eq("user_id", userId);
+
+    return new Response(null, { status: 204 });
+  }
+
+  // domestic -> CloudBase
+  const user = await getDomesticUser(req);
+  if (!user) return new Response("Unauthorized", { status: 401 });
+
+  const connector = new CloudBaseConnector();
+  await connector.initialize();
+  const db = connector.getClient();
+
+  try {
+    // verify ownership; allow delete by _id or clientId (front-end may send client id)
+    let targetMsg: any | null = null;
+
+    const msgRes = await db.collection("messages").doc(messageId).get();
+    if (msgRes?.data?.[0]) {
+      targetMsg = msgRes.data[0];
+    } else {
+      const byClient = await db
+        .collection("messages")
+        .where({ clientId: messageId, conversationId, userId: user.id })
+        .limit(1)
+        .get();
+      targetMsg = byClient?.data?.[0] || null;
+    }
+
+    if (!targetMsg || targetMsg.conversationId !== conversationId || targetMsg.userId !== user.id) {
+      return new Response("Message not found", { status: 404 });
+    }
+
+    const docId = targetMsg._id || messageId;
+    await db.collection("messages").doc(docId).remove();
+    await db.collection("conversations").doc(conversationId).update({
+      updatedAt: new Date().toISOString(),
+    });
+
+    return new Response(null, { status: 204 });
+  } catch (error) {
+    console.error("CloudBase delete message error", error);
+    return new Response("Failed to delete message", { status: 500 });
+  }
+}

@@ -31,6 +31,11 @@ const navItems = [
     icon: BarChart3,
   },
   {
+    href: "/admin/users",
+    label: "用户管理",
+    icon: User,
+  },
+  {
     href: "/admin/ads",
     label: "广告管理",
     icon: Image,

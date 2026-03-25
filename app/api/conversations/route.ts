@@ -92,6 +92,7 @@ export async function GET(req: NextRequest) {
       .from("conversations")
       .select("id, title, model, created_at, updated_at, model_type, expert_model_id")
       .eq("user_id", userId) // 🔒 关键：只查询当前用户的对话
+      .is("deleted_at", null) // 排除已软删除的对话
       .order("created_at", { ascending: true }); // 按创建时间升序，方便找最早的
 
     if (error) {

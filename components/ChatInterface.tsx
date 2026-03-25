@@ -65,10 +65,10 @@ const formatModelName = (raw: string) => {
   const mapped = isGeneral
     ? "General Model"
     : externalModels.find(
-        (m) =>
-          m.id.toLowerCase() === normalized ||
-          m.name.toLowerCase() === normalized
-      )?.name || cleaned;
+      (m) =>
+        m.id.toLowerCase() === normalized ||
+        m.name.toLowerCase() === normalized
+    )?.name || cleaned;
   return streaming ? `${mapped} (Streaming...)` : mapped;
 };
 
@@ -501,38 +501,39 @@ function ChatInterface({
         </div>
       )}
       {messages.length === 0 ? (
-        <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-[#2d2d30] transition-colors">
-          <div className="text-center">
-            <h1 className="text-4xl font-bold text-gray-900 dark:text-[#ececf1] mb-4">
+        <div className="flex items-center justify-center h-full bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-[#1a1b23] dark:via-[#22232d] dark:to-[#1e2030] transition-colors">
+          <div className="text-center px-6 max-w-lg">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25 mb-6">
+              <Bot className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-700 dark:from-white dark:via-gray-100 dark:to-gray-300 bg-clip-text text-transparent mb-3">
               {getLocalizedText("appName")}
             </h1>
-            <p className="text-xl text-gray-600 dark:text-gray-300 mb-8">
+            <p className="text-base text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
               {getLocalizedText("heroTagline")}
             </p>
 
             {/* Compact Tips */}
-            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-2 sm:p-3 max-w-4xl mx-auto">
-              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 sm:gap-x-5 text-[10px] sm:text-xs text-blue-800 dark:text-blue-200">
-                <span>🧭 {getLocalizedText("beSpecific")}</span>
-                <span>🚀 {getLocalizedText("chooseSpecialized")}</span>
-                <span>📎 {getLocalizedText("uploadFilesWith")}</span>
+            <div className="bg-white/60 dark:bg-white/5 border border-gray-200/60 dark:border-gray-700/50 rounded-xl p-3 sm:p-4 backdrop-blur-sm">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-6 text-xs text-gray-600 dark:text-gray-400">
+                <span className="flex items-center gap-1.5">🧭 {getLocalizedText("beSpecific")}</span>
+                <span className="flex items-center gap-1.5">🚀 {getLocalizedText("chooseSpecialized")}</span>
+                <span className="flex items-center gap-1.5">📎 {getLocalizedText("uploadFilesWith")}</span>
               </div>
             </div>
           </div>
         </div>
       ) : (
         <ScrollArea
-          className={`h-full ${
-            isConversationLoading ? "pointer-events-none blur-[1px]" : ""
-          }`}
+          className={`h-full ${isConversationLoading ? "pointer-events-none blur-[1px]" : ""
+            }`}
           ref={scrollAreaRef}
         >
           <div
-            className={`p-2 sm:p-4 transition-colors duration-500 ${
-              jumpToScrollPosition !== null && jumpToScrollPosition > 0
-                ? "bg-blue-50 dark:bg-blue-900/30"
-                : ""
-            }`}
+            className={`p-2 sm:p-4 transition-colors duration-500 ${jumpToScrollPosition !== null && jumpToScrollPosition > 0
+              ? "bg-blue-50 dark:bg-blue-900/30"
+              : ""
+              }`}
           >
             <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4">
               {showContextBanner && (
@@ -556,121 +557,171 @@ function ChatInterface({
                 </div>
               )}
               {activeMessages.map((message: Message, index: number) => {
-                    const isUser = message.role === "user";
-                    const prevMessage = index > 0 ? activeMessages[index - 1] : null;
-                    const showDateSeparator = !prevMessage || !isSameDay(message.timestamp, prevMessage.timestamp);
-                    const dateLabel = showDateSeparator ? formatMessageDate(message.timestamp, selectedLanguage) : null;
-                    const userDisplayName =
-                      (appUser?.name || "").trim() ||
-                      getLocalizedText("you") ||
-                      "You";
-                    const assistantDisplayName =
-                      formatModelName(
-                        (message.model || currentChat?.model || "").trim()
-                      ) ||
-                      getLocalizedText("assistant") ||
-                      "Assistant";
-                    const timeLabel = new Date(message.timestamp).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    });
-                    const baseImages =
-                      (message.imagePreviews && message.imagePreviews.length
-                        ? message.imagePreviews
-                        : message.images) || [];
-                    const baseVideos =
-                      (message.videoPreviews && message.videoPreviews.length
-                        ? message.videoPreviews
-                        : message.videos) || [];
-                    const baseAudios =
-                      (message.audioPreviews && message.audioPreviews.length
-                        ? message.audioPreviews
-                        : (message as any).audios) || [];
-                    const resolvedImages = Array.from(
-                      new Set(
-                        (baseImages as string[])
-                          .map((src) => resolveMediaSrc(src))
-                          .filter((v): v is string => !!v),
-                      ),
-                    );
-                    const resolvedVideos = Array.from(
-                      new Set(
-                        (baseVideos as string[])
-                          .map((src) => resolveMediaSrc(src))
-                          .filter((v): v is string => !!v),
-                      ),
-                    );
-                    const resolvedAudios = Array.from(
-                      new Set(
-                        (baseAudios as string[])
-                          .map((src) => resolveMediaSrc(src))
-                          .filter((v): v is string => !!v),
-                      ),
-                    );
-                    const unresolvedMedia = Array.from(
-                      new Set(
-                        [...baseImages, ...baseVideos, ...baseAudios].filter(
-                          (src) => typeof src === "string" && !resolveMediaSrc(src),
-                        ) as string[],
-                      ),
-                    );
+                const isUser = message.role === "user";
+                const prevMessage = index > 0 ? activeMessages[index - 1] : null;
+                const showDateSeparator = !prevMessage || !isSameDay(message.timestamp, prevMessage.timestamp);
+                const dateLabel = showDateSeparator ? formatMessageDate(message.timestamp, selectedLanguage) : null;
+                const userDisplayName =
+                  (appUser?.name || "").trim() ||
+                  getLocalizedText("you") ||
+                  "You";
+                const assistantDisplayName =
+                  formatModelName(
+                    (message.model || currentChat?.model || "").trim()
+                  ) ||
+                  getLocalizedText("assistant") ||
+                  "Assistant";
+                const timeLabel = new Date(message.timestamp).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+                const baseImages =
+                  (message.imagePreviews && message.imagePreviews.length
+                    ? message.imagePreviews
+                    : message.images) || [];
+                const baseVideos =
+                  (message.videoPreviews && message.videoPreviews.length
+                    ? message.videoPreviews
+                    : message.videos) || [];
+                const baseAudios =
+                  (message.audioPreviews && message.audioPreviews.length
+                    ? message.audioPreviews
+                    : (message as any).audios) || [];
+                const resolvedImages = Array.from(
+                  new Set(
+                    (baseImages as string[])
+                      .map((src) => resolveMediaSrc(src))
+                      .filter((v): v is string => !!v),
+                  ),
+                );
+                const resolvedVideos = Array.from(
+                  new Set(
+                    (baseVideos as string[])
+                      .map((src) => resolveMediaSrc(src))
+                      .filter((v): v is string => !!v),
+                  ),
+                );
+                const resolvedAudios = Array.from(
+                  new Set(
+                    (baseAudios as string[])
+                      .map((src) => resolveMediaSrc(src))
+                      .filter((v): v is string => !!v),
+                  ),
+                );
+                const unresolvedMedia = Array.from(
+                  new Set(
+                    [...baseImages, ...baseVideos, ...baseAudios].filter(
+                      (src) => typeof src === "string" && !resolveMediaSrc(src),
+                    ) as string[],
+                  ),
+                );
 
-                    const bubble = (
-                      <div
-                        className={`chat-bubble-container w-full max-w-full sm:max-w-3xl p-3 sm:p-4 rounded-xl sm:rounded-2xl relative group shadow-lg ${
-                          isUser
-                            ? "bg-gradient-to-br from-indigo-500 via-blue-500 to-blue-600 text-white shadow-blue-500/25"
-                            : "bg-white/90 dark:bg-[#2f3039] border border-white/70 dark:border-[#3f4150] text-gray-900 dark:text-[#e7e9f3] backdrop-blur"
-                        }`}
+                const bubble = (
+                  <div
+                    className={`chat-bubble-container w-full max-w-full sm:max-w-3xl p-3 sm:p-4 rounded-xl sm:rounded-2xl relative group transition-shadow duration-200 ${isUser
+                      ? "bg-gradient-to-br from-indigo-500 via-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/30"
+                      : "bg-white/95 dark:bg-[#2f3039]/95 border border-gray-100 dark:border-[#3f4150] text-gray-900 dark:text-[#e7e9f3] shadow-sm hover:shadow-md backdrop-blur-sm"
+                      }`}
+                  >
+                    <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                      <span
+                        className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-semibold rounded-full ${isUser
+                          ? "bg-white/20 text-white"
+                          : "bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-100"
+                          }`}
                       >
-                        <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
-                          <span
-                            className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-semibold rounded-full ${
-                              isUser
-                                ? "bg-white/20 text-white"
-                                : "bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-100"
-                            }`}
-                          >
-                            {isUser ? userDisplayName : assistantDisplayName}
-                          </span>
-                          <span
-                            className={`ml-auto text-[10px] sm:text-[11px] ${
-                              isUser ? "text-white/80" : "text-gray-500 dark:text-gray-400"
-                            }`}
-                          >
-                            {timeLabel}
-                          </span>
-                        </div>
+                        {isUser ? userDisplayName : assistantDisplayName}
+                      </span>
+                      <span
+                        className={`ml-auto text-[10px] sm:text-[11px] ${isUser ? "text-white/80" : "text-gray-500 dark:text-gray-400"
+                          }`}
+                      >
+                        {timeLabel}
+                      </span>
+                    </div>
 
-                        {message.isMultiGPT && (
-                          <div className="flex items-center space-x-2 mb-3 text-indigo-200 dark:text-indigo-300">
-                            <Zap className="w-4 h-4" />
-                            <span className="text-sm font-medium">
-                              {getLocalizedText("multiGPTDeepThinking")}
-                            </span>
-                          </div>
+                    {message.isMultiGPT && (
+                      <div className="flex items-center space-x-2 mb-3 text-indigo-200 dark:text-indigo-300">
+                        <Zap className="w-4 h-4" />
+                        <span className="text-sm font-medium">
+                          {getLocalizedText("multiGPTDeepThinking")}
+                        </span>
+                      </div>
+                    )}
+                    {isUser ? (
+                      <p className="whitespace-pre-wrap leading-relaxed break-words" style={{ fontSize: 'var(--chat-font-size, 14px)', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
+                        {stripAttachmentSummary(message.content)}
+                        {message.isStreaming && (
+                          <span className="inline-block w-0.5 h-4 bg-white/90 ml-1 animate-pulse"></span>
                         )}
-                        {isUser ? (
-                          <p className="whitespace-pre-wrap leading-relaxed break-words" style={{ fontSize: 'var(--chat-font-size, 14px)', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
-                            {stripAttachmentSummary(message.content)}
-                            {message.isStreaming && (
-                              <span className="inline-block w-0.5 h-4 bg-white/90 ml-1 animate-pulse"></span>
-                            )}
-                          </p>
-                        ) : (
-                          <AIMessageContent
-                            content={message.content}
-                            isStreaming={message.isStreaming}
-                          />
-                        )}
-                        {(resolvedImages.length > 0 ||
-                          resolvedVideos.length > 0 ||
-                          resolvedAudios.length > 0 ||
-                          unresolvedMedia.length > 0) && (
-                          <div className="mt-3 space-y-2">
-                            {(resolvedImages.length > 0 ||
-                              resolvedVideos.length > 0 ||
-                              resolvedAudios.length > 0) && (
+                      </p>
+                    ) : (
+                      <AIMessageContent
+                        content={message.content}
+                        isStreaming={message.isStreaming}
+                      />
+                    )}
+                    {/* User message action bar */}
+                    {isUser && (
+                      <div className="flex items-center flex-wrap gap-1 sm:gap-2 mt-2 pt-2 border-t border-white/15 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-white/80 hover:text-white hover:bg-white/10"
+                          onClick={() => {
+                            copyToClipboard(message.content);
+                            setCopiedMessageId(message.id);
+                            setTimeout(() => setCopiedMessageId(null), 2000);
+                          }}
+                          title={selectedLanguage === "zh" ? "复制" : "Copy"}
+                        >
+                          <Copy className="w-3 h-3 sm:mr-1" />
+                          <span className="hidden sm:inline">
+                            {copiedMessageId === message.id
+                              ? (selectedLanguage === "zh" ? "已复制" : "Copied")
+                              : (selectedLanguage === "zh" ? "复制" : "Copy")}
+                          </span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-white/80 hover:text-white hover:bg-white/10"
+                          onClick={() => {
+                            downloadMessage(message.content, message.id);
+                            setDownloadedMessageId(message.id);
+                            setTimeout(() => setDownloadedMessageId(null), 2000);
+                          }}
+                          title={selectedLanguage === "zh" ? "下载" : "Download"}
+                        >
+                          <Download className="w-3 h-3 sm:mr-1" />
+                          <span className="hidden sm:inline">
+                            {downloadedMessageId === message.id
+                              ? (selectedLanguage === "zh" ? "已下载" : "Downloaded")
+                              : (selectedLanguage === "zh" ? "下载" : "Download")}
+                          </span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-white/80 hover:text-white hover:bg-white/10"
+                          onClick={() => shareMessage(message.content)}
+                          title={selectedLanguage === "zh" ? "转发" : "Share"}
+                        >
+                          <Share className="w-3 h-3 sm:mr-1" />
+                          <span className="hidden sm:inline">
+                            {selectedLanguage === "zh" ? "转发" : "Share"}
+                          </span>
+                        </Button>
+                      </div>
+                    )}
+                    {(resolvedImages.length > 0 ||
+                      resolvedVideos.length > 0 ||
+                      resolvedAudios.length > 0 ||
+                      unresolvedMedia.length > 0) && (
+                        <div className="mt-3 space-y-2">
+                          {(resolvedImages.length > 0 ||
+                            resolvedVideos.length > 0 ||
+                            resolvedAudios.length > 0) && (
                               <div className="flex flex-wrap gap-3">
                                 {resolvedImages.map((src) => (
                                   <img
@@ -700,164 +751,171 @@ function ChatInterface({
                                 ))}
                               </div>
                             )}
-                            {unresolvedMedia.length > 0 && (
-                              <div
-                                className={`flex flex-wrap gap-2 text-xs ${
-                                  isUser ? "text-white/80" : "text-gray-500 dark:text-gray-400"
+                          {unresolvedMedia.length > 0 && (
+                            <div
+                              className={`flex flex-wrap gap-2 text-xs ${isUser ? "text-white/80" : "text-gray-500 dark:text-gray-400"
                                 }`}
-                              >
-                                {unresolvedMedia.map((id) => (
-                                  <span
-                                    key={id}
-                                    className="px-2 py-1 rounded border border-current/40 bg-white/10 dark:bg-white/5"
-                                  >
-                                    {id.split("/").pop()?.slice(-24) || id.slice(-18)}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {!isUser && (
-                          <div className="flex items-center flex-wrap gap-1 sm:gap-2 mt-3 pt-3 border-t border-gray-200/70 dark:border-[#4a4c5c]">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
-                              onClick={() => {
-                                copyToClipboard(message.content);
-                                setCopiedMessageId(message.id);
-                                setTimeout(() => setCopiedMessageId(null), 2000);
-                              }}
-                              title={getLocalizedText("copyResponse")}
                             >
-                              <Copy className="w-3 h-3 sm:mr-1" />
-                              <span className="hidden sm:inline">
-                                {copiedMessageId === message.id
-                                  ? (getLocalizedText("copied") || "已复制")
-                                  : (getLocalizedText("copy") || "复制")}
-                              </span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
-                              onClick={() => {
-                                downloadMessage(message.content, message.id);
-                                setDownloadedMessageId(message.id);
-                                setTimeout(() => setDownloadedMessageId(null), 2000);
-                              }}
-                              title={getLocalizedText("downloadResponse")}
-                            >
-                              <Download className="w-3 h-3 sm:mr-1" />
-                              <span className="hidden sm:inline">
-                                {downloadedMessageId === message.id
-                                  ? (getLocalizedText("downloaded") || "已下载")
-                                  : (getLocalizedText("download") || "下载")}
-                              </span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className={`h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs ${
-                                isMessageBookmarked(message.id)
-                                  ? "text-yellow-600 dark:text-yellow-400"
-                                  : "text-gray-700 dark:text-gray-300"
-                              } hover:text-yellow-600 dark:hover:text-yellow-400 hover:bg-gray-100 dark:hover:bg-[#565869]`}
-                              onClick={() =>
-                                isMessageBookmarked(message.id)
-                                  ? removeBookmark(
-                                      bookmarkedMessages.find((b) => b.messageId === message.id)?.id || ""
-                                    )
-                                  : bookmarkMessage(message)
-                              }
-                              title={
-                                isMessageBookmarked(message.id)
-                                  ? getLocalizedText("removeBookmark")
-                                  : getLocalizedText("bookmarkMessage")
-                              }
-                            >
-                              <Star
-                                className={`w-3 h-3 sm:mr-1 ${
-                                  isMessageBookmarked(message.id) ? "fill-current" : ""
-                                }`}
-                              />
-                              <span className="hidden sm:inline">
-                                {isMessageBookmarked(message.id)
-                                  ? getLocalizedText("bookmarked")
-                                  : getLocalizedText("bookmark")}
-                              </span>
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    );
-
-                    return (
-                      <React.Fragment key={message.id}>
-                        {showDateSeparator && (
-                          <div className="flex items-center justify-center my-4">
-                            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent" />
-                            <span className="px-4 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100/80 dark:bg-gray-800/80 rounded-full backdrop-blur-sm">
-                              {dateLabel}
-                            </span>
-                            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent" />
-                          </div>
-                        )}
-                        <div
-                          id={`message-${message.id}`}
-                          className={`flex flex-col sm:flex-row sm:items-start gap-1.5 sm:gap-3 ${
-                            isUser ? "items-end sm:flex-row-reverse" : "items-start sm:flex-row"
-                          } transition-colors duration-500`}
+                              {unresolvedMedia.map((id) => (
+                                <span
+                                  key={id}
+                                  className="px-2 py-1 rounded border border-current/40 bg-white/10 dark:bg-white/5"
+                                >
+                                  {id.split("/").pop()?.slice(-24) || id.slice(-18)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    {!isUser && (
+                      <div className="flex items-center flex-wrap gap-1 sm:gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-[#3a3c4c] opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                          onClick={() => {
+                            copyToClipboard(message.content);
+                            setCopiedMessageId(message.id);
+                            setTimeout(() => setCopiedMessageId(null), 2000);
+                          }}
+                          title={getLocalizedText("copyResponse")}
                         >
-                        {/* 头像：移动端在上方小尺寸，桌面端在侧边 */}
-                        {isUser && appUser?.avatar ? (
-                          <img
-                            src={appUser.avatar}
-                            alt={appUser.name || "User"}
-                            className="h-6 w-6 sm:mt-1 sm:h-10 sm:w-10 sm:min-w-[2.5rem] sm:min-h-[2.5rem] flex-shrink-0 rounded-full sm:rounded-xl object-cover shadow-md shadow-blue-400/30"
+                          <Copy className="w-3 h-3 sm:mr-1" />
+                          <span className="hidden sm:inline">
+                            {copiedMessageId === message.id
+                              ? (getLocalizedText("copied") || "已复制")
+                              : (getLocalizedText("copy") || "复制")}
+                          </span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                          onClick={() => {
+                            downloadMessage(message.content, message.id);
+                            setDownloadedMessageId(message.id);
+                            setTimeout(() => setDownloadedMessageId(null), 2000);
+                          }}
+                          title={getLocalizedText("downloadResponse")}
+                        >
+                          <Download className="w-3 h-3 sm:mr-1" />
+                          <span className="hidden sm:inline">
+                            {downloadedMessageId === message.id
+                              ? (getLocalizedText("downloaded") || "已下载")
+                              : (getLocalizedText("download") || "下载")}
+                          </span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-[#ececf1] hover:bg-gray-100 dark:hover:bg-[#565869]"
+                          onClick={() => shareMessage(message.content)}
+                          title={getLocalizedText("shareResponse") || (selectedLanguage === "zh" ? "转发" : "Share")}
+                        >
+                          <Share className="w-3 h-3 sm:mr-1" />
+                          <span className="hidden sm:inline">
+                            {selectedLanguage === "zh" ? "转发" : "Share"}
+                          </span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className={`h-6 sm:h-7 px-1.5 sm:px-2 text-[10px] sm:text-xs ${isMessageBookmarked(message.id)
+                            ? "text-yellow-600 dark:text-yellow-400"
+                            : "text-gray-700 dark:text-gray-300"
+                            } hover:text-yellow-600 dark:hover:text-yellow-400 hover:bg-gray-100 dark:hover:bg-[#565869]`}
+                          onClick={() =>
+                            isMessageBookmarked(message.id)
+                              ? removeBookmark(
+                                bookmarkedMessages.find((b) => b.messageId === message.id)?.id || ""
+                              )
+                              : bookmarkMessage(message)
+                          }
+                          title={
+                            isMessageBookmarked(message.id)
+                              ? getLocalizedText("removeBookmark")
+                              : getLocalizedText("bookmarkMessage")
+                          }
+                        >
+                          <Star
+                            className={`w-3 h-3 sm:mr-1 ${isMessageBookmarked(message.id) ? "fill-current" : ""
+                              }`}
                           />
-                        ) : (
-                          <div
-                            className={`h-6 w-6 sm:mt-1 sm:h-10 sm:w-10 sm:min-w-[2.5rem] sm:min-h-[2.5rem] flex-shrink-0 rounded-full sm:rounded-xl flex items-center justify-center text-white shadow-md ${
-                              isUser
-                                ? "bg-gradient-to-br from-indigo-500 to-blue-600 shadow-blue-400/30"
-                                : "bg-gradient-to-br from-emerald-500 to-teal-500 shadow-emerald-400/30"
-                            }`}
-                          >
-                            {isUser ? <User className="w-3.5 h-3.5 sm:w-5 sm:h-5" /> : <Bot className="w-3.5 h-3.5 sm:w-5 sm:h-5" />}
-                          </div>
-                        )}
-
-                        {isUser ? (
-                          <ContextMenu>
-                            <ContextMenuTrigger asChild>
-                              <div onContextMenu={(e) => {
-                                // 只有在没有选中文本时才触发右键菜单
-                                if (!isUser && window.getSelection()?.toString()) {
-                                  e.preventDefault();
-                                }
-                              }}>
-                                {bubble}
-                              </div>
-                            </ContextMenuTrigger>
-                            <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
-                              <ContextMenuItem
-                                onClick={() => onDeleteMessage(message.id)}
-                                className="text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30"
-                              >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                {getLocalizedText("delete") || "Delete"}
-                              </ContextMenuItem>
-                            </ContextMenuContent>
-                          </ContextMenu>
-                        ) : (
-                          bubble
-                        )}
+                          <span className="hidden sm:inline">
+                            {isMessageBookmarked(message.id)
+                              ? getLocalizedText("bookmarked")
+                              : getLocalizedText("bookmark")}
+                          </span>
+                        </Button>
                       </div>
-                      </React.Fragment>
-                    );
-                  })}
+                    )}
+                  </div>
+                );
+
+                return (
+                  <React.Fragment key={message.id}>
+                    {showDateSeparator && (
+                      <div className="flex items-center justify-center my-4">
+                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent" />
+                        <span className="px-4 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100/80 dark:bg-gray-800/80 rounded-full backdrop-blur-sm">
+                          {dateLabel}
+                        </span>
+                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent" />
+                      </div>
+                    )}
+                    <div
+                      id={`message-${message.id}`}
+                      className={`flex flex-col sm:flex-row sm:items-start gap-1.5 sm:gap-3 ${isUser ? "items-end sm:flex-row-reverse" : "items-start sm:flex-row"
+                        } transition-colors duration-500`}
+                    >
+                      {/* 头像：移动端在上方小尺寸，桌面端在侧边 */}
+                      {isUser && appUser?.avatar ? (
+                        <img
+                          src={appUser.avatar}
+                          alt={appUser.name || "User"}
+                          className="h-6 w-6 sm:mt-1 sm:h-10 sm:w-10 sm:min-w-[2.5rem] sm:min-h-[2.5rem] flex-shrink-0 rounded-full sm:rounded-xl object-cover shadow-md shadow-blue-400/30"
+                        />
+                      ) : (
+                        <div
+                          className={`h-6 w-6 sm:mt-1 sm:h-10 sm:w-10 sm:min-w-[2.5rem] sm:min-h-[2.5rem] flex-shrink-0 rounded-full sm:rounded-xl flex items-center justify-center text-white shadow-md ${isUser
+                            ? "bg-gradient-to-br from-indigo-500 to-blue-600 shadow-blue-400/30"
+                            : "bg-gradient-to-br from-emerald-500 to-teal-500 shadow-emerald-400/30"
+                            }`}
+                        >
+                          {isUser ? <User className="w-3.5 h-3.5 sm:w-5 sm:h-5" /> : <Bot className="w-3.5 h-3.5 sm:w-5 sm:h-5" />}
+                        </div>
+                      )}
+
+                      {isUser ? (
+                        <ContextMenu>
+                          <ContextMenuTrigger asChild>
+                            <div onContextMenu={(e) => {
+                              // 只有在没有选中文本时才触发右键菜单
+                              if (!isUser && window.getSelection()?.toString()) {
+                                e.preventDefault();
+                              }
+                            }}>
+                              {bubble}
+                            </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent className="bg-white dark:bg-[#40414f] border-gray-200 dark:border-[#565869]">
+                            <ContextMenuItem
+                              onClick={() => onDeleteMessage(message.id)}
+                              className="text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              {getLocalizedText("delete") || "Delete"}
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      ) : (
+                        bubble
+                      )}
+                    </div>
+                  </React.Fragment>
+                );
+              })}
               {isLoading && thinkingText && (
                 <div className="flex justify-start">
                   <div className="flex items-center space-x-2 text-gray-600 dark:text-gray-400">

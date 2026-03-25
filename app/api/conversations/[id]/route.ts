@@ -93,8 +93,30 @@ export async function DELETE(
 
     console.log(`[DELETE] ✅ Conversation verified:`, existingConv);
 
-    // 确认存在后再删除
-    console.log(`[DELETE] 🗑️ Deleting conversation ${id} for user ${userId}`);
+    // Check if permanent delete is requested (from recycle bin)
+    const isPermanent = req.nextUrl.searchParams.get("permanent") === "true";
+
+    if (!isPermanent) {
+      // SOFT DELETE: set deleted_at timestamp (30-day recycle bin)
+      console.log(`[DELETE] 🗑️ Soft-deleting conversation ${id} for user ${userId}`);
+
+      const { error } = await supabase
+        .from("conversations")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("user_id", userId);
+
+      if (error) {
+        console.error("[DELETE] ❌ Soft delete failed:", error);
+        return new Response("Failed to delete conversation", { status: 500 });
+      }
+
+      console.log(`[DELETE] ✅ Soft-deleted conversation ${id}`);
+      return Response.json({ softDeleted: true }, { status: 200 });
+    }
+
+    // PERMANENT DELETE: actually remove from database
+    console.log(`[DELETE] 🗑️ Permanently deleting conversation ${id} for user ${userId}`);
 
     const { error, count } = await supabase
       .from("conversations")
@@ -103,11 +125,11 @@ export async function DELETE(
       .eq("user_id", userId);
 
     if (error) {
-      console.error("[DELETE] ❌ Delete failed:", error);
+      console.error("[DELETE] ❌ Permanent delete failed:", error);
       return new Response("Failed to delete conversation", { status: 500 });
     }
 
-    console.log(`[DELETE] ✅ Successfully deleted! Affected rows: ${count}`);
+    console.log(`[DELETE] ✅ Permanently deleted! Affected rows: ${count}`);
     return new Response(null, { status: 204 });
   }
 

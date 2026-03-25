@@ -671,11 +671,11 @@ export default function ChatProvider({
     setSelectedPaymentMethod,
     currentPlan,
     setCurrentPlan,
-  guestChatSessions,
-  setGuestChatSessions,
-  guestSessionTimeout,
-  setGuestSessionTimeout,
-} = userState;
+    guestChatSessions,
+    setGuestChatSessions,
+    guestSessionTimeout,
+    setGuestSessionTimeout,
+  } = userState;
 
   const [freeQuotaUsed, setFreeQuotaUsed] = useState<number>(0);
   const [freeQuotaDate, setFreeQuotaDate] = useState<string>("");
@@ -710,54 +710,11 @@ export default function ChatProvider({
   const [enterpriseVideoAudioLimit, setEnterpriseVideoAudioLimit] = useState<number | null>(null);
   const [enterpriseContextLimit, setEnterpriseContextLimit] = useState<number | null>(null);
 
-const loadMessagesForConversation = useCallback(
-  async (conversationId: string) => {
-    const token = ++messagesLoadTokenRef.current;
-    // Local-only (unsaved) conversations have no server history; skip fetch
-    if (conversationId.startsWith("local-")) {
-      setMessages([]);
-      setChatSessions((prev) =>
-        prev.map((c) =>
-          c.id === conversationId
-            ? { ...c, messages: [], isModelLocked: false }
-            : c
-        )
-      );
-      setIsConversationLoading(false);
-      return;
-    }
-
-    setIsConversationLoading(true);
-    try {
-      // 尝试从 localStorage 获取自定义 JWT token（Android Native Google Sign-In）
-      const headers: HeadersInit = {};
-      if (typeof window !== "undefined") {
-        try {
-          const authState = localStorage.getItem("app-auth-state");
-          if (authState) {
-            const parsed = JSON.parse(authState);
-            if (parsed.accessToken) {
-              headers["Authorization"] = `Bearer ${parsed.accessToken}`;
-            }
-          }
-        } catch (e) {
-          // localStorage 读取失败，继续使用 cookie
-        }
-      }
-
-      const res = await fetch(`/api/conversations/${conversationId}/messages`, {
-        cache: "no-store",
-        credentials: "include",
-        headers,
-      });
-      if (res.status === 401) {
-        setAppUser(null);
-        setIsLoggedIn(false);
-        setShowAuthDialog(true);
-        return;
-      }
-      if (res.status === 404) {
-        // Conversation no longer exists server-side; clear local copy
+  const loadMessagesForConversation = useCallback(
+    async (conversationId: string) => {
+      const token = ++messagesLoadTokenRef.current;
+      // Local-only (unsaved) conversations have no server history; skip fetch
+      if (conversationId.startsWith("local-")) {
         setMessages([]);
         setChatSessions((prev) =>
           prev.map((c) =>
@@ -766,79 +723,122 @@ const loadMessagesForConversation = useCallback(
               : c
           )
         );
-        return;
-      }
-      if (!res.ok) {
-        throw new Error(`Failed to load messages ${res.status}`);
-      }
-      const data = await res.json();
-
-      // stale request guard (only token)
-      if (token !== messagesLoadTokenRef.current) {
+        setIsConversationLoading(false);
         return;
       }
 
-      const chatMeta = chatSessionsRef.current.find((c) => c.id === conversationId);
-      const chatModelTypeLower = (chatMeta?.modelType || "").toLowerCase();
-      const assistantModelLabel = (() => {
-        if (chatModelTypeLower === "morngpt") {
-          const expertId = chatMeta?.category || "";
-          const expert = mornGPTCategories.find((c) => c.id === expertId);
-          return expert?.name || "MornGPT";
+      setIsConversationLoading(true);
+      try {
+        // 尝试从 localStorage 获取自定义 JWT token（Android Native Google Sign-In）
+        const headers: HeadersInit = {};
+        if (typeof window !== "undefined") {
+          try {
+            const authState = localStorage.getItem("app-auth-state");
+            if (authState) {
+              const parsed = JSON.parse(authState);
+              if (parsed.accessToken) {
+                headers["Authorization"] = `Bearer ${parsed.accessToken}`;
+              }
+            }
+          } catch (e) {
+            // localStorage 读取失败，继续使用 cookie
+          }
         }
-        if (chatModelTypeLower === "general") return "General Model";
-        return chatMeta?.model || "";
-      })();
 
-      const fetchedMessages: Message[] =
-        data?.map((m: any) => ({
-          id: m.id,
-          role: m.role as Message["role"],
-          content: m.content,
-          timestamp: new Date(m.created_at),
-          model:
-            m.role === "assistant" && assistantModelLabel
-              ? assistantModelLabel
-              : undefined,
-          images: m.imageFileIds || m.images || [],
-          videos: m.videoFileIds || m.videos || [],
-          audios: (m.audioFileIds || (m as any).audios || []) as any,
-        })) || [];
+        const res = await fetch(`/api/conversations/${conversationId}/messages`, {
+          cache: "no-store",
+          credentials: "include",
+          headers,
+        });
+        if (res.status === 401) {
+          setAppUser(null);
+          setIsLoggedIn(false);
+          setShowAuthDialog(true);
+          return;
+        }
+        if (res.status === 404) {
+          // Conversation no longer exists server-side; clear local copy
+          setMessages([]);
+          setChatSessions((prev) =>
+            prev.map((c) =>
+              c.id === conversationId
+                ? { ...c, messages: [], isModelLocked: false }
+                : c
+            )
+          );
+          return;
+        }
+        if (!res.ok) {
+          throw new Error(`Failed to load messages ${res.status}`);
+        }
+        const data = await res.json();
 
-      setMessages(fetchedMessages);
-      setChatSessions((prev) =>
-        prev.map((c) =>
-          c.id === conversationId
-            ? {
+        // stale request guard (only token)
+        if (token !== messagesLoadTokenRef.current) {
+          return;
+        }
+
+        const chatMeta = chatSessionsRef.current.find((c) => c.id === conversationId);
+        const chatModelTypeLower = (chatMeta?.modelType || "").toLowerCase();
+        const assistantModelLabel = (() => {
+          if (chatModelTypeLower === "morngpt") {
+            const expertId = chatMeta?.category || "";
+            const expert = mornGPTCategories.find((c) => c.id === expertId);
+            return expert?.name || "MornGPT";
+          }
+          if (chatModelTypeLower === "general") return "General Model";
+          return chatMeta?.model || "";
+        })();
+
+        const fetchedMessages: Message[] =
+          data?.map((m: any) => ({
+            id: m.id,
+            role: m.role as Message["role"],
+            content: m.content,
+            timestamp: new Date(m.created_at),
+            model:
+              m.role === "assistant" && assistantModelLabel
+                ? assistantModelLabel
+                : undefined,
+            images: m.imageFileIds || m.images || [],
+            videos: m.videoFileIds || m.videos || [],
+            audios: (m.audioFileIds || (m as any).audios || []) as any,
+          })) || [];
+
+        setMessages(fetchedMessages);
+        setChatSessions((prev) =>
+          prev.map((c) =>
+            c.id === conversationId
+              ? {
                 ...c,
                 messages: fetchedMessages,
                 lastUpdated: new Date(),
                 isModelLocked: fetchedMessages.length > 0,
               }
-            : c,
-        ),
-      );
-    } catch (err) {
-      // Ignore stale requests; for current chat, clear stale messages and log
-      if (currentChatIdRef.current === conversationId) {
-        setMessages([]);
-        setChatSessions((prev) =>
-          prev.map((c) =>
-            c.id === conversationId
-              ? { ...c, messages: [], isModelLocked: false }
-              : c
-          )
+              : c,
+          ),
         );
-        console.error("Failed to load messages", err);
+      } catch (err) {
+        // Ignore stale requests; for current chat, clear stale messages and log
+        if (currentChatIdRef.current === conversationId) {
+          setMessages([]);
+          setChatSessions((prev) =>
+            prev.map((c) =>
+              c.id === conversationId
+                ? { ...c, messages: [], isModelLocked: false }
+                : c
+            )
+          );
+          console.error("Failed to load messages", err);
+        }
+      } finally {
+        if (token === messagesLoadTokenRef.current) {
+          setIsConversationLoading(false);
+        }
       }
-    } finally {
-      if (token === messagesLoadTokenRef.current) {
-        setIsConversationLoading(false);
-      }
-    }
-  },
-  [setChatSessions, setMessages, setAppUser, setIsLoggedIn, setShowAuthDialog],
-);
+    },
+    [setChatSessions, setMessages, setAppUser, setIsLoggedIn, setShowAuthDialog],
+  );
 
   const loadConversations = useCallback(
     async (userOverride?: AppUser | null) => {
@@ -948,9 +948,9 @@ const loadMessagesForConversation = useCallback(
             );
             setSelectedModel(
               current.model ||
-                (current.modelType === "general" || current.modelType === "morngpt"
-                  ? GENERAL_MODEL_ID
-                  : defaultExternalModelId)
+              (current.modelType === "general" || current.modelType === "morngpt"
+                ? GENERAL_MODEL_ID
+                : defaultExternalModelId)
             );
             setSelectedCategory(
               (current.modelType || "").toLowerCase() === "morngpt"
@@ -1334,85 +1334,85 @@ const loadMessagesForConversation = useCallback(
     const authSub = isDomestic
       ? null
       : supabase.auth.onAuthStateChange(async (event: string, session: { user?: any } | null) => {
-          if (!mounted) return;
-          if (event === "SIGNED_IN" && session?.user) {
-            const user = session.user;
-            const userMeta = user.user_metadata as any;
-            const planLower = (userMeta?.plan || "").toLowerCase();
-            const planExp = userMeta?.plan_exp || null;
+        if (!mounted) return;
+        if (event === "SIGNED_IN" && session?.user) {
+          const user = session.user;
+          const userMeta = user.user_metadata as any;
+          const planLower = (userMeta?.plan || "").toLowerCase();
+          const planExp = userMeta?.plan_exp || null;
 
-            // 正确计算 isPaid：Basic/Pro/Enterprise 都是付费用户
-            const isPaidCalc = planLower === "basic" || planLower === "pro" || planLower === "enterprise";
-            const isExpired = planExp ? new Date(planExp) < new Date() : false;
+          // 正确计算 isPaid：Basic/Pro/Enterprise 都是付费用户
+          const isPaidCalc = planLower === "basic" || planLower === "pro" || planLower === "enterprise";
+          const isExpired = planExp ? new Date(planExp) < new Date() : false;
 
-            // 从服务器获取 hideAds 设置和准确的订阅状态
-            let hideAds = false;
-            let serverIsPaid = isPaidCalc && !isExpired;
-            let serverIsPro = isPaidCalc && planLower !== "basic" && !isExpired;
-            try {
-              const settingsRes = await fetch("/api/account/settings", { credentials: "include" });
-              if (settingsRes.ok) {
-                const settingsData = await settingsRes.json();
-                hideAds = settingsData?.data?.hide_ads ?? false;
-                if (settingsData?.data?.subscription) {
-                  serverIsPaid = settingsData.data.subscription.hasActiveSubscription ?? serverIsPaid;
-                  serverIsPro = settingsData.data.subscription.isPro ?? serverIsPro;
-                }
+          // 从服务器获取 hideAds 设置和准确的订阅状态
+          let hideAds = false;
+          let serverIsPaid = isPaidCalc && !isExpired;
+          let serverIsPro = isPaidCalc && planLower !== "basic" && !isExpired;
+          try {
+            const settingsRes = await fetch("/api/account/settings", { credentials: "include" });
+            if (settingsRes.ok) {
+              const settingsData = await settingsRes.json();
+              hideAds = settingsData?.data?.hide_ads ?? false;
+              if (settingsData?.data?.subscription) {
+                serverIsPaid = settingsData.data.subscription.hasActiveSubscription ?? serverIsPaid;
+                serverIsPro = settingsData.data.subscription.isPro ?? serverIsPro;
               }
-            } catch (e) {
-              console.error("[onAuthStateChange] Failed to load settings:", e);
             }
+          } catch (e) {
+            console.error("[onAuthStateChange] Failed to load settings:", e);
+          }
 
-            const mappedUser: AppUser = {
-              id: user.id,
-              email: user.email || "",
-              name:
-                (user.user_metadata as any)?.full_name ||
-                user.email?.split("@")[0] ||
-                "User",
-              avatar: (user.user_metadata as any)?.avatar_url || undefined, // 用户头像
-              isPro: serverIsPro,
-              isPaid: serverIsPaid,
-              plan: userMeta?.plan,
-              planExp: planExp,
-              settings: {
-                theme: "light",
-                language: "en",
-                notifications: true,
-                soundEnabled: true,
-                autoSave: true,
-                hideAds: hideAds,
-              },
-            };
-            setAppUser(mappedUser);
-            setIsLoggedIn(true);
-            setShowAuthDialog(false);
-            const planMeta = userMeta?.plan;
-            if (planMeta) {
-              setCurrentPlan(planMeta as "Basic" | "Pro" | "Enterprise");
-              localStorage.setItem("morngpt_current_plan", planMeta);
-              const expMeta = userMeta?.plan_exp;
-              if (expMeta) {
-                localStorage.setItem("morngpt_current_plan_exp", expMeta);
-              }
-            } else if (mappedUser.isPro) {
-              setCurrentPlan("Pro");
+          const mappedUser: AppUser = {
+            id: user.id,
+            email: user.email || "",
+            name:
+              (user.user_metadata as any)?.full_name ||
+              user.email?.split("@")[0] ||
+              "User",
+            avatar: (user.user_metadata as any)?.avatar_url || undefined, // 用户头像
+            isPro: serverIsPro,
+            isPaid: serverIsPaid,
+            plan: userMeta?.plan,
+            planExp: planExp,
+            settings: {
+              theme: "light",
+              language: "en",
+              notifications: true,
+              soundEnabled: true,
+              autoSave: true,
+              hideAds: hideAds,
+            },
+          };
+          setAppUser(mappedUser);
+          setIsLoggedIn(true);
+          setShowAuthDialog(false);
+          const planMeta = userMeta?.plan;
+          if (planMeta) {
+            setCurrentPlan(planMeta as "Basic" | "Pro" | "Enterprise");
+            localStorage.setItem("morngpt_current_plan", planMeta);
+            const expMeta = userMeta?.plan_exp;
+            if (expMeta) {
+              localStorage.setItem("morngpt_current_plan_exp", expMeta);
             }
-            void loadConversations(mappedUser);
+          } else if (mappedUser.isPro) {
+            setCurrentPlan("Pro");
           }
-          if (event === "SIGNED_OUT") {
-            setAppUser(null);
-            setIsLoggedIn(false);
-            setChatSessions([]);
-            setMessages([]);
-            setCurrentChatId("");
-            setShowAuthDialog(true);
-            setCurrentPlan(null);
-            hasLoadedConversationsRef.current = false;
-            loadConversationsPendingRef.current = false;
-            loadedConversationsForUserRef.current = null;
-          }
-        });
+          void loadConversations(mappedUser);
+        }
+        if (event === "SIGNED_OUT") {
+          setAppUser(null);
+          setIsLoggedIn(false);
+          setChatSessions([]);
+          setMessages([]);
+          setCurrentChatId("");
+          setShowAuthDialog(true);
+          setCurrentPlan(null);
+          hasLoadedConversationsRef.current = false;
+          loadConversationsPendingRef.current = false;
+          loadedConversationsForUserRef.current = null;
+        }
+      });
 
     return () => {
       mounted = false;
@@ -1721,7 +1721,7 @@ const loadMessagesForConversation = useCallback(
         );
       }
     } catch (err) {
-      if(false) console.warn("Failed to delete remote file", err);
+      if (false) console.warn("Failed to delete remote file", err);
     }
 
     if (target.preview?.startsWith("blob:")) {
@@ -1786,7 +1786,7 @@ const loadMessagesForConversation = useCallback(
       setCurrentLanguage(selectedLanguage);
     }
   }, [selectedLanguage, currentLanguage, setCurrentLanguage]);
-  
+
   // Get current model configuration
   // 国内版移动端：使用"晨佑AI平台"替代"MornGPT"
   const useDomesticMobileBrand = IS_DOMESTIC_VERSION && isMobile;
@@ -1909,7 +1909,7 @@ const loadMessagesForConversation = useCallback(
               ? data.daily.used
               : typeof data.used === "number"
                 ? data.used
-              : typeof data.daily?.remaining === "number"
+                : typeof data.daily?.remaining === "number"
                   ? dailyLimit - data.daily.remaining
                   : typeof data.remaining === "number" && typeof dailyLimit === "number"
                     ? dailyLimit - data.remaining
@@ -2130,8 +2130,8 @@ const loadMessagesForConversation = useCallback(
         }
       } catch (err) {
         // 失败时保持当前显示，避免误将额度重置为 0 导致进度条回弹
-        if(false) console.warn("/*quota*/ refresh failed", err);
-        if(false) console.warn("/*quota*/ keeping previous quota state");
+        if (false) console.warn("/*quota*/ refresh failed", err);
+        if (false) console.warn("/*quota*/ keeping previous quota state");
       }
     },
     [appUser, basicQuotaLimit, currentPlan],
@@ -2324,51 +2324,51 @@ const loadMessagesForConversation = useCallback(
     cancelReplaceConversation,
     confirmReplaceConversation,
   } = useMessageSubmission(
-      prompt,
-      setPrompt,
-      uploadedFiles,
-      setUploadedFiles,
-      messages,
-      setMessages,
-      isLoading,
-      setIsLoading,
-      thinkingText,
-      setThinkingText,
-      isStreaming,
-      setIsStreaming,
-      chatSessions,
-      setChatSessions,
-      currentChatId,
-      setCurrentChatId,
-      selectedModelType,
-      selectedModel,
-      setSelectedModel,
-      setSelectedModelType,
-      selectedCategory,
-      selectedLanguage,
-      setSelectedLanguage,
-      appUser,
-      guestChatSessions,
-      setGuestChatSessions,
-      guestSessionTimeout,
-      setGuestSessionTimeout,
-      streamingController,
-      setStreamingController,
-      scrollAreaRef,
-      getFileIcon,
-      formatFileSize,
-      getLocalizedText,
-      mornGPTCategories,
-      expandedFolders,
-      setExpandedFolders,
-      externalModels,
-      supabase,
-      requireLogin,
-      consumeFreeQuota,
-      refreshQuota,
-      () => setShowUpgradeDialog(true),
-      !appUser && mobileGuestTrial.isEnabled, // 移动端访客试用：仅未登录用户才允许跳过登录检查
-    );
+    prompt,
+    setPrompt,
+    uploadedFiles,
+    setUploadedFiles,
+    messages,
+    setMessages,
+    isLoading,
+    setIsLoading,
+    thinkingText,
+    setThinkingText,
+    isStreaming,
+    setIsStreaming,
+    chatSessions,
+    setChatSessions,
+    currentChatId,
+    setCurrentChatId,
+    selectedModelType,
+    selectedModel,
+    setSelectedModel,
+    setSelectedModelType,
+    selectedCategory,
+    selectedLanguage,
+    setSelectedLanguage,
+    appUser,
+    guestChatSessions,
+    setGuestChatSessions,
+    guestSessionTimeout,
+    setGuestSessionTimeout,
+    streamingController,
+    setStreamingController,
+    scrollAreaRef,
+    getFileIcon,
+    formatFileSize,
+    getLocalizedText,
+    mornGPTCategories,
+    expandedFolders,
+    setExpandedFolders,
+    externalModels,
+    supabase,
+    requireLogin,
+    consumeFreeQuota,
+    refreshQuota,
+    () => setShowUpgradeDialog(true),
+    !appUser && mobileGuestTrial.isEnabled, // 移动端访客试用：仅未登录用户才允许跳过登录检查
+  );
 
   // Guest session timeout management
   useEffect(() => {
@@ -2719,7 +2719,7 @@ const loadMessagesForConversation = useCallback(
       // 查找选中的外部模型
       const model = externalModels.find(
         (m) => m.id.toLowerCase() === selectedModel.toLowerCase() ||
-               m.name.toLowerCase() === selectedModel.toLowerCase()
+          m.name.toLowerCase() === selectedModel.toLowerCase()
       );
       if (model) {
         // 多模态模型使用图像图标
@@ -2899,9 +2899,8 @@ const loadMessagesForConversation = useCallback(
 
     const link = document.createElement("a");
     link.href = url;
-    link.download = `morngpt-bookmarks-${
-      new Date().toISOString().split("T")[0]
-    }.json`;
+    link.download = `morngpt-bookmarks-${new Date().toISOString().split("T")[0]
+      }.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -3302,13 +3301,13 @@ const loadMessagesForConversation = useCallback(
                 hideAds: hideAds,
               },
             };
-          setAppUser(mappedUser);
-          setIsLoggedIn(true);
-          setShowAuthDialog(false);
-          appUserRef.current = mappedUser;
-          void loadConversations(mappedUser);
+            setAppUser(mappedUser);
+            setIsLoggedIn(true);
+            setShowAuthDialog(false);
+            appUserRef.current = mappedUser;
+            void loadConversations(mappedUser);
+          }
         }
-      }
       }
       setAuthForm({ email: "", password: "", name: "" });
     } catch (err) {
@@ -3322,7 +3321,7 @@ const loadMessagesForConversation = useCallback(
   };
 
   const handleGoogleAuth = async () => {
-      if (isDomestic) {
+    if (isDomestic) {
       alert("当前语言下仅支持邮箱登录/注册");
       return;
     }
@@ -3417,7 +3416,7 @@ const loadMessagesForConversation = useCallback(
 
       // 检测是否在小程序环境中
       const isInMiniProgram = ua.includes("miniprogram") ||
-                               (window as any).__wxjs_environment === "miniprogram";
+        (window as any).__wxjs_environment === "miniprogram";
 
       if (isInMiniProgram) {
         const wx = (window as any).wx;
@@ -3709,9 +3708,9 @@ const loadMessagesForConversation = useCallback(
               setAppUser((prev) =>
                 prev
                   ? {
-                      ...prev,
-                      settings: { ...prev.settings, hideAds: false },
-                    }
+                    ...prev,
+                    settings: { ...prev.settings, hideAds: false },
+                  }
                   : prev
               );
               toast.error(
@@ -3927,7 +3926,7 @@ const loadMessagesForConversation = useCallback(
           address = data.display_name;
         }
       } catch (error) {
-        if(false) console.log("Could not get address, using coordinates only");
+        if (false) console.log("Could not get address, using coordinates only");
       }
 
       const location = { latitude, longitude, address };
@@ -3936,8 +3935,8 @@ const loadMessagesForConversation = useCallback(
       // Add location to prompt
       const locationText = address
         ? `📍 **Location:** ${address}\n🌐 **Coordinates:** ${latitude.toFixed(
-            6
-          )}, ${longitude.toFixed(6)}`
+          6
+        )}, ${longitude.toFixed(6)}`
         : `🌐 **Coordinates:** ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
 
       setPrompt((prev) => prev + (prev ? "\n\n" : "") + locationText);
@@ -3947,12 +3946,12 @@ const loadMessagesForConversation = useCallback(
       const errorObject =
         typeof error === "object" && error !== null
           ? (error as {
-              code?: number;
-              message?: string;
-              PERMISSION_DENIED?: number;
-              POSITION_UNAVAILABLE?: number;
-              TIMEOUT?: number;
-            })
+            code?: number;
+            message?: string;
+            PERMISSION_DENIED?: number;
+            POSITION_UNAVAILABLE?: number;
+            TIMEOUT?: number;
+          })
           : null;
 
       const errorCode = errorObject?.code;
@@ -4144,9 +4143,8 @@ const loadMessagesForConversation = useCallback(
       const toast = document.createElement("div");
       toast.className =
         "fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 transform transition-all duration-300 translate-x-full";
-      toast.textContent = `${getLocalizedText("textCopied")}: ${
-        selectedText.length
-      } ${getLocalizedText("characters")}`;
+      toast.textContent = `${getLocalizedText("textCopied")}: ${selectedText.length
+        } ${getLocalizedText("characters")}`;
       document.body.appendChild(toast);
 
       // Animate in
@@ -4185,9 +4183,8 @@ const loadMessagesForConversation = useCallback(
       const toast = document.createElement("div");
       toast.className =
         "fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 transform transition-all duration-300 translate-x-full";
-      toast.textContent = `${getLocalizedText("textDeleted")}: ${
-        selectedText.length
-      } ${getLocalizedText("characters")}`;
+      toast.textContent = `${getLocalizedText("textDeleted")}: ${selectedText.length
+        } ${getLocalizedText("characters")}`;
       document.body.appendChild(toast);
 
       // Animate in
@@ -4292,6 +4289,30 @@ const loadMessagesForConversation = useCallback(
       return;
     }
 
+    // Free user conversation limit: max 1 saved conversation
+    const FREE_CONVERSATION_LIMIT = parseInt(process.env.NEXT_PUBLIC_FREE_CONVERSATION_LIMIT || "1", 10);
+    const userPlanLower = (appUser.plan || "").toLowerCase();
+    const isFreeUser = userPlanLower === "" || userPlanLower === "free";
+    if (isFreeUser) {
+      const savedConversations = chatSessions.filter((c) => c.messages && c.messages.length > 0);
+      if (savedConversations.length >= FREE_CONVERSATION_LIMIT) {
+        // Show upgrade prompt via toast with action
+        toast(
+          selectedLanguage === "zh"
+            ? `免费用户最多保存 ${FREE_CONVERSATION_LIMIT} 段对话，升级会员可无限保存对话`
+            : `Free users can save up to ${FREE_CONVERSATION_LIMIT} conversation(s). Upgrade to save unlimited conversations.`,
+          {
+            duration: 8000,
+            action: {
+              label: selectedLanguage === "zh" ? "升级会员" : "Upgrade",
+              onClick: () => setShowUpgradeDialog(true),
+            },
+          }
+        );
+        return;
+      }
+    }
+
     const chosenModelType = modelType || "general";
     const chosenModel =
       chosenModelType === "general" || chosenModelType === "morngpt"
@@ -4337,20 +4358,20 @@ const loadMessagesForConversation = useCallback(
     const chat = chatSessions.find((c) => c.id === chatId);
     if (chat) {
       // Immediately reflect locally stored messages (may be empty) before fetch
-          setMessages(chat.messages || []);
-          // Load messages only when user selects
-          void loadMessagesForConversation(chatId);
-          setSelectedModelType(
-            (chat.modelType || "general").toLowerCase() === "advanced_multimodal"
-              ? "external"
-              : (chat.modelType || "general")
-          );
-          setSelectedModel(
-            chat.model ||
-              (chat.modelType === "general" || chat.modelType === "morngpt"
-                ? GENERAL_MODEL_ID
-                : defaultExternalModelId)
-          );
+      setMessages(chat.messages || []);
+      // Load messages only when user selects
+      void loadMessagesForConversation(chatId);
+      setSelectedModelType(
+        (chat.modelType || "general").toLowerCase() === "advanced_multimodal"
+          ? "external"
+          : (chat.modelType || "general")
+      );
+      setSelectedModel(
+        chat.model ||
+        (chat.modelType === "general" || chat.modelType === "morngpt"
+          ? GENERAL_MODEL_ID
+          : defaultExternalModelId)
+      );
       setSelectedCategory(
         (chat.modelType || "").toLowerCase() === "morngpt"
           ? chat.category || "general"
@@ -4370,6 +4391,8 @@ const loadMessagesForConversation = useCallback(
 
   async function deleteChat(chatId: string) {
     const isLocalChat = chatId.startsWith("local-");
+    // Save the deleted chat info for potential undo
+    const deletedChat = chatSessions.find((c) => c.id === chatId);
 
     try {
       if (!appUser) {
@@ -4394,7 +4417,7 @@ const loadMessagesForConversation = useCallback(
           throw new Error(`Delete failed ${res.status}: ${msg || "unknown"}`);
         }
       } else {
-        // 国际版：调用后端 API（支持 cookie-based JWT 认证）
+        // 国际版：使用软删除（设置 deleted_at）
         const res = await fetch(`/api/conversations/${chatId}`, {
           method: "DELETE",
           credentials: "include",
@@ -4413,28 +4436,29 @@ const loadMessagesForConversation = useCallback(
           ? "删除对话失败，请稍后再试。"
           : "Failed to delete conversation. Please try again."
       );
+      return; // Don't remove locally if remote failed
     }
 
     // Remove locally and move off the deleted chat to avoid stale fetches
     const updatedChats = chatSessions.filter((chat) => chat.id !== chatId);
     setChatSessions(updatedChats);
 
-      if (currentChatId === chatId) {
-        if (updatedChats.length > 0) {
-          const nextChat = updatedChats[0];
-          setCurrentChatId(nextChat.id);
-          currentChatIdRef.current = nextChat.id;
-          setSelectedModelType(
-            (nextChat.modelType || "external").toLowerCase() === "advanced_multimodal"
-              ? "external"
-              : (nextChat.modelType || "external")
-          );
-          setSelectedModel(
-            nextChat.model ||
-              (nextChat.modelType === "general" || nextChat.modelType === "morngpt"
-                ? GENERAL_MODEL_ID
-                : defaultExternalModelId)
-          );
+    if (currentChatId === chatId) {
+      if (updatedChats.length > 0) {
+        const nextChat = updatedChats[0];
+        setCurrentChatId(nextChat.id);
+        currentChatIdRef.current = nextChat.id;
+        setSelectedModelType(
+          (nextChat.modelType || "external").toLowerCase() === "advanced_multimodal"
+            ? "external"
+            : (nextChat.modelType || "external")
+        );
+        setSelectedModel(
+          nextChat.model ||
+          (nextChat.modelType === "general" || nextChat.modelType === "morngpt"
+            ? GENERAL_MODEL_ID
+            : defaultExternalModelId)
+        );
         setSelectedCategory(
           (nextChat.modelType || "").toLowerCase() === "morngpt"
             ? nextChat.category || "general"
@@ -4455,6 +4479,40 @@ const loadMessagesForConversation = useCallback(
         currentChatIdRef.current = "";
         setMessages([]);
       }
+    }
+
+    // Show undo toast for soft-deleted conversations (not local chats)
+    if (!isLocalChat && deletedChat) {
+      toast(
+        isZh ? "对话已移至回收站（30天内可恢复）" : "Conversation moved to recycle bin (recoverable for 30 days)",
+        {
+          duration: 8000,
+          action: {
+            label: isZh ? "撤销" : "Undo",
+            onClick: async () => {
+              try {
+                const res = await fetch(`/api/conversations/${chatId}/restore`, {
+                  method: "POST",
+                  credentials: "include",
+                });
+                if (res.ok) {
+                  // Restore locally
+                  setChatSessions((prev) => [deletedChat, ...prev]);
+                  setCurrentChatId(deletedChat.id);
+                  currentChatIdRef.current = deletedChat.id;
+                  setMessages(deletedChat.messages || []);
+                  void loadMessagesForConversation(deletedChat.id);
+                  toast.success(isZh ? "对话已恢复" : "Conversation restored");
+                } else {
+                  toast.error(isZh ? "恢复失败" : "Failed to restore");
+                }
+              } catch {
+                toast.error(isZh ? "恢复失败" : "Failed to restore");
+              }
+            },
+          },
+        }
+      );
     }
   }
 
@@ -4935,17 +4993,17 @@ const loadMessagesForConversation = useCallback(
 
   const handleResetCancel = () => {
     // Implementation for reset cancel
-    if(false) console.log("handleResetCancel called");
+    if (false) console.log("handleResetCancel called");
   };
 
   const handleResetConfirm = () => {
     // Implementation for reset confirm
-    if(false) console.log("handleResetConfirm called");
+    if (false) console.log("handleResetConfirm called");
   };
 
   const showResetConfirmation = () => {
     // Implementation for showing reset confirmation
-    if(false) console.log("showResetConfirmation called");
+    if (false) console.log("showResetConfirmation called");
   };
 
   const handleUpgradeFromAds = () => {
@@ -4956,7 +5014,7 @@ const loadMessagesForConversation = useCallback(
 
   const handleSpecializedProductSelect = () => {
     // Implementation for specialized product select
-    if(false) console.log("handleSpecializedProductSelect called");
+    if (false) console.log("handleSpecializedProductSelect called");
   };
 
   const freeQuotaRemaining = useMemo(() => {
@@ -5214,10 +5272,10 @@ const loadMessagesForConversation = useCallback(
           prev.map((c) =>
             c.id === activeChatId
               ? {
-                  ...c,
-                  messages: (c.messages || []).filter((m: any) => m.id !== messageId),
-                  lastUpdated: new Date(),
-                }
+                ...c,
+                messages: (c.messages || []).filter((m: any) => m.id !== messageId),
+                lastUpdated: new Date(),
+              }
               : c,
           ),
         );
@@ -5320,10 +5378,10 @@ const loadMessagesForConversation = useCallback(
     enterpriseQuotaRemaining:
       (appUser?.plan || currentPlan || "").toLowerCase?.() === "enterprise"
         ? Math.max(
-            0,
-            (enterpriseQuotaLimit || ENTERPRISE_DAILY_LIMIT) -
-              (enterpriseQuotaDate === getToday() ? enterpriseQuotaUsed : 0),
-          )
+          0,
+          (enterpriseQuotaLimit || ENTERPRISE_DAILY_LIMIT) -
+          (enterpriseQuotaDate === getToday() ? enterpriseQuotaUsed : 0),
+        )
         : null,
     enterpriseQuotaLimit,
     enterprisePhotoRemaining,

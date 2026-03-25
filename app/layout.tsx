@@ -28,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang={DEFAULT_LANGUAGE}>
+    <html lang={DEFAULT_LANGUAGE} suppressHydrationWarning>
       <head>
         <style>{`
 html {
@@ -38,7 +38,7 @@ html {
 }
         `}</style>
       </head>
-      <body>
+      <body suppressHydrationWarning>
         {/* 微信 JS-SDK - 仅国内版加载，用于小程序 web-view 环境 */}
         {IS_DOMESTIC_VERSION && (
           <Script

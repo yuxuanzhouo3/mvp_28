@@ -1,8 +1,8 @@
 // appConfig.js - 集中化配置文件
 module.exports = {
   general: {
-    initialUrl: "https://example.com",
-    appName: "MyApp",
+    initialUrl: "https://www.mornhub.net",
+    appName: "MornGPT",
     appId: "wx0000000000000000",
     version: "1.0.0"
   },

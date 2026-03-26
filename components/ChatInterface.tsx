@@ -503,8 +503,8 @@ function ChatInterface({
       {messages.length === 0 ? (
         <div className="flex items-center justify-center h-full bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-[#1a1b23] dark:via-[#22232d] dark:to-[#1e2030] transition-colors">
           <div className="text-center px-6 max-w-lg">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25 mb-6">
-              <Bot className="w-8 h-8 text-white" />
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl shadow-lg shadow-indigo-500/20 mb-6 overflow-hidden">
+              <img src="/logo108.png" alt="MornGPT" className="w-16 h-16 object-cover" />
             </div>
             <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-700 dark:from-white dark:via-gray-100 dark:to-gray-300 bg-clip-text text-transparent mb-3">
               {getLocalizedText("appName")}

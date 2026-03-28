@@ -3394,6 +3394,25 @@ export default function ChatProvider({
       // 检测是否在 Android WebView 环境中
       const isAndroidWebView = typeof window !== 'undefined' && !!(window as any).GoogleSignIn;
 
+      const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+      const isAndroidMedianShell = /android/i.test(userAgent) && /median/i.test(userAgent);
+
+      console.info('[handleGoogleAuth] Environment', {
+        isAndroidWebView,
+        isAndroidMedianShell,
+        userAgent: userAgent.slice(0, 160),
+      });
+
+      if (isAndroidMedianShell && !isAndroidWebView) {
+        console.warn('[handleGoogleAuth] Outdated Android APK detected: GoogleSignIn bridge missing.');
+        toast.error(
+          isZh
+            ? '检测到旧版 Android APK：当前安装包还没有 App 内 Google 登录桥接，请先更新安装包。'
+            : 'Outdated Android APK detected: this build does not include the in-app Google sign-in bridge yet. Please update the app package.'
+        );
+        return;
+      }
+
       if (isAndroidWebView) {
         const { signInWithGoogle } = await import('@/lib/google-signin-bridge');
         const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';

@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.os.Message;
 import android.text.TextUtils;
+import android.util.Log;
 import android.webkit.CookieManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -55,6 +56,7 @@ public class WebViewSetup {
 
         wv.removeJavascriptInterface("GoogleSignIn");
         wv.addJavascriptInterface(activity.getGoogleSignInBridge(), "GoogleSignIn");
+        Log.d(TAG, "GoogleSignIn bridge registered on WebView");
 
         ((GoNativeApplication) activity.getApplication()).mBridge.onWebviewSetUp(activity, wv);
 

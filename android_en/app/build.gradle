@@ -13,6 +13,7 @@ ext {
     // 从 appConfig.json 读取包名、应用名称和版本号
     appPackageName = appConfig.general.androidPackageName ?: "co.median.android.app"
     appName = appConfig.general.appName ?: "App"
+    appVersionName = appConfig.general.androidVersionName ?: "1.0.0"
     appVersionCode = appConfig.general.androidVersionCode ?: 1
 
     fbAppId = ""
@@ -105,6 +106,7 @@ android {
         minSdkVersion 23
         targetSdkVersion 36
         applicationId appPackageName
+        versionName appVersionName
         versionCode appVersionCode
         multiDexEnabled true
         vectorDrawables.useSupportLibrary = true

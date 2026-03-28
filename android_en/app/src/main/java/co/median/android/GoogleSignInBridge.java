@@ -3,6 +3,7 @@ package co.median.android;
 import android.app.Activity;
 import android.content.Intent;
 import android.text.TextUtils;
+import android.util.Log;
 import android.webkit.JavascriptInterface;
 
 import com.google.android.gms.common.api.ApiException;
@@ -30,6 +31,7 @@ public class GoogleSignInBridge {
     @JavascriptInterface
     public void signIn(String clientId, String callback) {
         activity.runOnUiThread(() -> {
+            Log.d(TAG, "signIn requested. callback=" + callback + ", clientIdPresent=" + !TextUtils.isEmpty(clientId));
             if (TextUtils.isEmpty(clientId) || TextUtils.isEmpty(callback)) {
                 dispatch(callback, errorPayload("Missing clientId or callback"));
                 return;
@@ -56,6 +58,7 @@ public class GoogleSignInBridge {
     @JavascriptInterface
     public void signOut(String callback) {
         activity.runOnUiThread(() -> {
+            Log.d(TAG, "signOut requested. callback=" + callback);
             pendingSignOutCallback = callback;
             helper.signOut(() -> {
                 dispatch(pendingSignOutCallback, successPayload());
@@ -66,6 +69,7 @@ public class GoogleSignInBridge {
 
     @JavascriptInterface
     public String getCurrentUser() {
+        Log.d(TAG, "getCurrentUser requested");
         JSONObject user = helper.getCurrentUserJson();
         return user == null ? null : user.toString();
     }
@@ -74,6 +78,8 @@ public class GoogleSignInBridge {
         if (requestCode != REQUEST_CODE_GOOGLE_SIGN_IN) {
             return false;
         }
+
+        Log.d(TAG, "onActivityResult received. resultCode=" + resultCode + ", hasData=" + (data != null));
 
         String callback = pendingSignInCallback;
         pendingSignInCallback = null;

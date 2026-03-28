@@ -89,9 +89,16 @@ export async function GET(request: NextRequest) {
   const response = NextResponse.redirect(data.url);
 
   // 关键：将 PKCE 相关的 cookie 设置到响应中
+  // 在 Android WebView/Chrome Custom Tab 场景下，必须使用 SameSite=None + Secure
+  // 否则 Chrome Custom Tab 回调时 cookie 会因跨站限制被丢弃
   for (const { name, value, options } of pendingCookies) {
     console.info("[OAuth Google] Setting cookie:", name);
-    response.cookies.set(name, value, options as Record<string, unknown>);
+    response.cookies.set(name, value, {
+      ...(options as Record<string, unknown>),
+      sameSite: "none",
+      secure: true,
+      httpOnly: true,
+    });
   }
 
   return response;

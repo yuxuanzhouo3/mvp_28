@@ -3390,9 +3390,11 @@ export default function ChatProvider({
           window.location.reload();
         }, 500);
       } else {
-        // 浏览器环境：使用 Supabase OAuth
-        console.log('[handleGoogleAuth] Browser environment, using Supabase OAuth');
-        await signInWithGoogle();
+        // WebView/浏览器环境：直接导航到服务端 OAuth 路由
+        // 避免 Server Action 在 Median WebView 中 PKCE code_verifier cookie 丢失问题
+        console.log('[handleGoogleAuth] Navigating to server OAuth route');
+        const next = encodeURIComponent(window.location.pathname || '/');
+        window.location.href = `/api/auth/oauth/google?next=${next}`;
       }
     } catch (err) {
       // Server Action 中的 redirect() 会抛出 NEXT_REDIRECT 错误，这是正常行为

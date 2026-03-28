@@ -3409,19 +3409,59 @@ export default function ChatProvider({
   };
 
   /**
-   * App 内 Google 登录
-   * 直接在 WebView 内导航到 OAuth 页面（使用 implicit flow，不需要 cookie）
-   * 整个流程在 App 内完成，不跳转外部浏览器
+   * App 内 Google 登录 (弹窗方式)
+   * 使用 window.open 在 App 内弹出 Google OAuth 页面
+   * 登录完成后，弹窗回调页面通过 postMessage 将 token 发送回来
+   * 整个流程不离开 App
    */
   const handleGoogleAuthInApp = async () => {
     if (isDomestic) return;
     try {
-      console.log('[handleGoogleAuthInApp] Starting in-app OAuth navigation');
+      console.log('[handleGoogleAuthInApp] Opening OAuth popup');
+
+      // 在弹窗中打开 OAuth 流程
       const next = encodeURIComponent(window.location.pathname || '/');
-      // 直接在当前 WebView 内导航，使用 implicit flow
-      // Android 设备会被服务端检测到，自动使用 implicit flow（response_type=token）
-      // implicit flow 不需要 PKCE cookie，token 直接在 URL hash 中返回
-      window.location.href = `/api/auth/oauth/google?next=${next}`;
+      const oauthUrl = `/api/auth/oauth/google?next=${next}&mode=popup`;
+
+      // 打开弹窗（WebView 中会在内部打开）
+      const popup = window.open(oauthUrl, 'google-login', 'width=500,height=700,scrollbars=yes');
+
+      if (!popup) {
+        // 弹窗被阻止，降级为直接导航
+        console.warn('[handleGoogleAuthInApp] Popup blocked, falling back to redirect');
+        window.location.href = oauthUrl.replace('&mode=popup', '');
+        return;
+      }
+
+      // 监听弹窗回传的消息
+      const handleMessage = async (event: MessageEvent) => {
+        // 安全校验：只接受同源消息
+        if (event.origin !== window.location.origin) return;
+
+        if (event.data?.type === 'GOOGLE_AUTH_SUCCESS') {
+          window.removeEventListener('message', handleMessage);
+          console.log('✅ [handleGoogleAuthInApp] Login successful via popup');
+          toast.success(currentLanguage === "zh" ? "登录成功" : "Sign-in successful");
+          setTimeout(() => { window.location.reload(); }, 500);
+        }
+
+        if (event.data?.type === 'GOOGLE_AUTH_ERROR') {
+          window.removeEventListener('message', handleMessage);
+          console.error('[handleGoogleAuthInApp] Popup error:', event.data.payload?.error);
+          alert(isZh ? "Google 登录失败" : "Google sign-in failed");
+        }
+      };
+
+      window.addEventListener('message', handleMessage);
+
+      // 轮询检测弹窗是否被用户手动关闭
+      const pollTimer = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(pollTimer);
+          window.removeEventListener('message', handleMessage);
+        }
+      }, 1000);
+
     } catch (err) {
       console.error('[handleGoogleAuthInApp] Error:', err);
       alert(isZh ? "Google 登录失败" : "Google sign-in failed");

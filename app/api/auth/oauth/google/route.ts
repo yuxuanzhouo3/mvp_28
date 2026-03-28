@@ -38,12 +38,16 @@ export async function GET(request: NextRequest) {
   const userAgent = request.headers.get("user-agent") || "";
   const isAndroid = /android/i.test(userAgent);
 
-  console.info("[OAuth Google] Environment detection", { isAndroid, userAgent: userAgent.substring(0, 100) });
+  // 检查是否为弹窗模式
+  const mode = searchParams.get("mode"); // 'popup' = 弹窗内登录
+
+  console.info("[OAuth Google] Environment detection", { isAndroid, mode, userAgent: userAgent.substring(0, 100) });
 
   if (isAndroid) {
     // ---- Android: 使用 implicit flow (无需 cookie) ----
-    // 直接构建 Supabase implicit OAuth URL，绕过 PKCE
-    const redirectTo = `${origin}/auth/callback/client${next && next !== "/" ? `?next=${encodeURIComponent(next)}` : ""}`;
+    // 弹窗模式使用 /auth/callback/popup，普通模式使用 /auth/callback/client
+    const callbackPath = mode === "popup" ? "/auth/callback/popup" : "/auth/callback/client";
+    const redirectTo = `${origin}${callbackPath}${next && next !== "/" ? `?next=${encodeURIComponent(next)}` : ""}`;
 
     const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {

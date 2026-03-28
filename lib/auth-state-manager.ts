@@ -3,6 +3,7 @@
  * 原子性管理认证状态（token + user + metadata）
  * 支持 Refresh Token 自动刷新
  */
+import { saveAccount } from "@/lib/account-manager";
 
 export interface AuthUser {
   id: string;
@@ -49,6 +50,22 @@ export function saveAuthState(
 
     localStorage.setItem(AUTH_STATE_KEY, JSON.stringify(authState));
     console.log("✅ [Auth] 认证状态已保存");
+
+    // 同步到多账号存储
+    if (user?.id) {
+      try {
+        saveAccount({
+          id: user.id,
+          email: user.email || "",
+          name: user.name || user.email || "",
+          avatar: user.avatar || "",
+          accessToken,
+          refreshToken,
+        });
+      } catch (e) {
+        console.warn("[Auth] 多账号同步失败:", e);
+      }
+    }
 
     // 触发自定义事件（用于同标签页内同步）
     window.dispatchEvent(new CustomEvent("auth-state-changed"));

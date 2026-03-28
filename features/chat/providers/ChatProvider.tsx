@@ -293,6 +293,9 @@ export default function ChatProvider({
 }) {
   const supabase = useMemo(() => createSupabaseClient(), []);
 
+  // Multi-account state (Android: stored Google accounts for instant switching)
+  const [storedAccounts, setStoredAccounts] = useState<import('@/lib/account-manager').StoredAccount[]>([]);
+
   // Use custom hooks for state management
   const chatState = useChatState();
   const uiState = useUIState();
@@ -2430,8 +2433,9 @@ export default function ChatProvider({
     const savedPlanExp = localStorage.getItem("morngpt_current_plan_exp");
     const savedCustomShortcuts = localStorage.getItem("customShortcuts");
 
-    // 优先恢复 Android Native Google Sign-In 的认证状态
+    // 优先恢复认证状态：auth-state-manager → 多账号存储 → savedUser
     const restoreAuthState = async () => {
+      // 1. 先检查 auth-state-manager（原有逻辑）
       try {
         const { getStoredAuthState } = await import('@/lib/auth-state-manager');
         const authState = getStoredAuthState();
@@ -2464,6 +2468,67 @@ export default function ChatProvider({
       } catch (e) {
         console.error('恢复认证状态失败:', e);
       }
+
+      // 2. 检查多账号存储（Android App 重启场景）
+      try {
+        const { getLastActiveAccount, getStoredAccounts } = await import('@/lib/account-manager');
+        // 刷新 storedAccounts 状态
+        setStoredAccounts(getStoredAccounts());
+
+        const lastAccount = getLastActiveAccount();
+        if (lastAccount && lastAccount.accessToken && lastAccount.refreshToken) {
+          console.log('[ChatProvider] 尝试从多账号存储恢复:', lastAccount.email);
+          try {
+            const { data, error: sessionError } = await supabase.auth.setSession({
+              access_token: lastAccount.accessToken,
+              refresh_token: lastAccount.refreshToken,
+            });
+            if (!sessionError && data?.session?.user) {
+              console.log('[ChatProvider] ✅ 多账号存储恢复成功:', lastAccount.email);
+              const u = data.session.user;
+              const mappedUser: AppUser = {
+                id: u.id,
+                email: u.email || lastAccount.email,
+                name: u.user_metadata?.full_name || u.user_metadata?.name || lastAccount.name || u.email || "User",
+                avatar: u.user_metadata?.avatar_url || lastAccount.avatar || undefined,
+                isPro: false,
+                isPaid: false,
+                plan: savedPlan || undefined,
+                planExp: savedPlanExp || undefined,
+                settings: {
+                  theme: "light",
+                  language: "zh",
+                  notifications: true,
+                  soundEnabled: true,
+                  autoSave: true,
+                  hideAds: false,
+                },
+              };
+              setAppUser(mappedUser);
+              setIsLoggedIn(true);
+              appUserRef.current = mappedUser;
+              // 更新存储中的 token（可能已被 Supabase 刷新）
+              const { saveAccount } = await import('@/lib/account-manager');
+              saveAccount({
+                id: u.id,
+                email: u.email || lastAccount.email,
+                name: mappedUser.name || "",
+                avatar: u.user_metadata?.avatar_url || lastAccount.avatar || "",
+                accessToken: data.session.access_token,
+                refreshToken: data.session.refresh_token,
+              });
+              return true;
+            } else {
+              console.warn('[ChatProvider] 多账号 token 已过期，需重新登录:', sessionError?.message);
+            }
+          } catch (err) {
+            console.warn('[ChatProvider] 多账号存储恢复失败:', err);
+          }
+        }
+      } catch (e) {
+        console.error('多账号存储检查失败:', e);
+      }
+
       return false;
     };
 
@@ -3408,65 +3473,65 @@ export default function ChatProvider({
     }
   };
 
+
   /**
-   * App 内 Google 登录 (弹窗方式)
-   * 使用 window.open 在 App 内弹出 Google OAuth 页面
-   * 登录完成后，弹窗回调页面通过 postMessage 将 token 发送回来
-   * 整个流程不离开 App
+   * 切换到已存储的账号（无需跳转浏览器）
+   * 使用存储的 token 调用 supabase.auth.setSession 实现即时切换
    */
-  const handleGoogleAuthInApp = async () => {
-    if (isDomestic) return;
+  const switchAccount = useCallback(async (accountId: string) => {
     try {
-      console.log('[handleGoogleAuthInApp] Opening OAuth popup');
-
-      // 在弹窗中打开 OAuth 流程
-      const next = encodeURIComponent(window.location.pathname || '/');
-      const oauthUrl = `/api/auth/oauth/google?next=${next}&mode=popup`;
-
-      // 打开弹窗（WebView 中会在内部打开）
-      const popup = window.open(oauthUrl, 'google-login', 'width=500,height=700,scrollbars=yes');
-
-      if (!popup) {
-        // 弹窗被阻止，降级为直接导航
-        console.warn('[handleGoogleAuthInApp] Popup blocked, falling back to redirect');
-        window.location.href = oauthUrl.replace('&mode=popup', '');
+      const { getAccountById, setActiveAccount } = await import('@/lib/account-manager');
+      const account = getAccountById(accountId);
+      if (!account) {
+        console.error('[switchAccount] Account not found:', accountId);
         return;
       }
 
-      // 监听弹窗回传的消息
-      const handleMessage = async (event: MessageEvent) => {
-        // 安全校验：只接受同源消息
-        if (event.origin !== window.location.origin) return;
+      console.log('[switchAccount] Switching to:', account.email);
+      const { data, error: sessionError } = await supabase.auth.setSession({
+        access_token: account.accessToken,
+        refresh_token: account.refreshToken,
+      });
 
-        if (event.data?.type === 'GOOGLE_AUTH_SUCCESS') {
-          window.removeEventListener('message', handleMessage);
-          console.log('✅ [handleGoogleAuthInApp] Login successful via popup');
-          toast.success(currentLanguage === "zh" ? "登录成功" : "Sign-in successful");
-          setTimeout(() => { window.location.reload(); }, 500);
-        }
+      if (sessionError || !data?.session?.user) {
+        console.error('[switchAccount] Failed:', sessionError?.message);
+        toast.error(isZh ? `账号 ${account.email} 已过期，请重新登录` : `Account ${account.email} expired, please sign in again`);
+        return;
+      }
 
-        if (event.data?.type === 'GOOGLE_AUTH_ERROR') {
-          window.removeEventListener('message', handleMessage);
-          console.error('[handleGoogleAuthInApp] Popup error:', event.data.payload?.error);
-          alert(isZh ? "Google 登录失败" : "Google sign-in failed");
-        }
-      };
+      // Update stored tokens (may have been refreshed by Supabase)
+      const { saveAccount } = await import('@/lib/account-manager');
+      saveAccount({
+        id: data.session.user.id,
+        email: data.session.user.email || account.email,
+        name: data.session.user.user_metadata?.full_name || account.name || "",
+        avatar: data.session.user.user_metadata?.avatar_url || account.avatar || "",
+        accessToken: data.session.access_token,
+        refreshToken: data.session.refresh_token,
+      });
+      setActiveAccount(accountId);
 
-      window.addEventListener('message', handleMessage);
-
-      // 轮询检测弹窗是否被用户手动关闭
-      const pollTimer = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(pollTimer);
-          window.removeEventListener('message', handleMessage);
-        }
-      }, 1000);
-
+      toast.success(isZh ? `已切换到 ${account.email}` : `Switched to ${account.email}`);
+      setTimeout(() => { window.location.reload(); }, 500);
     } catch (err) {
-      console.error('[handleGoogleAuthInApp] Error:', err);
-      alert(isZh ? "Google 登录失败" : "Google sign-in failed");
+      console.error('[switchAccount] Error:', err);
+      toast.error(isZh ? "切换账号失败" : "Failed to switch account");
     }
-  };
+  }, [supabase, isZh]);
+
+  /**
+   * 从已存储账号列表中移除一个账号
+   */
+  const removeStoredAccount = useCallback(async (accountId: string) => {
+    try {
+      const { removeAccount, getStoredAccounts } = await import('@/lib/account-manager');
+      removeAccount(accountId);
+      setStoredAccounts(getStoredAccounts());
+      toast.success(isZh ? "账号已移除" : "Account removed");
+    } catch (err) {
+      console.error('[removeStoredAccount] Error:', err);
+    }
+  }, [isZh]);
 
   const handleWechatAuth = async () => {
     if (!isDomestic) {
@@ -5614,9 +5679,12 @@ export default function ChatProvider({
     setShowPassword,
     handleAuth,
     handleGoogleAuth,
-    handleGoogleAuthInApp,
     handleWechatAuth,
     isMobile, // 传递移动端标识给 AuthDialog，用于隐藏微信登录按钮
+    storedAccounts,
+    activeAccountId: appUser?.id || null,
+    onSwitchAccount: switchAccount,
+    onRemoveAccount: removeStoredAccount,
     showSettingsDialog,
     setShowSettingsDialog,
     isEditingProfile,

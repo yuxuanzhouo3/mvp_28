@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import { saveAccount } from "@/lib/account-manager";
 
 /**
  * OAuth 弹窗回调页面
@@ -48,6 +49,19 @@ export default function PopupCallbackPage() {
 
                 if (sessionError) {
                     throw sessionError;
+                }
+
+                // 持久化账号到多账号存储（支持 App 重启后免跳转登录）
+                if (data.session?.user) {
+                    const u = data.session.user;
+                    saveAccount({
+                        id: u.id,
+                        email: u.email || "",
+                        name: u.user_metadata?.full_name || u.user_metadata?.name || u.email || "",
+                        avatar: u.user_metadata?.avatar_url || "",
+                        accessToken: access_token,
+                        refreshToken: refresh_token,
+                    });
                 }
 
                 // 通过 postMessage 将登录结果发送给 opener 窗口

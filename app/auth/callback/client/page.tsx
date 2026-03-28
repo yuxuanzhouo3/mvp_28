@@ -99,6 +99,22 @@ function AuthCallbackContent() {
             setStatus("error");
             return;
           }
+
+          // 持久化到多账号存储（支持 App 重启后免跳转登录）
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session?.user) {
+            const { saveAccount } = await import("@/lib/account-manager");
+            const u = sessionData.session.user;
+            saveAccount({
+              id: u.id,
+              email: u.email || "",
+              name: u.user_metadata?.full_name || u.user_metadata?.name || u.email || "",
+              avatar: u.user_metadata?.avatar_url || "",
+              accessToken: access_token,
+              refreshToken: refresh_token,
+            });
+          }
+
           console.info("[AuthCallback/client] magic link setSession success");
           setStatus("success");
         } else {

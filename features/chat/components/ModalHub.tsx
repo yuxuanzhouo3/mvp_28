@@ -38,7 +38,6 @@ export default function ModalHub(props: ModalHubProps) {
     setShowPassword,
     handleAuth,
     handleGoogleAuth,
-    handleGoogleAuthInApp,
     handleWechatAuth,
     showSettingsDialog,
     setShowSettingsDialog,
@@ -156,7 +155,6 @@ export default function ModalHub(props: ModalHubProps) {
         setShowPassword={setShowPassword}
         handleAuth={handleAuth}
         handleGoogleAuth={handleGoogleAuth}
-        handleGoogleAuthInApp={handleGoogleAuthInApp}
         handleWechatAuth={handleWechatAuth}
         isMobile={props.isMobile}
       />

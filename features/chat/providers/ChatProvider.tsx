@@ -3409,115 +3409,22 @@ export default function ChatProvider({
   };
 
   /**
-   * App 内 Google 登录 (GIS 弹窗方式)
-   * 使用 Google Identity Services SDK 在 WebView 内弹出登录，不跳转外部浏览器
-   * 获取 ID Token 后发送到 /api/auth/google-native 验证
+   * App 内 Google 登录
+   * 直接在 WebView 内导航到 OAuth 页面（使用 implicit flow，不需要 cookie）
+   * 整个流程在 App 内完成，不跳转外部浏览器
    */
   const handleGoogleAuthInApp = async () => {
     if (isDomestic) return;
-
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
-    if (!clientId) {
-      alert('Google Client ID not configured');
-      return;
-    }
-
     try {
-      // 动态加载 Google Identity Services SDK
-      await new Promise<void>((resolve, reject) => {
-        if ((window as any).google?.accounts?.id) {
-          resolve();
-          return;
-        }
-        const script = document.createElement('script');
-        script.src = 'https://accounts.google.com/gsi/client';
-        script.async = true;
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error('Failed to load Google Identity Services'));
-        document.head.appendChild(script);
-      });
-
-      // 使用 GIS 弹窗获取 ID Token
-      const idToken = await new Promise<string>((resolve, reject) => {
-        const google = (window as any).google;
-        google.accounts.id.initialize({
-          client_id: clientId,
-          callback: (response: any) => {
-            if (response.credential) {
-              resolve(response.credential);
-            } else {
-              reject(new Error('No credential received'));
-            }
-          },
-          auto_select: false,
-          cancel_on_tap_outside: true,
-        });
-
-        // 触发 One Tap 提示或弹窗
-        google.accounts.id.prompt((notification: any) => {
-          if (notification.isNotDisplayed()) {
-            console.warn('[GIS] One Tap not displayed, reason:', notification.getNotDisplayedReason());
-            // One Tap 被阻止时，改用重定向方式
-            reject(new Error('ONE_TAP_BLOCKED'));
-          } else if (notification.isSkippedMoment()) {
-            console.warn('[GIS] One Tap skipped:', notification.getSkippedReason());
-            reject(new Error('ONE_TAP_SKIPPED'));
-          }
-        });
-      });
-
-      console.log('[handleGoogleAuthInApp] Got ID token, verifying...');
-
-      // 发送 ID Token 到后端验证
-      const response = await fetch('/api/auth/google-native', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Authentication failed');
-      }
-
-      const data = await response.json();
-
-      // 保存认证状态
-      if (data.session) {
-        const { saveAuthState } = await import('@/lib/auth-state-manager');
-        saveAuthState(
-          data.session.access_token,
-          data.session.refresh_token,
-          {
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.name,
-            avatar: data.user.avatar,
-          },
-          {
-            accessTokenExpiresIn: data.session.expires_in || 3600,
-            refreshTokenExpiresIn: data.session.refresh_token_expires_in || 604800,
-          }
-        );
-
-        const { setCookie } = await import('@/lib/cookie-helper');
-        setCookie('custom-jwt-token', data.session.access_token, 7);
-        console.log('✅ [Google In-App Login] JWT token saved');
-      }
-
-      toast.success(currentLanguage === "zh" ? "登录成功" : "Sign-in successful");
-      setTimeout(() => { window.location.reload(); }, 500);
-
+      console.log('[handleGoogleAuthInApp] Starting in-app OAuth navigation');
+      const next = encodeURIComponent(window.location.pathname || '/');
+      // 直接在当前 WebView 内导航，使用 implicit flow
+      // Android 设备会被服务端检测到，自动使用 implicit flow（response_type=token）
+      // implicit flow 不需要 PKCE cookie，token 直接在 URL hash 中返回
+      window.location.href = `/api/auth/oauth/google?next=${next}`;
     } catch (err) {
-      if (err instanceof Error && (err.message === 'ONE_TAP_BLOCKED' || err.message === 'ONE_TAP_SKIPPED')) {
-        // GIS 弹窗被阻止，自动降级到浏览器登录
-        console.warn('[handleGoogleAuthInApp] GIS blocked, falling back to browser redirect');
-        const next = encodeURIComponent(window.location.pathname || '/');
-        window.location.href = `/api/auth/oauth/google?next=${next}`;
-        return;
-      }
       console.error('[handleGoogleAuthInApp] Error:', err);
-      alert(isZh ? "Google 登录失败，请尝试浏览器登录" : "Google sign-in failed. Try browser sign-in.");
+      alert(isZh ? "Google 登录失败" : "Google sign-in failed");
     }
   };
 

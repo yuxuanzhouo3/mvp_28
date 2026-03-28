@@ -3331,7 +3331,7 @@ export default function ChatProvider({
 
       if (isAndroidWebView) {
         const { signInWithGoogle } = await import('@/lib/google-signin-bridge');
-        const clientId = '45279353784-q2fb18s5oak3he9q91dvu8pv39154oe4.apps.googleusercontent.com';
+        const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 
         if (!clientId) {
           throw new Error('Google Client ID not configured');

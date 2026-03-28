@@ -38,6 +38,7 @@ export default function ModalHub(props: ModalHubProps) {
     setShowPassword,
     handleAuth,
     handleGoogleAuth,
+    handleGoogleAuthInApp,
     handleWechatAuth,
     showSettingsDialog,
     setShowSettingsDialog,
@@ -148,16 +149,17 @@ export default function ModalHub(props: ModalHubProps) {
         open={showAuthDialog}
         onOpenChange={setShowAuthDialog}
         authMode={authMode}
-      setAuthMode={setAuthMode}
-      authForm={authForm}
-      setAuthForm={setAuthForm}
-      showPassword={showPassword}
-      setShowPassword={setShowPassword}
-      handleAuth={handleAuth}
-      handleGoogleAuth={handleGoogleAuth}
-      handleWechatAuth={handleWechatAuth}
-      isMobile={props.isMobile}
-    />
+        setAuthMode={setAuthMode}
+        authForm={authForm}
+        setAuthForm={setAuthForm}
+        showPassword={showPassword}
+        setShowPassword={setShowPassword}
+        handleAuth={handleAuth}
+        handleGoogleAuth={handleGoogleAuth}
+        handleGoogleAuthInApp={handleGoogleAuthInApp}
+        handleWechatAuth={handleWechatAuth}
+        isMobile={props.isMobile}
+      />
 
       {/* Settings Dialog */}
       <SettingsDialog
@@ -194,12 +196,12 @@ export default function ModalHub(props: ModalHubProps) {
         setShortcutsEnabled={setShortcutsEnabled}
         shortcutConflict={null}
         onShowResetConfirmation={showResetConfirmation}
-        onResetToDefaults={() => {}}
-        onImportHotkeys={() => {}}
-        onExportHotkeys={() => {}}
-        onResetNavigationShortcuts={() => {}}
-        onResetAIModelShortcuts={() => {}}
-        onResetPromptsShortcuts={() => {}}
+        onResetToDefaults={() => { }}
+        onImportHotkeys={() => { }}
+        onExportHotkeys={() => { }}
+        onResetNavigationShortcuts={() => { }}
+        onResetAIModelShortcuts={() => { }}
+        onResetPromptsShortcuts={() => { }}
         renderShortcutDisplay={() => null}
       />
 

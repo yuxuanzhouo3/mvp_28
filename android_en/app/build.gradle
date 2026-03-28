@@ -94,6 +94,8 @@ tasks.register('checkGoogleService') {
     }
 }
 
+def wechatAppId = project.hasProperty("WECHAT_APP_ID") ? project.getProperty("WECHAT_APP_ID") : ""
+
 build.dependsOn parseAppConfig
 build.dependsOn checkGoogleService
 
@@ -109,6 +111,7 @@ android {
 
         // 从 appConfig.json 动态生成应用名称
         resValue "string", "app_name", appName
+        buildConfigField "String", "WECHAT_APP_ID", "\"${wechatAppId}\""
 
         manifestPlaceholders = [manifestApplicationId: "${applicationId}",
                                 onesignal_app_id: onesignalAppId,
@@ -119,8 +122,9 @@ android {
                                 auth0Domain: auth0Domain, auth0Scheme: auth0Scheme,
                                 snapchat_client_id: snapchatClientId,
                                 branch_live_key: branchLiveKey,
-                                branch_test_key: branchTestKey, 
-                                branch_test_mode: branchTestMode ]
+                                branch_test_key: branchTestKey,
+                                branch_test_mode: branchTestMode,
+                                wechat_app_id: wechatAppId ]
     }
 
     compileOptions {
@@ -222,6 +226,11 @@ dependencies {
     implementation 'com.google.android.gms:play-services-location:21.3.0'
     implementation 'com.google.android.gms:play-services-auth:21.3.0'
     /**** end google ****/
+
+    /**** WeChat SDK ****/
+    implementation 'com.tencent.mm.opensdk:wechat-sdk-android:6.8.24'
+    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
+    /**** end WeChat SDK ****/
 
     /**** local dependencies ****/
     implementation fileTree(dir: 'libs', include: '*.jar')

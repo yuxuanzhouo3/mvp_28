@@ -27,3 +27,6 @@ pnpm-debug.log*
 
 # 其他
 .vscode
+
+# Android
+.gradle-cache/

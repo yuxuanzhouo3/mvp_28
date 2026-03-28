@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLanguage } from "@/context/LanguageContext";
 
@@ -12,6 +12,22 @@ function AuthErrorContent() {
 
   const error = searchParams.get("error") || "unknown_error";
   const errorDescription = searchParams.get("error_description") || (isZh ? "认证过程中发生错误" : "An error occurred during authentication");
+
+  // Android WebView PKCE 冷启动问题：exchange_failed 时自动重试
+  // 第一次 OAuth 尝试因 Chrome Custom Tab 与 WebView cookie 不同步导致失败
+  // 直接重新触发 OAuth 流程（第二次通常成功）
+  useEffect(() => {
+    if (error === "exchange_failed") {
+      const isAndroid = typeof window !== "undefined" && /android/i.test(navigator.userAgent);
+      if (isAndroid) {
+        // 延迟 1 秒后自动重新发起 Google OAuth
+        const timer = setTimeout(() => {
+          window.location.href = "/api/auth/oauth/google?next=/";
+        }, 1000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [error]);
 
   return (
     <div className="flex min-h-svh items-center justify-center p-6">
@@ -28,8 +44,13 @@ function AuthErrorContent() {
           {isZh ? "错误代码" : "Error code"}: {error}
         </p>
         <p className="text-sm text-red-600">{errorDescription}</p>
+        {error === "exchange_failed" && (
+          <p className="text-xs text-gray-400">
+            {isZh ? "正在自动重试..." : "Retrying automatically..."}
+          </p>
+        )}
         <button
-          onClick={() => router.push("/auth/login")}
+          onClick={() => router.push("/")}
           className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           {isZh ? "返回登录" : "Back to Login"}

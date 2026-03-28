@@ -718,10 +718,14 @@ export async function middleware(request: NextRequest) {
       geoResult = await geoRouter.detect(clientIP);
     }
 
+    // 豁免路由（不限制区域）：认证相关路由
+    const isAuthRoute = pathname.startsWith("/api/auth") || pathname.startsWith("/auth");
+
     // 禁止欧洲IP访问
     if (
       geoResult.region === RegionType.EUROPE &&
-      !(debugParam && isDevelopment)
+      !(debugParam && isDevelopment) &&
+      !isAuthRoute
     ) {
       console.log(`禁止欧洲IP访问: ${geoResult.countryCode}`);
       return new NextResponse(

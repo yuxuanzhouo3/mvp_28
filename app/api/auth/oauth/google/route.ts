@@ -58,9 +58,7 @@ export async function GET(request: NextRequest) {
         redirectTo,
         skipBrowserRedirect: true,
         queryParams: {
-          access_type: "offline",
           prompt: "consent",
-          // 强制使用 implicit flow：不带 response_type=code
         },
       },
     });

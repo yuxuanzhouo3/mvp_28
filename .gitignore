@@ -30,3 +30,5 @@ pnpm-debug.log*
 
 # Android
 .gradle-cache/
+*.jks
+*.keystore

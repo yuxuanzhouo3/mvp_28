@@ -2,21 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { OAuth2Client } from 'google-auth-library';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
-const PROFILE_POLL_INTERVAL_MS = 500;
-const PROFILE_POLL_ATTEMPTS = 20;
-
-async function fetchProfileById(userId: string) {
-  if (!supabaseAdmin) return null;
-
-  const { data } = await supabaseAdmin
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .maybeSingle();
-
-  return data;
-}
-
 async function ensureProfileAndWallet(
   userId: string,
   payload: Record<string, any>,
@@ -199,34 +184,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      console.log('[google-native] Waiting for trigger to create profile');
-
-      let profile = null;
-      let attempts = 0;
-
-      while (attempts < PROFILE_POLL_ATTEMPTS && !profile) {
-        await new Promise((resolve) => setTimeout(resolve, PROFILE_POLL_INTERVAL_MS));
-        attempts += 1;
-
-        const fetchedProfile = await fetchProfileById(authUserId);
-        if (fetchedProfile) {
-          profile = fetchedProfile;
-          console.log(
-            '[google-native] Profile found after',
-            attempts * PROFILE_POLL_INTERVAL_MS,
-            'ms',
-          );
-        }
-      }
-
-      if (!profile) {
-        console.warn(
-          '[google-native] Trigger did not create profile in time, creating fallback profile',
-        );
-        profile = await ensureProfileAndWallet(authUserId, payload, displayName);
-      }
-
-      user = profile;
+      user = await ensureProfileAndWallet(authUserId, payload, displayName);
     }
 
     if (!user) {

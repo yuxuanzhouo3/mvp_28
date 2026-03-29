@@ -3,7 +3,7 @@
     "initialUrl": "https://www.mornhub.net",
     "androidPackageName": "com.morngpt.android.app",
     "appName": "MornGPT",
-    "androidVersionName": "1.0.3",
+    "androidVersionName": "1.0.0",
     "androidVersionCode": 4,
     "userAgentAdd": "median",
     "publicKey": "abbnrqm",

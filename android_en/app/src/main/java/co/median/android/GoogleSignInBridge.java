@@ -84,16 +84,25 @@ public class GoogleSignInBridge {
         String callback = pendingSignInCallback;
         pendingSignInCallback = null;
 
-        if (resultCode != Activity.RESULT_OK || data == null) {
-            dispatch(callback, errorPayload("User cancelled sign in"));
-            return true;
-        }
-
         try {
+            if (data == null) {
+                String message = resultCode == Activity.RESULT_CANCELED
+                        ? "User cancelled sign in (no data)"
+                        : "Sign in failed: resultCode=" + resultCode;
+                dispatch(callback, errorPayload(message));
+                return true;
+            }
+
             dispatch(callback, helper.parseSignInResult(data));
         } catch (ApiException e) {
-            GNLog.getInstance().logError(TAG, "Google sign-in failed: " + e.getStatusCode(), e);
-            dispatch(callback, errorPayload("Sign in failed: " + e.getStatusCode()));
+            int statusCode = e.getStatusCode();
+            GNLog.getInstance().logError(TAG, "Google sign-in failed: " + statusCode + ", resultCode=" + resultCode, e);
+
+            if (statusCode == 12501 || statusCode == 16) {
+                dispatch(callback, errorPayload("User cancelled sign in (" + statusCode + ")"));
+            } else {
+                dispatch(callback, errorPayload("Sign in failed: " + statusCode));
+            }
         } catch (Exception e) {
             GNLog.getInstance().logError(TAG, "Google sign-in failed", e);
             dispatch(callback, errorPayload(e.getMessage()));

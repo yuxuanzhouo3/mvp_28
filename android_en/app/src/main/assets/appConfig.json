@@ -1,10 +1,10 @@
 {
   "general": {
-    "initialUrl": "https://morngpt.mornscience.top",
+    "initialUrl": "https://www.mornhub.net",
     "androidPackageName": "com.morngpt.android.app",
     "appName": "MornGPT",
-    "androidVersionName": "1.0.1",
-    "androidVersionCode": 2,
+    "androidVersionName": "1.0.2",
+    "androidVersionCode": 3,
     "userAgentAdd": "median",
     "publicKey": "abbnrqm",
     "deviceRegKey": "wv3k0xd6u9qyc10284e0gpew1g",
@@ -220,7 +220,7 @@
           "pagesToTrigger": "custom"
         },
         {
-          "regex": "https?:\\/\\/([-\\w]+\\.)*mornscience\\.top(\\/.*)?$",
+          "regex": "https?:\\/\\/(([-\\w]+\\.)*mornscience\\.top|([-\\w]+\\.)*mornhub\\.net)(\\/.*)?$",
           "mode": "internal",
           "label": "All pages on my domain",
           "pagesToTrigger": "domain"

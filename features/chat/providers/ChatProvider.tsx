@@ -3487,8 +3487,11 @@ export default function ChatProvider({
       }
       console.error("Google OAuth error", err);
       alert(
-        isZh ? "Google 登录失败，请稍后再试" : "Google sign-in failed. Please try again.",
+        err instanceof Error && err.message
+          ? `Google sign-in failed: ${err.message}`
+          : "Google sign-in failed. Please try again.",
       );
+      return;
     }
   };
 

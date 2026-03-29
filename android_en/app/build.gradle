@@ -96,6 +96,14 @@ tasks.register('checkGoogleService') {
 }
 
 def wechatAppId = project.hasProperty("WECHAT_APP_ID") ? project.getProperty("WECHAT_APP_ID") : ""
+def uploadKeystorePath = project.findProperty("ANDROID_UPLOAD_KEYSTORE_PATH") ?: System.getenv("ANDROID_UPLOAD_KEYSTORE_PATH") ?: "../../upload.keystore"
+def uploadStorePassword = project.findProperty("ANDROID_UPLOAD_STORE_PASSWORD") ?: System.getenv("ANDROID_UPLOAD_STORE_PASSWORD") ?: "password"
+def uploadKeyAlias = project.findProperty("ANDROID_UPLOAD_KEY_ALIAS") ?: System.getenv("ANDROID_UPLOAD_KEY_ALIAS") ?: "upload"
+def uploadKeyPassword = project.findProperty("ANDROID_UPLOAD_KEY_PASSWORD") ?: System.getenv("ANDROID_UPLOAD_KEY_PASSWORD") ?: "password"
+def releaseKeystorePath = project.findProperty("ANDROID_RELEASE_KEYSTORE_PATH") ?: System.getenv("ANDROID_RELEASE_KEYSTORE_PATH") ?: "../../release.keystore"
+def releaseStorePassword = project.findProperty("ANDROID_RELEASE_STORE_PASSWORD") ?: System.getenv("ANDROID_RELEASE_STORE_PASSWORD") ?: "password"
+def releaseKeyAlias = project.findProperty("ANDROID_RELEASE_KEY_ALIAS") ?: System.getenv("ANDROID_RELEASE_KEY_ALIAS") ?: "release"
+def releaseKeyPassword = project.findProperty("ANDROID_RELEASE_KEY_PASSWORD") ?: System.getenv("ANDROID_RELEASE_KEY_PASSWORD") ?: "password"
 
 build.dependsOn parseAppConfig
 build.dependsOn checkGoogleService
@@ -140,16 +148,16 @@ android {
 
     signingConfigs {
         release {
-            storeFile file("../../release.keystore")
-            storePassword "password"
-            keyAlias "release"
-            keyPassword "password"
+            storeFile file(releaseKeystorePath)
+            storePassword releaseStorePassword
+            keyAlias releaseKeyAlias
+            keyPassword releaseKeyPassword
         }
         upload {
-            storeFile file("../../upload.keystore")
-            storePassword "password"
-            keyAlias "upload"
-            keyPassword "password"
+            storeFile file(uploadKeystorePath)
+            storePassword uploadStorePassword
+            keyAlias uploadKeyAlias
+            keyPassword uploadKeyPassword
         }
     }
 
